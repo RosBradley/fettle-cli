@@ -185,7 +185,7 @@ EOF
     }
     [[ "$output" == *"ALL_FAILED:0:0"* ]] || return 1
     [[ "$output" == *"PARTIAL:1:10"* ]] || return 1
-    [[ "$output" == *"Chrome old versions"*"1 dirs"* ]]
+    [[ "$output" == *"Chrome old versions"*"1 dir,"* ]]
 }
 
 @test "clean_chrome_old_versions removes old versions but keeps current" {
@@ -534,7 +534,7 @@ EOF
     }
     [[ "$output" == *"ALL_FAILED:0:0"* ]] || return 1
     [[ "$output" == *"PARTIAL:1:10"* ]] || return 1
-    [[ "$output" == *"Edge updater old versions"*"1 dirs"* ]]
+    [[ "$output" == *"Edge updater old versions"*"1 dir,"* ]]
 }
 
 # Issue #1216: after Edge updates itself, the updater staging dir can hold a

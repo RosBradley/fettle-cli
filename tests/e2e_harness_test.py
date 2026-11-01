@@ -1,12 +1,14 @@
 """Exercise release-run failure boundaries without using the host Mac."""
 
 from contextlib import ExitStack, redirect_stdout
+import hashlib
 import importlib.util
 import io
 import json
 from pathlib import Path
 import tempfile
 import unittest
+from types import SimpleNamespace
 from unittest.mock import patch
 
 
@@ -98,6 +100,25 @@ class DependencyTests(unittest.TestCase):
                 self.assertEqual(calls, ["preflight"] + ([] if skip else ["build"]) + [
                     "download", "install", "launch", "uninstall", "history", "installer", "analyze", "smoke"])
                 self.assertTrue(all(step["status"] == "passed" for step in steps))
+
+
+class DownloadTests(unittest.TestCase):
+    def test_rate_limited_release_lookup_falls_back_to_signed_in_gh(self):
+        image = b"verified image"
+        asset = {"name": "fixture.dmg", "browser_download_url": "https://fixture.invalid/fixture.dmg",
+                 "digest": "sha256:" + hashlib.sha256(image).hexdigest()}
+        limited = E2E.urllib.error.HTTPError("https://api.github.com", 403, "rate limit exceeded", {}, None)
+        gh = SimpleNamespace(returncode=0, stdout=json.dumps({"tag_name": "v1", "assets": [asset]}), stderr="")
+        with tempfile.TemporaryDirectory() as tmp, ExitStack() as stack:
+            root = Path(tmp)
+            (root / "Downloads").mkdir()
+            stack.enter_context(patch.object(E2E, "HOME", root))
+            stack.enter_context(patch.object(E2E.urllib.request, "urlopen", side_effect=[limited, io.BytesIO(image)]))
+            stack.enter_context(patch.object(E2E.shutil, "which", return_value="/usr/local/bin/gh"))
+            capture = stack.enter_context(patch.object(E2E, "capture", return_value=gh))
+            result = E2E.download(SimpleNamespace(token="t"))
+        self.assertEqual(capture.call_args.args[0][:2], ["gh", "api"])
+        self.assertIn("fixture.dmg", result)
 
 
 if __name__ == "__main__":

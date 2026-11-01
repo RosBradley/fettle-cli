@@ -81,6 +81,32 @@ EOF
     [[ "$output" != *"Trash"* ]]
 }
 
+@test "emptying a large Trash reports its count every 100 items" {
+    local test_home="$HOME/trash-progress-home"
+    mkdir -p "$test_home/.Trash"
+    local i
+    for i in $(seq 1 250); do
+        mkdir "$test_home/.Trash/.com.openai.codex.T$i"
+    done
+
+    run env HOME="$test_home" PROJECT_ROOT="$PROJECT_ROOT" /bin/bash --noprofile --norc << 'EOF'
+set -euo pipefail
+source "$PROJECT_ROOT/lib/core/common.sh"
+source "$PROJECT_ROOT/lib/clean/user.sh"
+is_path_whitelisted() { return 1; }
+safe_remove() { return 0; }
+update_inline_spinner_message() { echo "SPINNER:$1"; }
+clean_trash
+EOF
+
+    [ "$status" -eq 0 ] || return 1
+    [[ "$output" == *"SPINNER:Emptying trash... 100/250"* ]] || return 1
+    [[ "$output" == *"SPINNER:Emptying trash... 200/250"* ]] || return 1
+    [[ "$output" != *"SPINNER:Emptying trash... 250/250"* ]] || return 1
+    [[ "$output" == *"Trash · emptied, 250 items"* ]] || return 1
+    rm -rf "$test_home"
+}
+
 @test "incomplete downloads are kept when the open-file view is incomplete (#1471)" {
     local partial="$HOME/Downloads/pending.crdownload"
     mkdir -p "$(dirname "$partial")"
@@ -685,7 +711,7 @@ EOF
     done
 }
 
-@test "a custom whitelist still protects system caches, Kitty, Poetry virtualenvs and the renv cache" {
+@test "a custom whitelist still protects system caches, Kitty, Poetry virtualenvs, the renv cache, pnpm dlx and llama.cpp models" {
     # clean_user_essentials sweeps every child of ~/Library/Caches, and
     # load_mole_whitelist replaces DEFAULT_WHITELIST_PATTERNS wholesale once a
     # user saves one entry of their own. Anything that breaks macOS search,
@@ -699,6 +725,8 @@ EOF
         "$test_home/Library/Caches/kitty/graphics-cache" \
         "$test_home/Library/Caches/pypoetry/virtualenvs/proj-abc123" \
         "$test_home/Library/Caches/org.R-project.R/R/renv/cache/v5/pkg" \
+        "$test_home/Library/Caches/pnpm/dlx/abc123" \
+        "$test_home/Library/Caches/llama.cpp" \
         "$test_home/Library/Caches/com.example.unprotected"
     printf '%s\n' "$test_home/.cache/keep-my-own-thing/*" > "$test_home/.config/mole/whitelist"
 
@@ -716,6 +744,10 @@ for probe in \
     "$HOME/Library/Caches/pypoetry/virtualenvs/proj-abc123" \
     "$HOME/Library/Caches/org.R-project.R/R/renv/cache/v5/pkg" \
     "$HOME/Library/Caches/org.R-project.R" \
+    "$HOME/Library/Caches/pnpm/dlx/abc123" \
+    "$HOME/Library/Caches/pnpm" \
+    "$HOME/Library/Caches/llama.cpp" \
+    "$HOME/Library/Caches/llama.cpp/model-Q4_K_M.gguf" \
     "$HOME/Library/Caches/com.example.unprotected"; do
     if is_path_whitelisted "$probe"; then
         printf 'PROTECTED=%s\n' "${probe#"$HOME"/}"
@@ -746,6 +778,10 @@ EOF
     # The sweep removes top-level children of ~/Library/Caches, so the parent
     # is the path that actually has to hold.
     [[ "$output" == *"PROTECTED=Library/Caches/org.R-project.R"$'\n'* ]] || return 1
+    [[ "$output" == *"PROTECTED=Library/Caches/pnpm/dlx/abc123"* ]] || return 1
+    [[ "$output" == *"PROTECTED=Library/Caches/pnpm"$'\n'* ]] || return 1
+    [[ "$output" == *"PROTECTED=Library/Caches/llama.cpp"$'\n'* ]] || return 1
+    [[ "$output" == *"PROTECTED=Library/Caches/llama.cpp/model-Q4_K_M.gguf"* ]] || return 1
     [[ "$output" == *"CUSTOM_KEPT"* ]] || return 1
     rm -rf "$test_home"
 }
@@ -855,7 +891,7 @@ clean_trash
 EOF
 
     [ "$status" -eq 0 ]
-    [[ "$output" == *"Trash · removed 1 items, 1 could not be removed"* ]] || return 1
+    [[ "$output" == *"Trash · removed 1 item, 1 could not be removed"* ]] || return 1
     [[ -e "$HOME/.Trash/two.tmp" ]] || return 1
     [[ ! -e "$HOME/.Trash/one.tmp" ]]
 }
@@ -2407,6 +2443,49 @@ EOF
     [[ "$output" != *"SAFE_CLEAN:Firefox profile cache"* ]]
 }
 
+# The ~/Library/Caches roots hold each browser's live HTTP disk cache, so
+# they wait for the browser to quit like the profile leaves do.
+@test "clean_browsers holds Chrome and Brave Caches roots while the browser runs" {
+    mkdir -p "$HOME/Library/Caches/Google/Chrome/Default/Cache" \
+        "$HOME/Library/Caches/BraveSoftware/Brave-Browser/Default/Cache" \
+        "$HOME/Library/Application Support/BraveSoftware/Brave-Browser"
+    touch "$HOME/Library/Caches/Google/Chrome/Default/Cache/data_0" \
+        "$HOME/Library/Caches/BraveSoftware/Brave-Browser/Default/Cache/data_0"
+
+    run env HOME="$HOME" PROJECT_ROOT="$PROJECT_ROOT" /bin/bash --noprofile --norc << 'EOF'
+set -euo pipefail
+source "$PROJECT_ROOT/lib/core/common.sh"
+source "$PROJECT_ROOT/lib/clean/user.sh"
+safe_clean() { echo "SAFE_CLEAN:${!#}"; }
+defer_cleanup_family() { echo "DEFER:$1"; }
+clean_service_worker_cache() { :; }
+note_activity() { :; }
+RUNNING=true
+pgrep() {
+    [[ "$RUNNING" == "true" ]] || return 1
+    [[ "$2" == *"Google Chrome"* || "$2" == *"Brave Browser"* ]]
+}
+clean_browsers
+echo "--- closed"
+RUNNING=false
+clean_browsers
+EOF
+    rm -rf "$HOME/Library/Caches/Google" "$HOME/Library/Caches/BraveSoftware" \
+        "$HOME/Library/Application Support/BraveSoftware"
+
+    [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+    local running closed
+    running="${output%%--- closed*}"
+    closed="${output#*--- closed}"
+    [[ "$running" != *"SAFE_CLEAN:Chrome cache"* ]] || { echo "$output"; return 1; }
+    [[ "$running" != *"SAFE_CLEAN:Brave cache"* ]] || { echo "$output"; return 1; }
+    [[ "$running" == *"DEFER:Chrome"* ]] || { echo "$output"; return 1; }
+    [[ "$running" == *"DEFER:Brave"* ]] || { echo "$output"; return 1; }
+    # Control: closed browsers still reach both rows.
+    [[ "$closed" == *"SAFE_CLEAN:Chrome cache"* ]] || { echo "$output"; return 1; }
+    [[ "$closed" == *"SAFE_CLEAN:Brave cache"* ]]
+}
+
 @test "clean_browsers fails closed when the Chrome process probe errors" {
     local chrome_support="$HOME/Library/Application Support/Google/Chrome"
     rm -rf "$chrome_support"
@@ -2787,6 +2866,78 @@ EOF
     rm -rf "$HOME/Library"
 }
 
+@test "clean_browsers covers BrowserOS caches when not running" {
+    mkdir -p "$HOME/Library/Caches/BrowserOS/Default/Cache"
+    mkdir -p "$HOME/Library/Caches/BrowserOS/Default/Code Cache"
+    mkdir -p "$HOME/Library/Application Support/BrowserOS/Default/GPUCache"
+    mkdir -p "$HOME/Library/Application Support/BrowserOS/component_crx_cache"
+    mkdir -p "$HOME/Library/Application Support/BrowserOS/Crashpad/completed"
+    touch "$HOME/Library/Caches/BrowserOS/Default/Cache/data_0" \
+        "$HOME/Library/Caches/BrowserOS/Default/Code Cache/js_0" \
+        "$HOME/Library/Application Support/BrowserOS/Default/GPUCache/gpu_data" \
+        "$HOME/Library/Application Support/BrowserOS/component_crx_cache/crx_file" \
+        "$HOME/Library/Application Support/BrowserOS/Crashpad/completed/report.dmp"
+
+    run env HOME="$HOME" PROJECT_ROOT="$PROJECT_ROOT" DRY_RUN=true /bin/bash --noprofile --norc << 'EOF'
+set -euo pipefail
+source "$PROJECT_ROOT/lib/core/common.sh"
+source "$PROJECT_ROOT/lib/clean/user.sh"
+safe_clean() { echo "$2|$1"; }
+clean_service_worker_cache() { :; }
+note_activity() { :; }
+pgrep() { return 1; }
+files_cleaned=0
+total_size_cleaned=0
+total_items=0
+clean_browsers
+EOF
+
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"BrowserOS HTTP cache|$HOME/Library/Caches/BrowserOS/Default/Cache/"* ]] || return 1
+    [[ "$output" == *"BrowserOS code cache|$HOME/Library/Caches/BrowserOS/Default/Code Cache/"* ]] || return 1
+    [[ "$output" == *"BrowserOS GPU cache|$HOME/Library/Application Support/BrowserOS/Default/GPUCache/"* ]] || return 1
+    [[ "$output" == *"BrowserOS component cache|$HOME/Library/Application Support/BrowserOS/component_crx_cache/"* ]] || return 1
+    [[ "$output" == *"BrowserOS crash reports|$HOME/Library/Application Support/BrowserOS/Crashpad/completed/"* ]] || return 1
+
+    rm -rf "$HOME/Library"
+}
+
+@test "clean_browsers skips BrowserOS caches while running" {
+    mkdir -p "$HOME/Library/Caches/BrowserOS/Default/Cache"
+    mkdir -p "$HOME/Library/Application Support/BrowserOS/Default/GPUCache"
+    touch "$HOME/Library/Caches/BrowserOS/Default/Cache/data_0" \
+        "$HOME/Library/Application Support/BrowserOS/Default/GPUCache/gpu_data"
+
+    run env HOME="$HOME" PROJECT_ROOT="$PROJECT_ROOT" DRY_RUN=true /bin/bash --noprofile --norc << 'EOF'
+set -euo pipefail
+source "$PROJECT_ROOT/lib/core/common.sh"
+source "$PROJECT_ROOT/lib/clean/user.sh"
+safe_clean() { echo "$2|$1"; }
+clean_service_worker_cache() { :; }
+note_activity() { :; }
+pgrep() {
+    local arg
+    for arg in "$@"; do
+        if [[ "$arg" == "BrowserOS" || "$arg" == "BrowserOS Helper" || "$arg" == *"/BrowserOS[.]app/"* ]]; then
+            return 0
+        fi
+    done
+    return 1
+}
+files_cleaned=0
+total_size_cleaned=0
+total_items=0
+clean_browsers
+EOF
+
+    [ "$status" -eq 0 ]
+    [[ "$output" != *"BrowserOS HTTP cache"* ]] || return 1
+    [[ "$output" != *"BrowserOS code cache"* ]] || return 1
+    [[ "$output" != *"BrowserOS GPU cache"* ]] || return 1
+
+    rm -rf "$HOME/Library"
+}
+
 @test "user cleanup process guards keep caches when pgrep cannot tell" {
     # These guards used `pgrep -x App && running=true` or `if pgrep; then
     # skip`, so a pgrep error (exit 2/3, or no pgrep) read as "not running"
@@ -2795,11 +2946,12 @@ EOF
     # sink, then with pgrep failing, where the sink must not run.
     local row case_name sink display_name pgrep_rc case_home failures=""
     for row in \
-        "mail|Mail Downloads/old.bin|Mail Downloads" \
+        "mail|Mail Downloads/OPENING/old.bin|Mail Downloads" \
         "arc|Arc code cache|Arc profile caches" \
         "brave|Brave code cache|Brave profile caches" \
         "vivaldi|Vivaldi code cache|Vivaldi profile caches" \
         "qqbrowser|QQ Browser code cache|QQ Browser profile caches" \
+        "browseros|BrowserOS GPU cache|BrowserOS profile caches" \
         "utm|UTM app cache|UTM caches"; do
         IFS='|' read -r case_name sink display_name <<< "$row"
         for pgrep_rc in 1 2; do
@@ -2821,9 +2973,11 @@ safe_remove() { echo "SINK:$1"; }
 support="$HOME/Library/Application Support"
 case "$CASE" in
     mail)
-        mkdir -p "$HOME/Library/Mail Downloads"
-        echo x > "$HOME/Library/Mail Downloads/old.bin"
-        touch -t 202401010000 "$HOME/Library/Mail Downloads/old.bin"
+        # Mail keeps each opened attachment in its own folder.
+        mkdir -p "$HOME/Library/Mail Downloads/OPENING"
+        echo x > "$HOME/Library/Mail Downloads/OPENING/old.bin"
+        touch -t 202401010000 "$HOME/Library/Mail Downloads/OPENING/old.bin"
+        touch -t 202401010000 "$HOME/Library/Mail Downloads/OPENING"
         _clean_mail_downloads
         ;;
     arc)
@@ -2840,6 +2994,11 @@ case "$CASE" in
         ;;
     qqbrowser)
         mkdir -p "$support/QQBrowser3/Default/Code Cache"
+        clean_browsers
+        ;;
+    browseros)
+        mkdir -p "$support/BrowserOS/Default/GPUCache"
+        echo x > "$support/BrowserOS/Default/GPUCache/data_0"
         clean_browsers
         ;;
     utm)
@@ -3609,7 +3768,7 @@ EOF
         [ -d "$review_home/custom-fvm/versions/3.44.0" ]
 }
 
-@test "large files links the full path behind a two-segment label" {
+@test "large files links each review label to its full path" {
     local review_home="$HOME/large-review-short-path"
     mkdir -p "$review_home/Library/Application Support/MobileSync/Backup/00008150-DEVICE" "$review_home/.gradle/caches"
 
@@ -3628,13 +3787,23 @@ run_with_timeout() {
     shift
     "$@"
 }
+# A terminal that renders links: the label carries the path, no path field.
+MOLE_ANSI_SUPPORTED_CACHE=0
+check_large_file_candidates
+echo "--- plain"
+MOLE_ANSI_SUPPORTED_CACHE=1
 check_large_file_candidates
 EOF
 
     [ "$status" -eq 0 ] || { echo "$output"; return 1; }
-    [[ "$output" == *"LINK<$review_home/Library/Application Support/MobileSync/Backup>TEXT<…/MobileSync/Backup>"* ]] || { echo "$output"; return 1; }
-    # A path that is already short keeps its full form.
-    [[ "$output" == *"TEXT<~/.gradle/caches>"* ]] || { echo "$output"; return 1; }
+    local linked plain
+    linked=$(printf '%s\n' "$output" | sed -n '1,/^--- plain/p')
+    plain=$(printf '%s\n' "$output" | sed -n '/^--- plain/,$p')
+    [[ "$linked" == *"LINK<$review_home/Library/Application Support/MobileSync/Backup>TEXT<iOS backups>"* ]] || { echo "$output"; return 1; }
+    [[ "$linked" == *"LINK<$review_home/.gradle/caches>TEXT<Gradle caches>"* ]] || { echo "$output"; return 1; }
+    [[ "$linked" != *"TEXT<>"* ]] || { echo "$output"; return 1; }
+    # Without links the path stays visible as the last field.
+    [[ "$plain" == *"Gradle caches"*"LINK<$review_home/.gradle/caches>TEXT<>"* ]] || { echo "$output"; return 1; }
 }
 
 @test "large files measures each row once, at most four at a time, and prints them in order" {
@@ -3902,7 +4071,9 @@ EOF
     local review_home="$HOME/large-review-dates"
     mkdir -p \
         "$review_home/Library/Application Support/MobileSync/Backup/00008150-DEVICE" \
-        "$review_home/Library/Developer/Xcode/Archives/2026-03-04" \
+        "$review_home/Library/Developer/Xcode/Archives/2025-11-20/App 11-20.xcarchive" \
+        "$review_home/Library/Developer/Xcode/Archives/2026-03-04/App 3-04.xcarchive" \
+        "$review_home/Library/Developer/Xcode/Archives/2026-03-04/App 3-04 2.xcarchive" \
         "$review_home/Library/Developer/Xcode/DerivedData/Some-project"
     touch -t 202601021200 "$review_home/Library/Application Support/MobileSync/Backup/00008150-DEVICE"
     touch -t 202603041200 "$review_home/Library/Developer/Xcode/Archives/2026-03-04"
@@ -3934,7 +4105,8 @@ EOF
         echo "$output"
         return 1
     }
-    [[ "$output" == *"Xcode archives"*"2026-03-04"* ]] || {
+    # Archives count their builds and give the month range from the folders.
+    [[ "$output" == *"Xcode archives"*"3 builds, Nov 2025 to Mar 2026"* ]] || {
         echo "$output"
         return 1
     }
@@ -3947,6 +4119,10 @@ EOF
         return 1
     }
     [[ "$derived_row" != *[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]* ]] || {
+        echo "$derived_row"
+        return 1
+    }
+    [[ "$derived_row" == *"1 project"* ]] || {
         echo "$derived_row"
         return 1
     }
@@ -4573,4 +4749,92 @@ EOF
     [[ "$output" == *"SECTION_BUDGET=[]"* ]] || return 1
     [[ "$output" == *"OVERCAP n=0"* ]] || return 1
     [[ "$output" == *"SYMLINK n=0"* ]] || return 1
+}
+
+@test "large files leaves out DerivedData that developer tools already covered" {
+    local review_home="$HOME/large-review-derived-covered"
+    mkdir -p "$review_home/Library/Developer/Xcode/DerivedData" \
+        "$review_home/Library/Developer/CoreSimulator/Devices"
+
+    run env HOME="$review_home" PROJECT_ROOT="$PROJECT_ROOT" /bin/bash --noprofile --norc << 'EOF'
+set -euo pipefail
+source "$PROJECT_ROOT/lib/core/common.sh"
+source "$PROJECT_ROOT/lib/clean/user.sh"
+start_section_spinner() { :; }
+stop_section_spinner() { :; }
+note_activity() { :; }
+docker() { return 1; }
+defaults() { return 1; }
+get_path_size_kb() { printf '2097152\n'; }
+run_with_timeout() { shift; "$@"; }
+du() { printf '2097152 %s\n' "${2:-/tmp}"; }
+for covered in false true; do
+    _MOLE_DERIVED_DATA_COVERED=$covered
+    echo "PASS:$covered"
+    check_large_file_candidates
+done
+EOF
+    [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+    local first second
+    first=$(printf '%s\n' "$output" | sed -n '/^PASS:false/,/^PASS:true/p')
+    second=$(printf '%s\n' "$output" | sed -n '/^PASS:true/,$p')
+    [[ "$first" == *"Xcode DerivedData"* ]] || { echo "$output"; return 1; }
+    [[ "$second" != *"Xcode DerivedData"* ]] || { echo "$output"; return 1; }
+    [[ "$second" == *"Simulator data"* ]] || { echo "$output"; return 1; }
+}
+
+@test "large files names what the simulator and pnpm rows hold" {
+    local review_home="$HOME/large-review-facts"
+    local devices="$review_home/Library/Developer/CoreSimulator/Devices"
+    mkdir -p "$devices/AAAA" "$devices/BBBB" "$devices/.cache" \
+        "$review_home/Library/pnpm/store/v10" "$review_home/Library/pnpm/store/v3" \
+        "$review_home/Library/pnpm/store/v11"
+    : > "$devices/AAAA/device.plist"
+    : > "$devices/BBBB/device.plist"
+
+    run env HOME="$review_home" PROJECT_ROOT="$PROJECT_ROOT" /bin/bash --noprofile --norc << 'EOF'
+set -euo pipefail
+source "$PROJECT_ROOT/lib/core/common.sh"
+source "$PROJECT_ROOT/lib/clean/user.sh"
+start_section_spinner() { :; }
+stop_section_spinner() { :; }
+note_activity() { :; }
+docker() { return 1; }
+defaults() { return 1; }
+du() { printf '2097152 %s\n' "${2:-/tmp}"; }
+run_with_timeout() {
+    shift
+    "$@"
+}
+check_large_file_candidates
+EOF
+    [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+    local plain
+    plain=$(printf '%s' "$output" | sed $'s/\033\\[[0-9;]*m//g')
+    [[ "$plain" == *"Simulator data · 2.15GB · 2 simulators"* ]] || { echo "$plain"; return 1; }
+    [[ "$plain" == *"pnpm store · 2.15GB · v3, v10 and v11 stores"* ]] || { echo "$plain"; return 1; }
+}
+
+@test "clean_trash preview shows loading while it measures and stops it before the row" {
+    rm -rf "$HOME/.Trash" # SAFE: reset this test's temporary HOME fixture before populating it
+    mkdir -p "$HOME/.Trash/old-folder"
+    printf 'data' > "$HOME/.Trash/old-folder/file"
+
+    run env HOME="$HOME" PROJECT_ROOT="$PROJECT_ROOT" /bin/bash --noprofile --norc << 'EOF'
+set -euo pipefail
+source "$PROJECT_ROOT/lib/core/common.sh"
+source "$PROJECT_ROOT/lib/clean/user.sh"
+DRY_RUN=true
+spinning=false
+start_section_spinner() { spinning=true; echo "SPIN:$1"; }
+stop_section_spinner() { spinning=false; }
+note_activity() { :; }
+is_path_whitelisted() { return 1; }
+validate_path_for_deletion() { return 0; }
+clean_trash
+echo "SPINNING_AFTER=$spinning"
+EOF
+    [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+    [[ "$output" == *"SPIN:Measuring Trash..."*"Trash · would empty, 1 item"* ]] || { echo "$output"; return 1; }
+    [[ "$output" == *"SPINNING_AFTER=false"* ]] || { echo "$output"; return 1; }
 }

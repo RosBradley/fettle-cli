@@ -37,6 +37,25 @@ cleanup_test_stubs() {
     if [[ -n "$TEST_GO_HELPER_DIR" ]]; then
         rm -rf "$TEST_GO_HELPER_DIR" # SAFE: exact mktemp-created Go helper directory
     fi
+    prune_test_launchservices || true
+}
+
+# Spotlight indexes tests/tmp-* within seconds and registers every fixture
+# .app with LaunchServices; deleting the fixture leaves the record behind.
+# Thousands of dead records slow every `lsregister -dump`, which Mole Mac's
+# uninstall reads (66,532 of them made each read take 36 to 56 s,
+# 2026-10-26). Unregister only records under tests/ whose bundle is gone.
+# shellcheck disable=SC2329  # Invoked by cleanup_test_stubs.
+prune_test_launchservices() {
+    local lsregister="/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister"
+    [[ -x "$lsregister" ]] || return 0
+    "$lsregister" -dump Bundle 2> /dev/null |
+        sed -n -E 's/^path: +(.*) \(0x[0-9a-f]+\)$/\1/p' |
+        while IFS= read -r path; do
+            [[ "$path" == "$PROJECT_ROOT/tests/"* ]] || continue
+            [[ -e "$path" || -L "$path" ]] || printf '%s\0' "$path"
+        done |
+        xargs -0 -n 200 "$lsregister" -u > /dev/null 2>&1
 }
 trap cleanup_test_stubs EXIT
 

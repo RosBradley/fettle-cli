@@ -258,6 +258,36 @@ EOF
 	[[ "$status" -eq 0 ]] || { echo "$output"; return 1; }
 }
 
+@test "DNS refresh reports a macOS-refused service signal as skipped without a name fallback" {
+	run env HOME="$HOME" PROJECT_ROOT="$PROJECT_ROOT" MOLE_ASSUME_VPN_ACTIVE=0 MOLE_DRY_RUN=0 /bin/bash --noprofile --norc <<'EOF'
+set -euo pipefail
+source "$PROJECT_ROOT/lib/core/common.sh"
+source "$PROJECT_ROOT/lib/optimize/tasks.sh"
+optimize_sudo_available() { return 0; }
+function /usr/bin/plutil { echo com.apple.mDNSResponder.reloaded; }
+trace="$HOME/dns-signal-eperm.trace"
+: > "$trace"
+sudo() {
+    printf '%s\n' "$*" >> "$trace"
+    [[ "$1" == dscacheutil ]] && return 0
+    echo "Not privileged to signal service." >&2
+    return 1
+}
+result=0
+flush_dns_cache || result=$?
+[[ "$result" == 4 ]] || exit 1
+expected=$(printf 'dscacheutil -flushcache\n/bin/launchctl kill SIGHUP system/com.apple.mDNSResponder.reloaded')
+[[ "$(cat "$trace")" == "$expected" ]] || exit 2
+flush_dns_cache() { return 4; }
+execute_optimization network_optimization
+[[ "$(optimize_outcome_count skipped)" == 1 ]] || exit 3
+[[ "$(optimize_outcome_count failed)" == 0 ]] || exit 4
+EOF
+	[[ "$status" -eq 0 ]] || { echo "$output"; return 1; }
+	[[ "$output" == *"macOS does not allow signaling mDNSResponder"* ]] || return 1
+	[[ "$output" != *"Failed to refresh DNS cache"* ]]
+}
+
 @test "DNS flush fails closed when the VPN state cannot be determined" {
 	run env HOME="$HOME" PROJECT_ROOT="$PROJECT_ROOT" MOLE_OPTIMIZE_SUDO_AVAILABLE=true MOLE_DRY_RUN=0 /bin/bash --noprofile --norc <<'EOF'
 set -euo pipefail
@@ -1004,6 +1034,49 @@ EOF
 	[[ "$output" == *"com.apple.Safari"* ]] || return 1
 	[[ "$output" == *"com.installed.App"* ]] || return 1
 	[[ "$output" != *"com.lm.william.TwinklingCard"* ]]
+}
+
+@test "opt_prune_spotlight_orphan_rules keeps Spotlight's own switches (#1878)" {
+	# Custom.relatedContents is the Show Related Content switch. It passes the
+	# reverse-DNS shape, so the resolver used to call it a missing app and the
+	# switch came back on after every optimize.
+	run env HOME="$HOME" PROJECT_ROOT="$PROJECT_ROOT" /bin/bash --noprofile --norc <<'EOF'
+set -euo pipefail
+source "$PROJECT_ROOT/lib/core/common.sh"
+source "$PROJECT_ROOT/lib/optimize/tasks.sh"
+PLIST="$HOME/Library/Preferences/com.apple.spotlight.plist"
+mkdir -p "$(dirname "$PLIST")"
+rm -f "$PLIST"
+/usr/libexec/PlistBuddy \
+    -c "Add :EnabledPreferenceRules array" \
+    -c "Add :EnabledPreferenceRules:0 string Custom.relatedContents" \
+    -c "Add :EnabledPreferenceRules:1 string MENU_WEBSEARCH.enabled" \
+    -c "Add :EnabledPreferenceRules:2 string com.gone.App" \
+    "$PLIST" >/dev/null 2>&1
+defaults() {
+    case "$1" in
+        read) return 0 ;;
+        write | delete) echo "DEFAULTS: $*" ;;
+    esac
+}
+bundle_has_installed_app() {
+    echo "RESOLVED: $1"
+    return 1
+}
+execute_optimization spotlight_orphan_rules_cleanup
+EOF
+
+	[ "$status" -eq 0 ] || { echo "$output"; return 1; }
+	# The positive control: a real orphan is still removed.
+	[[ "$output" == *"Removed 1 orphan"* ]] || { echo "$output"; return 1; }
+	[[ "$output" == *"RESOLVED: com.gone.App"* ]] || return 1
+	[[ "$output" != *"RESOLVED: Custom.relatedContents"* ]] || return 1
+	[[ "$output" != *"RESOLVED: MENU_WEBSEARCH.enabled"* ]] || return 1
+	local written
+	written=$(printf '%s\n' "$output" | grep 'DEFAULTS: write')
+	[[ "$written" == *"Custom.relatedContents"* ]] || { echo "$output"; return 1; }
+	[[ "$written" == *"MENU_WEBSEARCH.enabled"* ]] || return 1
+	[[ "$written" != *"com.gone.App"* ]]
 }
 
 @test "opt_prune_spotlight_orphan_rules dry-run reports but does not write" {

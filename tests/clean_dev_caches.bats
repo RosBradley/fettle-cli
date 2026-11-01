@@ -677,9 +677,34 @@ EOF
 
     [ "$status" -eq 0 ]
     [[ "$output" == *"npm cache directory|$HOME/.npm/_cacache/*"* ]] || return 1
-    [[ "$output" == *"npm npx cache|$HOME/.npm/_npx/*"* ]] || return 1
+    [[ "$output" != *"$HOME/.npm/_npx/"* ]] || return 1
     [[ "$output" == *"npm logs|$HOME/.npm/_logs/*"* ]] || return 1
     [[ "$output" == *"npm prebuilds|$HOME/.npm/_prebuilds/*"* ]]
+}
+
+# Yarn Berry writes .yarn/cache inside each project and its global cache in
+# ~/.yarn/berry/cache; ~/.yarn/cache was a row that never held anything.
+@test "clean_dev_npm cleans the Yarn Berry global cache, not the unused ~/.yarn/cache" {
+    run env HOME="$HOME" PROJECT_ROOT="$PROJECT_ROOT" /bin/bash --noprofile --norc << 'EOF'
+set -euo pipefail
+source "$PROJECT_ROOT/lib/core/common.sh"
+source "$PROJECT_ROOT/lib/clean/dev.sh"
+start_section_spinner() { :; }
+stop_section_spinner() { :; }
+clean_tool_cache() { :; }
+clean_pnpm_stores() { :; }
+clean_corepack_cache() { :; }
+clean_bun_cache() { :; }
+safe_clean() { echo "$2|$1"; }
+note_activity() { :; }
+npm() { return 1; }
+clean_dev_npm
+EOF
+
+    [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+    [[ "$output" == *"Yarn Berry cache|$HOME/.yarn/berry/cache/*"* ]] || { echo "$output"; return 1; }
+    [[ "$output" == *"Yarn v1 cache|$HOME/Library/Caches/Yarn/*"* ]] || { echo "$output"; return 1; }
+    [[ "$output" != *"|$HOME/.yarn/cache/"* ]]
 }
 
 @test "clean_dev_jvm never enters daemon cleanup while Gradle is running" {
@@ -1100,9 +1125,95 @@ EOF
     [ "$status" -eq 0 ]
     [[ "$output" == *"npm cache directory|$HOME/.npm/_cacache/*"* ]] || return 1
     [[ "$output" == *"npm cache directory (custom path)|/tmp/mole-custom-npm-cache/_cacache/*"* ]] || return 1
-    [[ "$output" == *"npm npx cache (custom path)|/tmp/mole-custom-npm-cache/_npx/*"* ]] || return 1
+    [[ "$output" != *"/_npx/"* ]] || return 1
     [[ "$output" == *"npm logs (custom path)|/tmp/mole-custom-npm-cache/_logs/*"* ]] || return 1
     [[ "$output" == *"npm prebuilds (custom path)|/tmp/mole-custom-npm-cache/_prebuilds/*"* ]]
+}
+
+@test "clean_dev_npm preserves installed npx packages in default and custom caches (#1870)" {
+    run env HOME="$BATS_TEST_TMPDIR/home" PROJECT_ROOT="$PROJECT_ROOT" PATH="/usr/bin:/bin" \
+        MOLE_TEST_NO_AUTH=1 /bin/bash --noprofile --norc <<'EOF'
+set -euo pipefail
+mkdir -p "$HOME"
+source "$PROJECT_ROOT/bin/clean.sh"
+clean_pnpm_stores() { :; }
+clean_corepack_cache() { :; }
+bun() { return 1; }
+run_with_timeout() { shift; "$@"; }
+npm() {
+    case "$*" in
+        'config get cache') printf '%s\n' "$npm_test_cache" ;;
+        'cache clean --force') return 0 ;;
+        *) return 1 ;;
+    esac
+}
+for npm_test_cache in "$HOME/.npm" "$HOME/custom-npm-cache"; do
+    for DRY_RUN in true false; do
+        export DRY_RUN
+        for cache in "$HOME/.npm" "$npm_test_cache"; do
+            mkdir -p "$cache/_npx/fixture/node_modules/fixture" "$cache/_cacache/fixture"
+            printf 'RESOURCE_OK' > "$cache/_npx/fixture/node_modules/fixture/resource.txt"
+            printf 'CACHE' > "$cache/_cacache/fixture/data"
+        done
+        clean_dev_npm
+        for cache in "$HOME/.npm" "$npm_test_cache"; do
+            [[ "$(cat "$cache/_npx/fixture/node_modules/fixture/resource.txt")" == RESOURCE_OK ]] || exit 1
+            if [[ "$DRY_RUN" == false ]]; then
+                [[ ! -e "$cache/_cacache/fixture" ]] || exit 1
+            else
+                [[ -f "$cache/_cacache/fixture/data" ]] || exit 1
+            fi
+        done
+    done
+done
+EOF
+
+    [ "$status" -eq 0 ]
+}
+
+@test "pnpm dlx installs survive the cache sweep while pnpm metadata is still cleaned" {
+    # pnpm keeps `pnpm dlx` packages under ~/Library/Caches/pnpm/dlx, beside
+    # rebuildable registry metadata; the generic sweep used to take both.
+    run env HOME="$BATS_TEST_TMPDIR/home" PROJECT_ROOT="$PROJECT_ROOT" PATH="/usr/bin:/bin" \
+        MOLE_TEST_NO_AUTH=1 /bin/bash --noprofile --norc <<'EOF'
+set -euo pipefail
+mkdir -p "$HOME"
+source "$PROJECT_ROOT/bin/clean.sh"
+load_mole_whitelist "$HOME"
+clean_pnpm_stores() { :; }
+clean_corepack_cache() { :; }
+bun() { return 1; }
+clean_trash() { :; }
+_clean_recent_items() { :; }
+_clean_mail_downloads() { :; }
+pnpm_cache="$HOME/Library/Caches/pnpm"
+for DRY_RUN in true false; do
+    export DRY_RUN
+    mkdir -p "$pnpm_cache/dlx/abc123/node_modules/tool" \
+        "$pnpm_cache/metadata-v1.3/registry.npmjs.org" \
+        "$HOME/Library/Caches/ordinary-app"
+    printf 'RESOURCE_OK' > "$pnpm_cache/dlx/abc123/node_modules/tool/index.js"
+    printf '{}' > "$pnpm_cache/metadata-v1.3/registry.npmjs.org/tool.json"
+    printf 'junk' > "$HOME/Library/Caches/ordinary-app/junk"
+    clean_user_essentials > /dev/null
+    clean_dev_npm > /dev/null
+    [[ "$(cat "$pnpm_cache/dlx/abc123/node_modules/tool/index.js")" == RESOURCE_OK ]] || {
+        echo "DLX_LOST:$DRY_RUN"
+        exit 1
+    }
+    if [[ "$DRY_RUN" == false ]]; then
+        [[ ! -e "$pnpm_cache/metadata-v1.3/registry.npmjs.org" ]] || { echo "METADATA_KEPT"; exit 1; }
+        # Positive control: the generic sweep really ran.
+        [[ ! -e "$HOME/Library/Caches/ordinary-app/junk" ]] || { echo "SWEEP_SKIPPED"; exit 1; }
+    else
+        [[ -f "$pnpm_cache/metadata-v1.3/registry.npmjs.org/tool.json" ]] || { echo "DRY_RUN_REMOVED"; exit 1; }
+    fi
+done
+echo PNPM_OK
+EOF
+
+    [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+    [[ "$output" == *PNPM_OK* ]] || { echo "$output"; return 1; }
 }
 
 @test "clean_dev_npm falls back to default cache when npm path is invalid" {
@@ -1170,6 +1281,7 @@ note_activity() { :; }
 run_with_timeout() { shift; "$@"; }
 npm() { return 0; }
 bun() { return 1; }
+bun_process_state() { return 1; }
 export -f npm bun
 clean_dev_npm
 EOF
@@ -1187,7 +1299,8 @@ source "$PROJECT_ROOT/lib/core/common.sh"
 source "$PROJECT_ROOT/lib/clean/dev.sh"
 start_section_spinner() { :; }
 stop_section_spinner() { :; }
-clean_tool_cache() { :; }
+clean_tool_cache() { echo "$1|$*"; }
+bun_process_state() { return 1; }
 safe_clean() { echo "$2|$1"; }
 note_activity() { :; }
 run_with_timeout() { shift; "$@"; }
@@ -1211,7 +1324,7 @@ clean_dev_npm
 EOF
 
     [ "$status" -eq 0 ]
-    [[ "$output" == *"bun cache"* ]] || return 1
+    [[ "$output" == *"bun cache|bun cache "*" _bun_pm_cache_rm"* ]] || return 1
     [[ "$output" != *"Bun cache|$HOME/.bun/install/cache/*"* ]] || return 1
     [[ "$output" != *"Orphaned bun cache"* ]]
 }
@@ -1223,7 +1336,8 @@ source "$PROJECT_ROOT/lib/core/common.sh"
 source "$PROJECT_ROOT/lib/clean/dev.sh"
 start_section_spinner() { :; }
 stop_section_spinner() { :; }
-clean_tool_cache() { :; }
+clean_tool_cache() { echo "$1|$*"; }
+bun_process_state() { return 1; }
 safe_clean() { echo "$2|$1"; }
 note_activity() { :; }
 run_with_timeout() { shift; "$@"; }
@@ -1247,7 +1361,7 @@ clean_dev_npm
 EOF
 
     [ "$status" -eq 0 ]
-    [[ "$output" == *"bun cache"* ]] || return 1
+    [[ "$output" == *"bun cache|bun cache "*" _bun_pm_cache_rm"* ]] || return 1
     [[ "$output" == *"Orphaned bun cache|$HOME/.bun/install/cache/*"* ]]
 }
 
@@ -1258,7 +1372,8 @@ source "$PROJECT_ROOT/lib/core/common.sh"
 source "$PROJECT_ROOT/lib/clean/dev.sh"
 start_section_spinner() { :; }
 stop_section_spinner() { :; }
-clean_tool_cache() { :; }
+clean_tool_cache() { echo "$1|$*"; }
+bun_process_state() { return 1; }
 safe_clean() { echo "$2|$1"; }
 note_activity() { :; }
 run_with_timeout() { shift; "$@"; }
@@ -1282,18 +1397,23 @@ clean_dev_npm
 EOF
 
     [ "$status" -eq 0 ]
-    [[ "$output" == *"bun cache"* ]] || return 1
+    [[ "$output" == *"bun cache|bun cache "*" _bun_pm_cache_rm"* ]] || return 1
     [[ "$output" != *"Orphaned bun cache"* ]]
 }
 
-@test "clean_dev_npm falls back to filesystem cleanup when bun cache command fails" {
-    run env HOME="$HOME" PROJECT_ROOT="$PROJECT_ROOT" /bin/bash --noprofile --norc << 'EOF'
+@test "clean_dev_npm keeps the bun cache when the bun cache command fails or times out" {
+    # The owner-command rule never falls back to direct deletion: a failed or
+    # timed-out `bun pm cache rm` keeps the cache it was asked to clear.
+    local rm_rc
+    for rm_rc in 1 124; do
+        run env HOME="$HOME" PROJECT_ROOT="$PROJECT_ROOT" BUN_RM_RC="$rm_rc" /bin/bash --noprofile --norc << 'EOF'
 set -euo pipefail
 source "$PROJECT_ROOT/lib/core/common.sh"
 source "$PROJECT_ROOT/lib/clean/dev.sh"
 start_section_spinner() { :; }
 stop_section_spinner() { :; }
-clean_tool_cache() { :; }
+bun_process_state() { return 1; }
+debug_log() { :; }
 safe_clean() { echo "$2|$1"; }
 note_activity() { :; }
 run_with_timeout() { shift; "$@"; }
@@ -1304,27 +1424,150 @@ bun() {
         return 0
     fi
     if [[ "$1" == "pm" && "$2" == "cache" && "${3:-}" == "rm" ]]; then
-        return 1
+        return "$BUN_RM_RC"
     fi
     if [[ "$1" == "pm" && "$2" == "cache" ]]; then
-        echo "/tmp/mole-bun-cache"
+        echo "$HOME/custom-bun-cache"
         return 0
     fi
     return 0
 }
 export -f npm bun
+mkdir -p "$HOME/custom-bun-cache"
+mkdir -p "$(dirname "$LOG_FILE")"
+: > "$LOG_FILE"
 clean_dev_npm
+echo "RM_RC=$BUN_RM_RC"
+grep -c 'bun cache timed out and was skipped: .*bun pm cache rm$' "$LOG_FILE" | sed 's/^/TIMEOUT_LOGGED=/' || true
 EOF
 
-    [ "$status" -eq 0 ]
-    [[ "$output" == *"Bun cache|/tmp/mole-bun-cache/*"* ]] || return 1
-    [[ "$output" == *"Orphaned bun cache|$HOME/.bun/install/cache/*"* ]]
+        [ "$status" -eq 0 ] || { echo "rc=$rm_rc $output"; return 1; }
+        [[ "$output" == *"RM_RC=$rm_rc"* ]] || { echo "rc=$rm_rc $output"; return 1; }
+        [[ "$output" != *"custom-bun-cache/*"* ]] || { echo "rc=$rm_rc $output"; return 1; }
+        local logged=0
+        [[ $rm_rc -eq 124 ]] && logged=1
+        [[ "$output" == *"TIMEOUT_LOGGED=$logged"* ]] || { echo "rc=$rm_rc $output"; return 1; }
+        # The default root is no longer bun's, so it is still an orphan.
+        [[ "$output" == *"Orphaned bun cache|$HOME/.bun/install/cache/*"* ]] || { echo "rc=$rm_rc $output"; return 1; }
+    done
 }
 
-@test "clean_dev_npm stops on an interrupted bun cache removal instead of removing it directly" {
+@test "bun owner cleanup requires a confirmed cache root and an idle bun" {
+    # `bun pm cache rm` clears bun's configured root, so a guessed default or a
+    # running bun or bunx keeps the owner command from starting; the default
+    # root left behind by a custom configuration waits for an idle bun too.
+    run env HOME="$HOME" PROJECT_ROOT="$PROJECT_ROOT" /bin/bash --noprofile --norc << 'EOF'
+set -euo pipefail
+source "$PROJECT_ROOT/lib/core/common.sh"
+source "$PROJECT_ROOT/lib/clean/dev.sh"
+start_section_spinner() { :; }
+stop_section_spinner() { :; }
+clean_pnpm_stores() { :; }
+clean_corepack_cache() { :; }
+debug_log() { :; }
+note_activity() { :; }
+safe_clean() { echo "SAFE_CLEAN:$2"; }
+mole_defer_cleanup_family() { echo "DEFER:$1"; }
+run_with_timeout() { shift; "$@"; }
+npm() { return 0; }
+bun_process_state() {
+    # "1then0" reads idle at the pre-check and running at the command.
+    if [[ "$OWNER_STATE" == 1then0 ]]; then
+        local calls
+        calls=$(($(cat "$HOME/bun-probe.count") + 1))
+        echo "$calls" > "$HOME/bun-probe.count"
+        [[ $calls -eq 1 ]] && return 1
+        return 0
+    fi
+    return "$OWNER_STATE"
+}
+bun() {
+    case "$*" in
+        --version) echo "1.2.0" ;;
+        'pm cache rm') echo BUN_RM >> "$HOME/bun-rm.trace" ;;
+        'pm cache')
+            [[ "$QUERY" == fail ]] && return 1
+            printf '%s\n' "$QUERY"
+            ;;
+    esac
+}
+mkdir -p "$HOME/custom-bun-cache" "$HOME/.bun/install/cache/pkg"
+export DRY_RUN=false
+for case_spec in "fail 1" "relative/cache 1" "/ 1" "$HOME/custom-bun-cache 0" "$HOME/custom-bun-cache 2" "$HOME/custom-bun-cache 1then0" "$HOME/custom-bun-cache 1"; do
+    QUERY="${case_spec% *}"
+    OWNER_STATE="${case_spec##* }"
+    : > "$HOME/bun-rm.trace"
+    echo 0 > "$HOME/bun-probe.count"
+    out=$(clean_bun_cache 2>&1) || { echo "RC:$case_spec:$?"; exit 1; }
+    rm_runs=$(grep -c '^BUN_RM$' "$HOME/bun-rm.trace" || true)
+    orphan=$(printf '%s\n' "$out" | grep -c '^SAFE_CLEAN:Orphaned bun cache$' || true)
+    label="${QUERY##*/}"
+    echo "CASE=${label:-root}:$OWNER_STATE RM=$rm_runs ORPHAN=$orphan"
+done
+EOF
+
+    [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+    [[ "$output" == *"CASE=fail:1 RM=0 ORPHAN=0"* ]] || { echo "$output"; return 1; }
+    [[ "$output" == *"CASE=cache:1 RM=0 ORPHAN=0"* ]] || { echo "$output"; return 1; }
+    [[ "$output" == *"CASE=root:1 RM=0 ORPHAN=0"* ]] || { echo "$output"; return 1; }
+    [[ "$output" == *"CASE=custom-bun-cache:0 RM=0 ORPHAN=0"* ]] || { echo "$output"; return 1; }
+    [[ "$output" == *"CASE=custom-bun-cache:1then0 RM=0 "* ]] || { echo "$output"; return 1; }
+    [[ "$output" == *"CASE=custom-bun-cache:2 RM=0 ORPHAN=0"* ]] || { echo "$output"; return 1; }
+    [[ "$output" == *"CASE=custom-bun-cache:1 RM=1 ORPHAN=1"* ]] || { echo "$output"; return 1; }
+}
+
+@test "bun process probe also sees bunx" {
+    run env HOME="$HOME" PROJECT_ROOT="$PROJECT_ROOT" /bin/bash --noprofile --norc << 'EOF'
+set -euo pipefail
+source "$PROJECT_ROOT/lib/core/common.sh"
+source "$PROJECT_ROOT/lib/clean/dev.sh"
+mole_pgrep_any() { echo "PROBE:$*"; return 1; }
+bun_process_state || true
+EOF
+
+    [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+    [[ "$output" == *"PROBE:-x bun -x bunx"* ]] || { echo "$output"; return 1; }
+}
+
+@test "uv and bun caches without a usable owner are cleared only when no owner process runs" {
+    # An unresolvable uv or bun does not prove its cache is orphaned; a copy
+    # outside Mole's PATH may still be using it.
+    run env HOME="$BATS_TEST_TMPDIR/home" PROJECT_ROOT="$PROJECT_ROOT" PATH="/usr/bin:/bin" \
+        MOLE_TEST_NO_AUTH=1 /bin/bash --noprofile --norc <<'EOF'
+set -euo pipefail
+mkdir -p "$HOME"
+source "$PROJECT_ROOT/bin/clean.sh"
+load_mole_whitelist "$HOME"
+clean_pnpm_stores() { :; }
+clean_corepack_cache() { :; }
+bun() { return 1; }
+DRY_RUN=false
+export DRY_RUN
+uv_process_state() { return "$OWNER_STATE"; }
+bun_process_state() { return "$OWNER_STATE"; }
+for OWNER_STATE in 0 1 2; do
+    mkdir -p "$HOME/.cache/uv/wheels-v5" "$HOME/.bun/install/cache/pkg"
+    printf 'w' > "$HOME/.cache/uv/wheels-v5/w.whl"
+    printf 'b' > "$HOME/.bun/install/cache/pkg/b.tgz"
+    out=$(clean_uv_cache 2>&1 && clean_dev_npm 2>&1) || { echo "RC:$OWNER_STATE:$?"; exit 1; }
+    uv_left=kept bun_left=kept
+    [[ -e "$HOME/.cache/uv/wheels-v5/w.whl" ]] || uv_left=removed
+    [[ -e "$HOME/.bun/install/cache/pkg/b.tgz" ]] || bun_left=removed
+    unknown=$(printf '%s\n' "$out" | grep -c 'stopped (process state unknown)' || true)
+    echo "STATE=$OWNER_STATE UV=$uv_left BUN=$bun_left UNKNOWN=$unknown"
+done
+EOF
+
+    [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+    [[ "$output" == *"STATE=0 UV=kept BUN=kept UNKNOWN=0"* ]] || { echo "$output"; return 1; }
+    [[ "$output" == *"STATE=1 UV=removed BUN=removed UNKNOWN=0"* ]] || { echo "$output"; return 1; }
+    [[ "$output" == *"STATE=2 UV=kept BUN=kept UNKNOWN=2"* ]] || { echo "$output"; return 1; }
+}
+
+@test "clean_dev_npm never removes the bun cache directly after its owner command stops" {
     # Ctrl-C while `bun pm cache rm` holds the terminal reaches only the child.
     # A signal stops cleanup; a plain failure, a timeout or an errno-derived
-    # status above 127 still falls back to the filesystem.
+    # status above 127 skips bun without removing its cache directly.
     run env HOME="$HOME" PROJECT_ROOT="$PROJECT_ROOT" MOLE_CURRENT_COMMAND=clean \
         /bin/bash --noprofile --norc << 'EOF'
 set -euo pipefail
@@ -1334,7 +1577,7 @@ start_section_spinner() { :; }
 stop_section_spinner() { :; }
 clean_pnpm_stores() { :; }
 clean_corepack_cache() { :; }
-clean_tool_cache() { :; }
+bun_process_state() { return 1; }
 safe_clean() { echo "SAFE_CLEAN:$2"; }
 note_activity() { :; }
 debug_log() { :; }
@@ -1349,11 +1592,12 @@ bun() {
         return "$BUN_RM_RC"
     fi
     if [[ "$1" == "pm" && "$2" == "cache" ]]; then
-        echo "/tmp/mole-bun-cache"
+        echo "$HOME/custom-bun-cache"
         return 0
     fi
     return 0
 }
+mkdir -p "$HOME/custom-bun-cache"
 for BUN_RM_RC in 130 143 1 124 243; do
     MOLE_CLEAN_CANCEL_STATUS=0
     MOLE_CLEAN_CANCEL_SOURCE=""
@@ -1368,9 +1612,9 @@ EOF
     [ "$status" -eq 0 ] || { echo "$output"; return 1; }
     [[ "$output" == *"BUN=130 RC=130 CANCEL=130 SOURCE=bun cache FALLBACK=0"* ]] || { echo "$output"; return 1; }
     [[ "$output" == *"BUN=143 RC=143 CANCEL=143 SOURCE=bun cache FALLBACK=0"* ]] || { echo "$output"; return 1; }
-    [[ "$output" == *"BUN=1 RC=0 CANCEL=0 SOURCE= FALLBACK=1"* ]] || { echo "$output"; return 1; }
-    [[ "$output" == *"BUN=124 RC=0 CANCEL=0 SOURCE= FALLBACK=1"* ]] || { echo "$output"; return 1; }
-    [[ "$output" == *"BUN=243 RC=0 CANCEL=0 SOURCE= FALLBACK=1"* ]] || { echo "$output"; return 1; }
+    [[ "$output" == *"BUN=1 RC=0 CANCEL=0 SOURCE= FALLBACK=0"* ]] || { echo "$output"; return 1; }
+    [[ "$output" == *"BUN=124 RC=0 CANCEL=0 SOURCE= FALLBACK=0"* ]] || { echo "$output"; return 1; }
+    [[ "$output" == *"BUN=243 RC=0 CANCEL=0 SOURCE= FALLBACK=0"* ]] || { echo "$output"; return 1; }
     rm -f "$HOME/bun-case.out" # SAFE: test scratch file under the temporary HOME
 }
 
@@ -1389,7 +1633,7 @@ clean_dev_docker
 EOF
 
     [ "$status" -eq 0 ]
-    [[ "$output" == *"Docker unused data · review with docker system df"* ]] || return 1
+    [[ "$output" == *"Docker unused data · review with docker system df -v"* ]] || return 1
     [[ "$output" == *"Docker BuildX cache"* ]] || return 1
     [[ "$output" != *"docker called"* ]]
 }
@@ -1430,7 +1674,7 @@ clean_dev_docker
 EOF
 
     [ "$status" -eq 0 ]
-    [[ "$output" == *"OrbStack container data · 4M · review with docker system df"* ]] || return 1
+    [[ "$output" == *"OrbStack container data · 4M · review with docker system df -v"* ]] || return 1
     [[ "$output" == *"Docker BuildX cache|$HOME/.docker/buildx/cache/*"* ]] || return 1
     [[ "$output" != *"data.img.raw"* ]] || return 1
     [[ "$output" != *"swap.img"* ]]
@@ -1463,7 +1707,7 @@ printf 'SIGNAL RC=%s CANCEL=%s\n' "$rc" "$MOLE_CLEAN_CANCEL_STATUS"
 EOF
 
     [ "$status" -eq 0 ] || { echo "$output"; return 1; }
-    [[ "$output" == *"OrbStack container data · review with docker system df"* ]] || { echo "$output"; return 1; }
+    [[ "$output" == *"OrbStack container data · review with docker system df -v"* ]] || { echo "$output"; return 1; }
     [[ "$output" == *"BUILDX:Docker BuildX cache"*"TIMEOUT RC=0 CANCEL=0"* ]] || { echo "$output"; return 1; }
     [[ "$output" == *"SIGNAL RC=130 CANCEL=130"* ]] || { echo "$output"; return 1; }
     [[ "$(printf '%s\n' "$output" | grep -c 'BUILDX:')" -eq 1 ]]
@@ -1489,7 +1733,7 @@ clean_dev_docker
 EOF
 
     [ "$status" -eq 0 ]
-    [[ "$output" == *"Docker unused data · review with docker system df"* ]] || return 1
+    [[ "$output" == *"Docker unused data · review with docker system df -v"* ]] || return 1
     [[ "$output" != *"whitelisted"* ]] || return 1
     [[ "$output" != *"mo clean --whitelist"* ]] || return 1
     [[ "$output" != *"docker called"* ]]
@@ -4676,6 +4920,43 @@ EOF
     assert_owner_cleanup_requires_confirmed_root uv clean_uv_cache
 }
 
+@test "uv cache prune gives up on a held cache lock before the owner timeout" {
+    mkdir -p "$HOME/uv-lock-cache" "$HOME/uv-lock-bin"
+    cat > "$HOME/uv-lock-bin/uv" <<'SCRIPT'
+#!/bin/bash
+case "$*" in
+    --version) exit 0 ;;
+    'cache dir') printf '%s\n' "$HOME/uv-lock-cache" ;;
+    'cache prune')
+        printf 'LOCK_TIMEOUT:%s\n' "${UV_LOCK_TIMEOUT:-unset}" >> "$TRACE"
+        exit 2
+        ;;
+    *) exit 97 ;;
+esac
+SCRIPT
+    chmod +x "$HOME/uv-lock-bin/uv"
+    run env HOME="$HOME" PROJECT_ROOT="$PROJECT_ROOT" PATH="$HOME/uv-lock-bin:$PATH" \
+        TRACE="$HOME/uv-lock.trace" MOLE_TEST_NO_AUTH=1 /bin/bash --noprofile --norc <<'EOF'
+set -euo pipefail
+source "$PROJECT_ROOT/lib/core/common.sh"
+source "$PROJECT_ROOT/lib/clean/dev.sh"
+DRY_RUN=false
+WHITELIST_PATTERNS=()
+run_with_timeout() { shift; "$@"; }
+: > "$TRACE"
+rc=0
+clean_uv_cache || rc=$?
+[[ "$rc" == 0 ]] || { echo "RC:$rc"; exit 1; }
+lock_timeout=$(sed -n 's/^LOCK_TIMEOUT://p' "$TRACE")
+[[ "$lock_timeout" =~ ^[0-9]+$ ]] || { echo "LOCK_TIMEOUT:$lock_timeout"; exit 1; }
+[[ "$lock_timeout" -lt "$MOLE_TIMEOUT_PKG_CLEANUP_SEC" ]] || { echo "LOCK_TIMEOUT:$lock_timeout"; exit 1; }
+echo LOCK_BOUNDED
+EOF
+    [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+    [[ "$output" == *LOCK_BOUNDED* ]] || return 1
+    [[ "$output" != *"uv cache"* ]] || return 1
+}
+
 @test "owner cache root validation propagates signals before any mutation" {
     run env HOME="$HOME" PROJECT_ROOT="$PROJECT_ROOT" MOLE_TEST_NO_AUTH=1 \
         /bin/bash --noprofile --norc <<'EOF'
@@ -4843,4 +5124,142 @@ echo CONDA_ROOT_GUARD_OK
 EOF
     [ "$status" -eq 0 ] || { echo "$output"; return 1; }
     [[ "$output" == *CONDA_ROOT_GUARD_OK* ]] || return 1
+}
+
+@test "owner cache rows show and count only the bytes their command removed" {
+    run env HOME="$HOME" PROJECT_ROOT="$PROJECT_ROOT" /bin/bash --noprofile --norc << 'EOF'
+set -euo pipefail
+source "$PROJECT_ROOT/lib/core/common.sh"
+source "$PROJECT_ROOT/lib/clean/dev.sh"
+DRY_RUN=false
+MOLE_CURRENT_COMMAND=clean
+MOLE_CLEAN_CANCEL_STATUS=0
+files_cleaned=0 total_size_cleaned=0 total_items=0
+note_activity() { :; }
+get_cleanup_path_size_kb() { /usr/bin/du -sk "$1" | /usr/bin/cut -f1; }
+root="$HOME/.cache/owner-fixture"
+mkdir -p "$root/keep"
+/bin/dd if=/dev/zero of="$root/drop.bin" bs=1024 count=2048 2> /dev/null
+/bin/dd if=/dev/zero of="$root/keep/stay.bin" bs=1024 count=512 2> /dev/null
+prune() { /bin/rm -f "$root/drop.bin"; } # SAFE: test fixture
+clean_tool_cache "Fixture cache" "$root" prune
+printf 'TOTAL=%s ITEMS=%s\n' "$total_size_cleaned" "$total_items"
+noop() { :; }
+clean_tool_cache "Unchanged cache" "$root" noop
+printf 'TOTAL=%s ITEMS=%s\n' "$total_size_cleaned" "$total_items"
+reset() { /bin/rm -rf "$root"; } # SAFE: test fixture
+clean_tool_cache "Reset cache" "$root" reset
+printf 'TOTAL=%s ITEMS=%s\n' "$total_size_cleaned" "$total_items"
+EOF
+    [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+    [[ "$output" =~ "Fixture cache · "[^$'\n']*"2."[0-9]+"MB" ]] || { echo "$output"; return 1; }
+    [[ "$output" == *"TOTAL=2048 ITEMS=1"* ]] || { echo "$output"; return 1; }
+    local unchanged
+    unchanged=$(printf '%s\n' "$output" | grep 'Unchanged cache')
+    [[ "$unchanged" != *"·"* ]] || { echo "$output"; return 1; }
+    [[ "$output" =~ "Reset cache · " ]] || { echo "$output"; return 1; }
+    [[ "$output" =~ TOTAL=([0-9]+)\ ITEMS=2$ ]] || { echo "$output"; return 1; }
+    [ "${BASH_REMATCH[1]}" -gt 2048 ]
+}
+
+@test "an interrupt while measuring an owner cache stops before the owner command" {
+    run env HOME="$HOME" PROJECT_ROOT="$PROJECT_ROOT" /bin/bash --noprofile --norc << 'EOF'
+set -euo pipefail
+source "$PROJECT_ROOT/lib/core/common.sh"
+source "$PROJECT_ROOT/lib/clean/dev.sh"
+DRY_RUN=false
+MOLE_CURRENT_COMMAND=clean
+MOLE_CLEAN_CANCEL_STATUS=0
+note_activity() { :; }
+get_cleanup_path_size_kb() { return 130; }
+mkdir -p "$HOME/.cache/owner-fixture"
+owner() { echo UNEXPECTED_OWNER; }
+rc=0
+clean_tool_cache "Fixture cache" "$HOME/.cache/owner-fixture" owner || rc=$?
+printf 'RC=%s CANCEL=%s\n' "$rc" "$MOLE_CLEAN_CANCEL_STATUS"
+EOF
+    [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+    [[ "$output" != *UNEXPECTED_OWNER* ]] || return 1
+    [[ "$output" == *"RC=130 CANCEL=130"* ]]
+}
+
+@test "an interrupt while measuring an owner cache after its command stops later owners" {
+    run env HOME="$HOME" PROJECT_ROOT="$PROJECT_ROOT" /bin/bash --noprofile --norc << 'EOF'
+set -euo pipefail
+source "$PROJECT_ROOT/lib/core/common.sh"
+source "$PROJECT_ROOT/lib/clean/dev.sh"
+DRY_RUN=false
+MOLE_CURRENT_COMMAND=clean
+MOLE_CLEAN_CANCEL_STATUS=0
+note_activity() { :; }
+measured=0
+get_cleanup_path_size_kb() {
+    measured=$((measured + 1))
+    [[ -f "$HOME/owner-ran" ]] && return 130
+    echo 100
+}
+mkdir -p "$HOME/.cache/owner-after"
+owner() { : > "$HOME/owner-ran"; }
+later() { echo UNEXPECTED_LATER; }
+rc=0
+_run_developer_cleanup_step clean_tool_cache "Fixture cache" "$HOME/.cache/owner-after" owner || rc=$?
+[[ $rc -ne 0 ]] || _run_developer_cleanup_step clean_tool_cache "Later cache" "" later || true
+printf 'RC=%s CANCEL=%s\n' "$rc" "$MOLE_CLEAN_CANCEL_STATUS"
+EOF
+    [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+    [[ "$output" != *UNEXPECTED_LATER* ]] || { echo "$output"; return 1; }
+    [[ "$output" == *"RC=130 CANCEL=130"* ]] || { echo "$output"; return 1; }
+}
+
+@test "clean_dev_go stops when measuring a cleaned Go cache is interrupted" {
+    local module_root="$HOME/go-module-after"
+    local build_root="$HOME/go-build-after"
+    mkdir -p "$module_root" "$build_root"
+
+    run env HOME="$HOME" PROJECT_ROOT="$PROJECT_ROOT" \
+        GO_MODULE_ROOT="$module_root" GO_BUILD_ROOT="$build_root" \
+        /bin/bash --noprofile --norc <<'EOF'
+set -euo pipefail
+source "$PROJECT_ROOT/lib/core/common.sh"
+source "$PROJECT_ROOT/lib/clean/dev.sh"
+DRY_RUN=false
+MOLE_CURRENT_COMMAND=clean
+MOLE_CLEAN_CANCEL_STATUS=0
+go() { :; }
+run_with_timeout() {
+    shift
+    if [[ "$1" == "go" && "$2" == "env" ]]; then
+        if [[ "$3" == "GOMODCACHE" ]]; then
+            printf '%s\n' "$GO_MODULE_ROOT"
+        else
+            printf '%s\n' "$GO_BUILD_ROOT"
+        fi
+        return 0
+    fi
+    printf '%s\n' "$*" >> "$HOME/go-ran"
+    : > "$HOME/go-cleaned"
+    return 0
+}
+# Only the first measurement after a command is interrupted, so a run that
+# swallowed it would go on to measure and clean the second cache.
+get_cleanup_path_size_kb() {
+    if [[ -f "$HOME/go-cleaned" && ! -f "$HOME/go-interrupted" ]]; then
+        : > "$HOME/go-interrupted"
+        return 130
+    fi
+    echo 100
+}
+is_path_whitelisted() { return 1; }
+should_protect_path() { return 1; }
+go_cache_process_state() { return 1; }
+note_activity() { :; }
+clean_rc=0
+clean_dev_go || clean_rc=$?
+printf 'rc=%s CANCEL=%s\n' "$clean_rc" "${MOLE_CLEAN_CANCEL_STATUS:-0}"
+printf 'RAN=%s\n' "$(wc -l < "$HOME/go-ran" | tr -d ' ')"
+EOF
+    [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+    [[ "$output" == *"rc=130 CANCEL=130"* ]] || { echo "$output"; return 1; }
+    # The first cache's command ran; the interrupt stops the second one.
+    [[ "$output" == *"RAN=1"* ]] || { echo "$output"; return 1; }
 }

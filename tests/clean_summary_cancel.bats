@@ -348,7 +348,7 @@ perform_cleanup
 EOF
 
     [ "$status" -eq 0 ] || { echo "$output"; return 1; }
-    [[ "$output" == *$'Tracked cleanup: \033[0;31m10.74GB\033[0m'* ]]
+    [[ "$output" == *$'Removed: \033[0;31m10.74GB\033[0m'* ]]
 }
 
 @test "partial cleanup keeps routine timeouts out of the default summary" {
@@ -384,7 +384,7 @@ EOF
     local plain_output
     plain_output=$(printf '%s' "$output" | sed -E $'s/\033\\[[0-9;]*m//g')
     [[ "$output" == *"Cleanup complete"* ]] || return 1
-    [[ "$plain_output" == *"Tracked cleanup: 10.74GB+ | Items cleaned: 42"* ]] || return 1
+    [[ "$plain_output" == *"Removed: 10.74GB+ · 42 items"* ]] || return 1
     [[ "$output" == *"RECORDED=1/2"* ]] || return 1
     [[ "$output" == *"Free space:"* ]] || return 1
     [[ "$output" != *"size-check budget"* && "$output" != *"removal budget"* ]] || return 1
@@ -469,8 +469,44 @@ EOF
     [[ "$output" != *"Cleanup cancelled"* ]] || return 1
     local plain_output
     plain_output=$(printf '%s' "$output" | sed -E $'s/\033\\[[0-9;]*m//g')
-    [[ "$plain_output" == *"Tracked cleanup: Partially measured"* ]] || return 1
+    [[ "$plain_output" == *"Removed: Partially measured"* ]] || return 1
     [[ "$output" != *"size-check budget"* ]] || return 1
     [[ "$output" != *"System was already clean"* ]] || return 1
     [[ ! -e "$HOME/Library/Caches/cache1374" ]]
+}
+
+@test "dry-run summary shows loading while it writes the detailed list" {
+    if ! /usr/bin/script -q /dev/null /usr/bin/true < /dev/null > /dev/null 2>&1; then
+        skip "script cannot allocate a TTY in this environment"
+    fi
+    local raw="$HOME/summary-loading.raw"
+
+    # shellcheck disable=SC2016  # inner bash expands these from its environment
+    PROJECT_ROOT="$PROJECT_ROOT" HOME="$HOME" TERM=xterm-256color MOLE_DRY_RUN=1 MOLE_TEST_NO_AUTH=1 \
+        /usr/bin/script -q -F "$raw" /bin/bash --noprofile --norc -c '
+            set -euo pipefail
+            source "$PROJECT_ROOT/bin/clean.sh"
+            for fn in clean_user_essentials clean_finder_metadata clean_app_caches \
+                clean_browsers run_cloud_and_office_cleanup clean_developer_tools \
+                clean_user_gui_applications clean_virtualization_tools \
+                clean_application_support_logs clean_orphaned_app_data \
+                clean_orphaned_system_services clean_orphaned_container_stubs \
+                show_user_launch_agent_hint_notice \
+                clean_apple_silicon_caches clean_cached_device_firmware \
+                clean_time_machine_failed_backups check_large_file_candidates \
+                show_project_artifact_hint_notice; do
+                eval "$fn() { return 0; }"
+            done
+            spinning=""
+            start_section_spinner() { spinning="$1"; }
+            stop_section_spinner() { spinning=""; }
+            render_clean_preview_from_ledger() { echo "RENDER_WHILE:${spinning:-none}"; }
+            print_summary_block() { echo "SUMMARY_WHILE:${spinning:-none}"; }
+            perform_cleanup
+        ' < /dev/null > /dev/null 2>&1 || true
+
+    local content
+    content=$(tr -d '\r' < "$raw")
+    [[ "$content" == *"RENDER_WHILE:Preparing summary..."* ]] || { echo "$content"; return 1; }
+    [[ "$content" == *"SUMMARY_WHILE:none"* ]] || { echo "$content"; return 1; }
 }

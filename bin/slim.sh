@@ -821,7 +821,7 @@ show_slim_summary() {
         if [[ "$reason" == "still running" ]]; then
             local them="them"
             [[ "$names" == *", "* ]] || them="it"
-            details+=("${GRAY}${ICON_SUBLIST} Quit ${them}, then run mo slim again${NC}")
+            details+=("${GRAY}${ICON_REVIEW} Quit ${them}, then run mo slim again${NC}")
         fi
     done
 

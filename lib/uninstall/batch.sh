@@ -2732,6 +2732,13 @@ _batch_execute_removals() {
         fi
         if [[ -z "$reason" ]]; then
             if [[ "$is_brew_cask" == "true" && -n "$cask_name" ]]; then
+                # Homebrew and sudo write directly to the terminal. Stop the
+                # spinner before they do so neither can overwrite the other.
+                if [[ -t 1 ]]; then
+                    stop_inline_spinner
+                    [[ -t 2 ]] && printf '\r\033[2K' >&2
+                    printf '%s\n' "${_phase_prefix}Removing $(_uninstall_display_text "$app_name") (${_phase_size})..." >&2
+                fi
                 # Mole removes only the reviewed paths below. A cask zap can
                 # reach data that was not selected or even discovered.
                 # Use brew_uninstall_cask helper (handles env vars, timeout, verification)
@@ -3129,7 +3136,12 @@ _batch_render_summary() {
             success_line="Would remove ${success_count} ${success_text}"
         fi
         if [[ -n "$freed_display" ]]; then
-            if is_uninstall_dry_run; then
+            if [[ "${MOLE_DELETE_MODE:-permanent}" == "trash" ]]; then
+                # Bytes in the Trash are not free until it is emptied, so a
+                # Trash run states the size without claiming it was freed.
+                # Mole Mac made the same correction (uninstall.summary.freed).
+                success_line+=" · ${GREEN}${freed_display}${NC}"
+            elif is_uninstall_dry_run; then
                 success_line+=", would free ${GREEN}${freed_display}${NC}"
             else
                 success_line+=", freed ${GREEN}${freed_display}${NC}"
@@ -3242,7 +3254,7 @@ _batch_render_summary() {
         done
 
         summary_details+=("${ICON_REVIEW} System extensions may remain after removal: ${YELLOW}${ext_list}${NC}")
-        summary_details+=("${GRAY}${ICON_SUBLIST}${NC} Check ${GRAY}System Settings > General > Login Items & Extensions${NC} to remove leftover extensions")
+        summary_details+=("${GRAY}${ICON_REVIEW}${NC} Check ${GRAY}System Settings > General > Login Items & Extensions${NC} to remove leftover extensions")
     fi
 
     if [[ ${#background_items_warning_apps[@]} -gt 0 ]]; then
@@ -3265,7 +3277,7 @@ _batch_render_summary() {
         done
 
         summary_details+=("${ICON_REVIEW} Still running during uninstall, files removed but process kept alive: ${YELLOW}${running_list}${NC}")
-        summary_details+=("${GRAY}${ICON_SUBLIST}${NC} Quit the app to free its in-memory copy; reinstalling before quitting may behave oddly")
+        summary_details+=("${GRAY}${ICON_REVIEW}${NC} Quit the app to free its in-memory copy; reinstalling before quitting may behave oddly")
     fi
 
     local title="Uninstall complete"

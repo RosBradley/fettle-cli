@@ -598,3 +598,184 @@ SCRIPT
     [ "$status" -eq 0 ] || { echo "$output"; return 1; }
     [[ "$output" == *PASS* ]]
 }
+
+incident_ledger() {
+    printf '## Incidents\n\n| ID | Reported | Symptom | Introduced | Fixed | Layer | Caught by |\n|---|---|---|---|---|---|---|\n%s\n' "$1" > "$BATS_TEST_TMPDIR/incidents.md"
+}
+
+@test "incident audit names each broken cell of a ledger row" {
+    local audit="$PROJECT_ROOT/scripts/audit_incidents.py"
+    local head good row expected
+    head=$(git -C "$PROJECT_ROOT" rev-parse --short=8 HEAD)
+    good="| I-01 | 2026-10-26 | A defect | unknown | $head | unit | \`check.sh --help shows usage information\` |"
+
+    incident_ledger "$good"
+    run python3 "$audit" --ledger "$BATS_TEST_TMPDIR/incidents.md"
+    [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+    [[ "$output" == *"incidents-audit-ok rows=1"* ]] || { echo "$output"; return 1; }
+
+    local -a cases=(
+        "layer nightly is not one of=${good/| unit |/| nightly |}"
+        "is not a test or gate=${good/usage information/usage informatio}"
+        "no catcher named=${good/\`check.sh --help shows usage information\`/a test}"
+        "Fixed is not a commit=${good/$head/later}"
+        "Introduced is not a commit=${good/unknown/soon}"
+        "Reported is not a date=${good/2026-10-26/Oct 26}"
+        "I-01 repeats=$good"$'\n'"$good"
+        "expected 7 cells=${good/ unit |/}"
+    )
+    local case_entry
+    for case_entry in "${cases[@]}"; do
+        expected="${case_entry%%=*}"
+        row="${case_entry#*=}"
+        incident_ledger "$row"
+        run python3 "$audit" --ledger "$BATS_TEST_TMPDIR/incidents.md"
+        [ "$status" -eq 1 ] || { echo "$expected: $output"; return 1; }
+        [[ "$(printf '%s\n' "$output" | grep -c .)" -eq 1 ]] || { echo "$expected: $output"; return 1; }
+        [[ "$output" == *"$expected"* ]] || { echo "$expected: $output"; return 1; }
+    done
+}
+
+@test "incident audit finds Bats, Go and Python tests and gate scripts as catchers" {
+    local audit="$PROJECT_ROOT/scripts/audit_incidents.py"
+    local head catchers
+    head=$(git -C "$PROJECT_ROOT" rev-parse --short=8 HEAD)
+    catchers="\`check.sh --help shows usage information\`, \`TestDuIgnoresUseSystemDuWhenGNUDuIsFirstInPath\`, \`test_default_stops_after_first_failure\`, \`scripts/audit_timeout_status.py\`"
+
+    incident_ledger "| I-01 | 2026-10-26 | A defect | $head | $head | review | $catchers |"
+    run python3 "$audit" --ledger "$BATS_TEST_TMPDIR/incidents.md"
+    [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+
+    incident_ledger "| I-01 | 2026-10-26 | A defect | unknown | $head | review | \`TestNoSuchCatcher\`, \`scripts/audit_no_such_gate.py\` |"
+    run python3 "$audit" --ledger "$BATS_TEST_TMPDIR/incidents.md"
+    [ "$status" -eq 1 ] || { echo "$output"; return 1; }
+    [[ "$output" == *"\`TestNoSuchCatcher\` is not a test or gate"* ]] || { echo "$output"; return 1; }
+    [[ "$output" == *"\`scripts/audit_no_such_gate.py\` is not a test or gate"* ]] || { echo "$output"; return 1; }
+}
+
+@test "incident audit fails a commit that does not resolve" {
+    if [[ "$(git -C "$PROJECT_ROOT" rev-parse --is-shallow-repository)" == "true" ]]; then
+        skip "commits cannot be resolved in a shallow clone"
+    fi
+    incident_ledger "| I-01 | 2026-10-26 | A defect | unknown | 0000000 | unit | \`check.sh --help shows usage information\` |"
+    run python3 "$PROJECT_ROOT/scripts/audit_incidents.py" --ledger "$BATS_TEST_TMPDIR/incidents.md"
+    [ "$status" -eq 1 ] || { echo "$output"; return 1; }
+    [[ "$output" == *"incidents.md:5: Fixed 0000000 does not resolve"* ]] || { echo "$output"; return 1; }
+}
+
+@test "the incident ledger passes its audit" {
+    run python3 "$PROJECT_ROOT/scripts/audit_incidents.py"
+    [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+    [[ "$output" == *"incidents-audit-ok rows="* ]]
+}
+
+@test "risk tiers follow the paths a change touches, highest first" {
+    local tiers="$PROJECT_ROOT/scripts/risk_tier.py"
+
+    run python3 "$tiers" lib/core/file_ops.sh
+    [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+    [[ "$output" == "risk: deletion "*$'\n'"risk: privilege "* ]] || { echo "$output"; return 1; }
+
+    run python3 "$tiers" .github/workflows/release.yml install.sh lib/manage/update.sh
+    [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+    [[ "$output" == "risk: release "*$'\n'"risk: ci "*$'\n'"risk: install-update (install.sh and 1 more) "* ]] || { echo "$output"; return 1; }
+
+    run python3 "$tiers" docs/incidents.md .claude/rules/clean.md cmd/status/view.go tests/clean_core.bats
+    [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+    [ -z "$output" ]
+}
+
+@test "every risk tier pattern matches a tracked file" {
+    run python3 "$PROJECT_ROOT/scripts/risk_tier.py" --self-check
+    [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+
+    # The self-check must be able to fail: a pattern left behind by a rename.
+    run env PYTHONDONTWRITEBYTECODE=1 python3 - "$PROJECT_ROOT/scripts" <<'PYTHON'
+import sys
+sys.path.insert(0, sys.argv[1])
+import risk_tier
+risk_tier.TIERS.append(("deletion", "gates", ["lib/core/renamed_away.sh"]))
+print(risk_tier.dead_patterns())
+PYTHON
+    [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+    [[ "$output" == "['deletion: lib/core/renamed_away.sh']" ]] || { echo "$output"; return 1; }
+}
+
+@test "the incident breaker trips at five recent rows and shows only beside a tier" {
+    run env PYTHONDONTWRITEBYTECODE=1 python3 - "$PROJECT_ROOT/scripts" <<'PYTHON'
+import datetime
+import io
+import sys
+import tempfile
+import unittest
+from contextlib import redirect_stdout
+from pathlib import Path
+from unittest import mock
+
+sys.path.insert(0, sys.argv[1])
+import risk_tier as risk
+
+
+class BreakerTests(unittest.TestCase):
+    """The incident circuit breaker in risk_tier.py: counted by Reported date, shown only beside a tier."""
+
+    TODAY = datetime.date(2026, 10, 27)
+
+    def ledger(self, dates_and_layers):
+        rows = "\n".join(f"| I-{n:02d} | {day} | symptom | unknown | abc1234 | {layer} | `t` |"
+                         for n, (day, layer) in enumerate(dates_and_layers, 1))
+        text = ("# Incidents\n\n| ID | Reported | Symptom |\n|---|---|---|\n| X-01 | 2026-10-27 | outside |\n\n"
+                "## Incidents\n\n| ID | Reported | Symptom | Introduced | Fixed | Layer | Caught by |\n"
+                f"|---|---|---|---|---|---|---|\n{rows}\n")
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        path = Path(directory.name) / "incidents.md"
+        path.write_text(text, "utf-8")
+        return path
+
+    def recent(self, dates_and_layers):
+        return risk.recent_incidents(today=self.TODAY, ledger=self.ledger(dates_and_layers))
+
+    def test_only_rows_reported_in_the_last_seven_days_count(self):
+        recent = self.recent([("2026-10-27", "unit"), ("2026-10-21", "unit"), ("2026-10-20", "unit"),
+                              ("2026-10-28", "unit")])
+        # Day 0 and day 6 count; day 7 has aged out; a future date (a clock set back) is never counted.
+        self.assertEqual(["I-01", "I-02"], [ident for ident, _ in recent])
+
+    def test_it_trips_at_five_rows_and_names_the_layers_by_count(self):
+        self.assertIsNone(risk.breaker_line(self.recent([("2026-10-26", "unit")] * 4)))
+        line = risk.breaker_line(self.recent([("2026-10-26", "review")] * 3 + [("2026-10-25", "unit")] * 2))
+        self.assertIn("5 incidents in the last 7 days", line)
+        self.assertIn(risk.BREAKER_GATE, line)
+        self.assertTrue(line.endswith("(review 3, unit 2)"), line)
+
+    def test_a_missing_ledger_never_trips_it(self):
+        self.assertEqual([], risk.recent_incidents(today=self.TODAY, ledger=Path("/nonexistent/incidents.md")))
+
+    def test_it_is_printed_only_beside_a_tier(self):
+        tripped = [("I-01", "unit")] * risk.BREAKER_ROWS
+        tiered = next(p for _, _, patterns in risk.TIERS for p in patterns if "*" not in p)
+        for paths, shown in ((["zz-untiered/none.txt"], False), ([tiered], True)):
+            with self.subTest(paths=paths), \
+                    mock.patch.object(risk, "recent_incidents", return_value=tripped), \
+                    mock.patch.object(sys, "argv", ["risk_tier.py", *paths]), \
+                    redirect_stdout(io.StringIO()) as out:
+                risk.main(paths) if risk.main.__code__.co_argcount else risk.main()
+                self.assertEqual(shown, "risk: breaker" in out.getvalue(), out.getvalue())
+
+
+result = unittest.TextTestRunner(stream=sys.stdout, verbosity=0).run(
+    unittest.defaultTestLoader.loadTestsFromTestCase(BreakerTests))
+sys.exit(0 if result.wasSuccessful() and result.testsRun == 4 else 1)
+PYTHON
+    [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+}
+
+@test "CI and local checks run the incident audit and the risk tiers" {
+    run grep -F 'audit_incidents.py' "$PROJECT_ROOT/scripts/check.sh"
+    [ "$status" -eq 0 ]
+    run grep -F 'risk_tier.py' "$PROJECT_ROOT/scripts/check.sh"
+    [ "$status" -eq 0 ]
+    run grep -F 'python3 scripts/audit_incidents.py' "$PROJECT_ROOT/.github/workflows/test.yml"
+    [ "$status" -eq 0 ]
+}

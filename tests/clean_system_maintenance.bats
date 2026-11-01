@@ -619,8 +619,8 @@ clean_local_snapshots
 EOF
 
     [ "$status" -eq 0 ]
-    [[ "$output" == *"Time Machine local snapshots ·"* ]] || return 1
-    [[ "$output" == *"tmutil listlocalsnapshots /"* ]]
+    [[ "$output" == *"Time Machine local snapshots · "*"2"*"macOS removes them when space runs low"* ]] || return 1
+    [[ "$output" != *"tmutil"* ]]
 }
 
 @test "clean_local_snapshots is quiet when no snapshots" {

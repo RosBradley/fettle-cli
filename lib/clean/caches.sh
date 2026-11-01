@@ -6,6 +6,31 @@ _MOLE_CACHES_MODULE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 _MOLE_CACHES_MODULE_PATH="$_MOLE_CACHES_MODULE_DIR/${BASH_SOURCE[0]##*/}"
 # shellcheck disable=SC1091
 source "$_MOLE_CACHES_MODULE_DIR/purge_shared.sh"
+# Analyzers before 1.48.0 wrote one flat `<hash>.cache` per scanned directory
+# straight into ~/.cache/mole with no cap; one user reached 1.88M files and
+# 7.82GB, and listing that directory froze Mole Mac's Analyze and even `ls`.
+# The analyzer sweeps them on its own start, which users who never run
+# `mo analyze` again never reach, so clean starts the same sweep. It matches
+# the analyzer's predicate exactly (regular `*.cache` files and the overview
+# snapshot at the top level, never the shell's state files or subdirectories),
+# runs in the background because a large store takes minutes to unlink, and is
+# resumable: whatever one run does not reach the next run picks up.
+sweep_legacy_analyzer_cache_now() {
+    local root="$1"
+    [[ -d "$root" && ! -L "$root" ]] || return 0
+    local -a legacy_match=(-mindepth 1 -maxdepth 1 -type f \( -name '*.cache' -o -name 'overview_sizes.json' \))
+    command find "$root" "${legacy_match[@]}" -delete 2> /dev/null || true # SAFE: Mole's own regenerable analyzer cache, top-level regular files only
+}
+
+start_legacy_analyzer_cache_sweep() {
+    [[ "${DRY_RUN:-false}" == "true" || "${MOLE_DRY_RUN:-0}" == "1" ]] && return 0
+    local root="$HOME/.cache/mole"
+    [[ -d "$root" && ! -L "$root" ]] || return 0
+    [[ -n "$(command find "$root" -mindepth 1 -maxdepth 1 -type f -name '*.cache' -print -quit 2> /dev/null)" ]] || return 0
+    (sweep_legacy_analyzer_cache_now "$root") < /dev/null > /dev/null 2>&1 &
+    disown 2> /dev/null || true
+}
+
 # Preflight TCC prompts once to avoid mid-run interruptions.
 check_tcc_permissions() {
     [[ -t 1 ]] || return 0
@@ -27,7 +52,7 @@ check_tcc_permissions() {
         echo ""
         echo -e "${BLUE}First-time setup${NC}"
         echo -e "${GRAY}macOS will request permissions to access Library folders.${NC}"
-        echo -e "${GRAY}You may see ${GREEN}${#tcc_dirs[@]} permission dialogs${NC}${GRAY}, please approve them all.${NC}"
+        echo -e "${GRAY}You may see ${GREEN}${#tcc_dirs[@]} permission dialogs${NC}${GRAY}, allow each one so these caches can be cleaned.${NC}"
         echo ""
         echo -ne "${PURPLE}${ICON_ARROW}${NC} Press ${GREEN}Enter${NC} to continue: "
         read -r
@@ -954,6 +979,7 @@ clean_python_bytecode_cache_group() {
     if [[ $removed_count -eq 0 ]]; then
         return 0
     fi
+    stop_section_spinner
 
     local size_human
     size_human=$(bytes_to_human "$((total_size_kb * 1024))")
@@ -972,17 +998,17 @@ clean_python_bytecode_cache_group() {
         fi
 
         if [[ $skipped_count -gt 0 ]]; then
-            echo -e "  ${YELLOW}${ICON_DRY_RUN}${NC} Python bytecode cache · ${display_root}${NC} · ${YELLOW}${removed_count} dirs, $(colorize_human_size "$size_human") ${YELLOW}dry, ${skipped_count} skipped${NC}"
+            echo -e "  ${YELLOW}${ICON_DRY_RUN}${NC} Python bytecode cache · ${display_root}${NC} · ${YELLOW}$(mole_count_label "${removed_count}" dir), $(colorize_human_size "$size_human") ${YELLOW}dry, ${skipped_count} skipped${NC}"
         else
-            echo -e "  ${YELLOW}${ICON_DRY_RUN}${NC} Python bytecode cache · ${display_root}${NC} · ${YELLOW}${removed_count} dirs, $(colorize_human_size "$size_human") ${YELLOW}dry${NC}"
+            echo -e "  ${YELLOW}${ICON_DRY_RUN}${NC} Python bytecode cache · ${display_root}${NC} · ${YELLOW}$(mole_count_label "${removed_count}" dir), $(colorize_human_size "$size_human") ${YELLOW}dry${NC}"
         fi
     else
         local line_color
         line_color=$(cleanup_result_color_kb "$total_size_kb")
         if [[ $skipped_count -gt 0 ]]; then
-            echo -e "  ${line_color}${ICON_SUCCESS}${NC} Python bytecode cache · ${display_root}${NC} · ${line_color}${removed_count} dirs, $(colorize_human_size "${size_human}"), ${skipped_count} skipped"
+            echo -e "  ${line_color}${ICON_SUCCESS}${NC} Python bytecode cache · ${display_root}${NC} · ${line_color}$(mole_count_label "${removed_count}" dir), $(colorize_human_size "${size_human}"), ${skipped_count} skipped"
         else
-            echo -e "  ${line_color}${ICON_SUCCESS}${NC} Python bytecode cache · ${display_root}${NC} · ${line_color}${removed_count} dirs, $(colorize_human_size "${size_human}")"
+            echo -e "  ${line_color}${ICON_SUCCESS}${NC} Python bytecode cache · ${display_root}${NC} · ${line_color}$(mole_count_label "${removed_count}" dir), $(colorize_human_size "${size_human}")"
         fi
     fi
 
@@ -1001,6 +1027,145 @@ clean_project_caches() {
         start_inline_spinner "Searching project caches..."
     fi
 
+    local scan_manifest="" scan_rc=0
+    if [[ -n "$_MOLE_PROJECT_CACHE_PREFETCH_PID" ]]; then
+        scan_manifest="$_MOLE_PROJECT_CACHE_PREFETCH_MANIFEST"
+        _wait_project_cache_prefetch || scan_rc=$?
+        if [[ $_MOLE_PROJECT_CACHE_PREFETCH_SIGNAL -ge 128 ]]; then
+            # Interrupted while waiting: stop the scan, as the inline scan's
+            # own traps would, and let the step record the cancellation.
+            scan_rc=$_MOLE_PROJECT_CACHE_PREFETCH_SIGNAL
+            stop_project_cache_prefetch
+            if [[ -t 1 ]]; then
+                stop_inline_spinner
+            fi
+            return "$scan_rc"
+        fi
+        rm -f "$_MOLE_PROJECT_CACHE_PREFETCH_DONE" # SAFE: exact scratch file created by create_temp_file
+        _MOLE_PROJECT_CACHE_PREFETCH_PID=""
+        _MOLE_PROJECT_CACHE_PREFETCH_MANIFEST=""
+        _MOLE_PROJECT_CACHE_PREFETCH_DONE=""
+    elif scan_manifest=$(create_temp_file); then
+        scan_project_cache_roots "$scan_manifest" || scan_rc=$?
+    else
+        scan_manifest=""
+    fi
+
+    local collect_rc=0
+    if [[ $scan_rc -ge 128 ]]; then
+        collect_rc=$scan_rc
+    elif [[ -s "$scan_manifest" ]]; then
+        # Checking the matches took 1.1s before the first row; the spinner
+        # stays up until a row prints (rows stop it themselves).
+        if [[ -t 1 ]]; then start_section_spinner "Checking project caches..."; fi
+        collect_project_cache_scans "$scan_manifest" || collect_rc=$?
+    fi
+    if [[ -t 1 ]]; then
+        stop_inline_spinner
+    fi
+    if [[ -n "$scan_manifest" ]]; then
+        rm -f "$scan_manifest" # SAFE: exact scratch file created by create_temp_file
+    fi
+    return "$collect_rc"
+}
+
+# The scan only reads project roots, which no section before Developer tools
+# writes, so perform_cleanup starts it early. Matches are rechecked at the sink.
+_MOLE_PROJECT_CACHE_PREFETCH_PID=""
+_MOLE_PROJECT_CACHE_PREFETCH_MANIFEST=""
+# Written when the scan exits. Bash frees a finished job's PID at once, so
+# stop signals the PID only while this is still empty.
+_MOLE_PROJECT_CACHE_PREFETCH_DONE=""
+_MOLE_PROJECT_CACHE_PREFETCH_SIGNAL=0
+
+start_project_cache_prefetch() {
+    [[ -z "$_MOLE_PROJECT_CACHE_PREFETCH_PID" ]] || return 0
+    local scan_manifest done_marker
+    scan_manifest=$(create_temp_file) || return 0
+    if ! done_marker=$(create_temp_file); then
+        rm -f "$scan_manifest" # SAFE: exact scratch file created by create_temp_file
+        return 0
+    fi
+    _MOLE_PROJECT_CACHE_PREFETCH_MANIFEST="$scan_manifest"
+    _MOLE_PROJECT_CACHE_PREFETCH_DONE="$done_marker"
+
+    # A signal between the launch and the PID assignment would reach the
+    # caller's trap with no PID to stop, so hold it until both are set.
+    local launch_signal=0 previous_int_trap previous_term_trap
+    previous_int_trap=$(trap -p INT || true)
+    previous_term_trap=$(trap -p TERM || true)
+    trap 'launch_signal=130' INT
+    trap 'launch_signal=143' TERM
+    {
+        # Mark every exit, including a TERM before the scan installs its own
+        # traps and an errexit abort.
+        trap 'printf "done\n" > "$done_marker"' EXIT
+        trap 'exit 143' TERM
+        local scan_rc=0
+        scan_project_cache_roots "$scan_manifest" || scan_rc=$?
+        exit "$scan_rc"
+    } < /dev/null > /dev/null 2>&1 &
+    _MOLE_PROJECT_CACHE_PREFETCH_PID=$!
+    trap - INT TERM
+    # eval: restore caller traps captured by $(trap -p)
+    [[ -n "$previous_int_trap" ]] && eval "$previous_int_trap"
+    [[ -n "$previous_term_trap" ]] && eval "$previous_term_trap"
+
+    if [[ $launch_signal -ge 128 ]]; then
+        stop_project_cache_prefetch
+        if [[ $launch_signal -eq 130 ]]; then
+            kill -INT $$
+        else
+            kill -TERM $$
+        fi
+    fi
+    return 0
+}
+
+# Returns the scan's own status and sets _MOLE_PROJECT_CACHE_PREFETCH_SIGNAL
+# when INT or TERM arrives first. wait reads the status bash saved for the
+# job, so a reused PID is never polled.
+_wait_project_cache_prefetch() {
+    _MOLE_PROJECT_CACHE_PREFETCH_SIGNAL=0
+    local wait_signal=0 wait_rc=0 previous_int_trap previous_term_trap
+    previous_int_trap=$(trap -p INT || true)
+    previous_term_trap=$(trap -p TERM || true)
+    trap 'wait_signal=130' INT
+    trap 'wait_signal=143' TERM
+    wait "$_MOLE_PROJECT_CACHE_PREFETCH_PID" 2> /dev/null || wait_rc=$?
+    trap - INT TERM
+    # eval: restore caller traps captured by $(trap -p)
+    [[ -n "$previous_int_trap" ]] && eval "$previous_int_trap"
+    [[ -n "$previous_term_trap" ]] && eval "$previous_term_trap"
+    _MOLE_PROJECT_CACHE_PREFETCH_SIGNAL=$wait_signal
+    return "$wait_rc"
+}
+
+stop_project_cache_prefetch() {
+    local prefetch_pid="$_MOLE_PROJECT_CACHE_PREFETCH_PID"
+    local scan_manifest="$_MOLE_PROJECT_CACHE_PREFETCH_MANIFEST"
+    local done_marker="$_MOLE_PROJECT_CACHE_PREFETCH_DONE"
+    _MOLE_PROJECT_CACHE_PREFETCH_PID=""
+    _MOLE_PROJECT_CACHE_PREFETCH_MANIFEST=""
+    _MOLE_PROJECT_CACHE_PREFETCH_DONE=""
+    if [[ -n "$prefetch_pid" ]]; then
+        if [[ -n "$done_marker" && ! -s "$done_marker" ]]; then
+            kill -TERM "$prefetch_pid" 2> /dev/null || true
+        fi
+        wait "$prefetch_pid" 2> /dev/null || true
+    fi
+    if [[ -n "$scan_manifest" ]]; then
+        rm -f "$scan_manifest" # SAFE: exact scratch file created by create_temp_file
+    fi
+    if [[ -n "$done_marker" ]]; then
+        rm -f "$done_marker" # SAFE: exact scratch file created by create_temp_file
+    fi
+    return 0
+}
+
+# Writes one "<status>\t<matches file>" line per root, then "skipped\t<count>".
+scan_project_cache_roots() {
+    local scan_manifest="$1"
     local -a scan_roots=()
     local root
     while IFS= read -r root; do
@@ -1008,9 +1173,6 @@ clean_project_caches() {
     done < <(discover_project_cache_roots)
 
     if [[ ${#scan_roots[@]} -eq 0 ]]; then
-        if [[ -t 1 ]]; then
-            stop_inline_spinner
-        fi
         return 0
     fi
 
@@ -1129,18 +1291,38 @@ clean_project_caches() {
     fi
     _restore_project_cache_scan_traps
 
-    if [[ -t 1 ]]; then
-        stop_inline_spinner
-    fi
-
     if [[ $scan_interrupt_status -ge 128 ]]; then
         local pending_file
-        for pending_file in "${root_matches_files[@]}"; do
+        for pending_file in "${root_matches_files[@]+"${root_matches_files[@]}"}"; do
             rm -f "$pending_file" # SAFE: exact scratch file created by create_temp_file above
         done
         return "$scan_interrupt_status"
     fi
 
+    local scan_index
+    {
+        for ((scan_index = 0; scan_index < ${#root_matches_files[@]}; scan_index++)); do
+            printf '%s\t%s\n' "${scan_statuses[$scan_index]:-1}" "${root_matches_files[$scan_index]}"
+        done
+        printf 'skipped\t%s\n' "$failed_scan_count"
+    } > "$scan_manifest"
+}
+
+collect_project_cache_scans() {
+    local scan_manifest="$1"
+    local -a root_matches_files=() scan_statuses=()
+    local failed_scan_count=0 manifest_status manifest_value
+    while IFS=$'\t' read -r manifest_status manifest_value; do
+        if [[ "$manifest_status" == "skipped" ]]; then
+            failed_scan_count="$manifest_value"
+            continue
+        fi
+        scan_statuses+=("$manifest_status")
+        root_matches_files+=("$manifest_value")
+    done < "$scan_manifest"
+    [[ "$failed_scan_count" =~ ^[0-9]+$ ]] || failed_scan_count=0
+
+    local root_matches_file
     local scan_index
     for ((scan_index = 0; scan_index < ${#root_matches_files[@]}; scan_index++)); do
         local preflight_rc="${scan_statuses[$scan_index]:-1}"
@@ -1175,6 +1357,7 @@ clean_project_caches() {
     done
 
     if [[ $failed_scan_count -gt 0 ]]; then
+        stop_section_spinner
         local scan_noun="root scans"
         if [[ $failed_scan_count -eq 1 ]]; then
             scan_noun="root scan"

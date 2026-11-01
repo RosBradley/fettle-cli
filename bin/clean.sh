@@ -633,6 +633,9 @@ cleanup() {
 
     stop_inline_spinner 2> /dev/null || true
 
+    # Background jobs ignore SIGINT.
+    stop_project_cache_prefetch 2> /dev/null || true
+
     cleanup_temp_files
 
     stop_sudo_session
@@ -868,6 +871,9 @@ _safe_clean_impl() {
         return 0
     fi
 
+    local sizing_timeouts_start="${MOLE_CLEAN_SIZING_TIMEOUTS:-0}"
+    # Any size Mole could not read keeps the row: its 0B would be a guess.
+    local sizing_unknown=false
     local description
     local -a targets
 
@@ -1020,7 +1026,7 @@ _safe_clean_impl() {
     if [[ ${#existing_paths[@]} -gt 10 ]]; then
         show_spinner=true
         local total_paths=${#existing_paths[@]}
-        if [[ -t 1 ]]; then start_section_spinner "Scanning items..."; fi
+        if [[ -t 1 ]]; then start_section_spinner "Scanning ${description}..."; fi
     fi
 
     local cleaning_spinner_started=false
@@ -1045,7 +1051,7 @@ _safe_clean_impl() {
         # Mostly files share one measurement process instead of per-file subshells.
         if [[ $dir_count -lt 5 && ${#existing_paths[@]} -gt 20 ]]; then
             if [[ -t 1 && "$show_spinner" == "false" ]]; then
-                start_section_spinner "Scanning items..."
+                start_section_spinner "Scanning ${description}..."
                 show_spinner=true
             fi
 
@@ -1067,6 +1073,7 @@ _safe_clean_impl() {
                 END { exit invalid || NR != expected }
             ' "$bulk_stat_file"; then
                 : > "$bulk_stat_file"
+                sizing_unknown=true
             fi
             while IFS= read -r _bytes; do
                 [[ "$_bytes" =~ ^[0-9]+$ ]] || _bytes=0
@@ -1103,6 +1110,9 @@ _safe_clean_impl() {
                             # Sizing budget exhausted: keep the item in the
                             # delete set and report its size as 0.
                             size_unknown=1
+                        elif [[ $size_rc -ne 0 || ! "$size" =~ ^[0-9]+$ ]]; then
+                            # Another sizing failure: still cleaned, size unknown.
+                            size_unknown=2
                         fi
                         [[ ! "$size" =~ ^[0-9]+$ ]] && size=0
                         local tmp_file="$temp_dir/result_${idx}.$$"
@@ -1132,7 +1142,7 @@ _safe_clean_impl() {
                         completed=$((completed + 1))
 
                         if [[ "$show_spinner" == "true" && -t 1 ]]; then
-                            update_progress_if_needed "$completed" "$total_paths" last_progress_update 2 || true
+                            update_progress_if_needed "$completed" "$total_paths" last_progress_update 2 "$description" || true
                         fi
                     fi
                 done
@@ -1148,7 +1158,7 @@ _safe_clean_impl() {
                     completed=$((completed + 1))
 
                     if [[ "$show_spinner" == "true" && -t 1 ]]; then
-                        update_progress_if_needed "$completed" "$total_paths" last_progress_update 2 || true
+                        update_progress_if_needed "$completed" "$total_paths" last_progress_update 2 "$description" || true
                     fi
                 done
             fi
@@ -1165,6 +1175,7 @@ _safe_clean_impl() {
             _t_flag=0
             read -r _t_size _t_count _t_flag < "$_t_file" 2> /dev/null || true
             [[ "$_t_flag" == "1" ]] && MOLE_CLEAN_SIZING_TIMEOUTS=$((${MOLE_CLEAN_SIZING_TIMEOUTS:-0} + 1))
+            [[ "$_t_flag" == "2" ]] && sizing_unknown=true
         done
 
         if [[ $cleanup_interrupt_rc -ne 0 ]]; then
@@ -1186,6 +1197,11 @@ _safe_clean_impl() {
         # Start spinner for cleaning phase
         if [[ "$DRY_RUN" != "true" && ${#existing_paths[@]} -gt 0 && -t 1 ]]; then
             start_section_spinner "Cleaning..."
+            cleaning_spinner_started=true
+        elif [[ -n "$delete_guard" && -t 1 ]]; then
+            # The preview still asks the owner guard about every item, about
+            # 70ms each, which left VS Code logs silent for 0.7s.
+            start_section_spinner "Checking ${description}..."
             cleaning_spinner_started=true
         fi
         idx=0
@@ -1314,6 +1330,9 @@ _safe_clean_impl() {
                     # Sizing budget exhausted: keep cleaning with size 0.
                     MOLE_CLEAN_SIZING_TIMEOUTS=$((${MOLE_CLEAN_SIZING_TIMEOUTS:-0} + 1))
                 fi
+                if [[ $size_rc -ne 0 || ! "$size_kb" =~ ^[0-9]+$ ]]; then
+                    sizing_unknown=true
+                fi
                 [[ ! "$size_kb" =~ ^[0-9]+$ ]] && size_kb=0
 
                 local removed=0
@@ -1425,7 +1444,14 @@ _safe_clean_impl() {
         debug_log "Skipped $removal_failed_count items, permission denied, in use, or timed out, for: $description"
     fi
 
-    if [[ $removed_any -eq 1 ]]; then
+    # A row that measured 0B (empty folders, zero-length files) still removes
+    # its items, but printing it reads as noise. Only a size every item
+    # reported as 0 hides it; a timeout or failed measurement keeps the row.
+    if [[ $removed_any -eq 1 && $total_size_kb -eq 0 && "$sizing_unknown" == "false" &&
+        "${MOLE_CLEAN_SIZING_TIMEOUTS:-0}" == "$sizing_timeouts_start" ]]; then
+        stop_section_spinner
+        mole_add_cleaned_row "$total_count" 0
+    elif [[ $removed_any -eq 1 ]]; then
         # Stop spinner before output
         stop_section_spinner
 
@@ -1641,6 +1667,7 @@ perform_cleanup() {
     # Pre-check TCC permissions to avoid mid-run prompts.
     if [[ -z "$EXTERNAL_VOLUME_TARGET" ]]; then
         check_tcc_permissions
+        start_legacy_analyzer_cache_sweep
     fi
 
     if [[ ${#WHITELIST_PATTERNS[@]} -gt 0 ]]; then
@@ -1674,14 +1701,9 @@ perform_cleanup() {
             [[ $custom_count -gt 0 ]] && summary+="$custom_count custom"
             summary+=" patterns active"
 
-            echo -e "${BLUE}${ICON_SUCCESS}${NC} Whitelist: $summary"
-
-            if [[ "$DRY_RUN" == "true" ]]; then
-                for pattern in "${WHITELIST_PATTERNS[@]}"; do
-                    [[ "$pattern" == "$FINDER_METADATA_SENTINEL" ]] && continue
-                    echo -e "  ${GRAY}${ICON_SUBLIST}${NC} ${GRAY}${pattern}${NC}"
-                done
-            fi
+            # One line: listing every pattern on each preview pushed the
+            # cleanup rows a screen down. mo clean --whitelist shows them.
+            echo -e "${BLUE}${ICON_ADMIN}${NC} Whitelist: $summary"
         fi
     fi
 
@@ -1749,6 +1771,8 @@ perform_cleanup() {
                 clean_external_volume_target "$EXTERNAL_VOLUME_TARGET" || return $?
             end_section
         else
+            start_project_cache_prefetch
+
             # ===== 1. System =====
             if [[ "$SYSTEM_CLEAN" == "true" ]]; then
                 start_section "System"
@@ -1823,13 +1847,12 @@ perform_cleanup() {
             start_section "App leftovers"
             _run_cleanup_step clean_orphaned_app_data || return $?
             _run_cleanup_step clean_orphaned_system_services || return $?
-            # No stale-LaunchServices step here on purpose. `lsregister -u`
-            # cannot remove a record whose app is already gone: on macOS 15 and
-            # later it fails with -10814 for every such path, which is exactly
-            # the set this would have targeted, so the step could only ever
-            # report failures. `mo optimize` no longer rebuilds LaunchServices
-            # either: the rebuild made a running VPN extension read as
-            # reinstalled, so no command offers this repair.
+            # No stale-LaunchServices step here. An earlier note said
+            # `lsregister -u` fails with -10814 for an app that is already
+            # gone; on macOS 27.0.1 (2026-10-27) it exits 0 and the record
+            # leaves the dump, so only the product decision keeps this out.
+            # `mo optimize` no longer rebuilds LaunchServices either: the
+            # rebuild made a running VPN extension read as reinstalled.
             _run_cleanup_step clean_orphaned_container_stubs || return $?
             _run_cleanup_step show_user_launch_agent_hint_notice || return $?
             end_section
@@ -1861,13 +1884,17 @@ perform_cleanup() {
         fi
     }
     run_clean_sections || cleanup_cancel_rc=$?
+    stop_project_cache_prefetch
 
     # ===== Final summary =====
     flush_idle_section_slot
     echo ""
 
     if [[ "$DRY_RUN" == "true" ]]; then
+        # Writing the detailed list took 0.8s for 267 items with nothing on screen.
+        if [[ -t 1 ]]; then start_section_spinner "Preparing summary..."; fi
         render_clean_preview_from_ledger
+        stop_section_spinner
     fi
 
     local summary_heading=""
@@ -1965,8 +1992,7 @@ perform_cleanup() {
                 potential_label="$freed_size_human"
             fi
             local stats="Potential space: $(colorize_human_size "$potential_label")"
-            [[ $files_cleaned -gt 0 ]] && stats+=" | Items: $files_cleaned"
-            [[ $total_items -gt 0 ]] && stats+=" | Categories: $total_items"
+            [[ $files_cleaned -gt 0 ]] && stats+=" · $(mole_count_label "$files_cleaned" item)"
             summary_details+=("$stats")
 
             {
@@ -1987,10 +2013,12 @@ perform_cleanup() {
                     freed_size_human="Partially measured"
                 fi
             fi
-            local summary_line="Tracked cleanup: $(colorize_human_size "$freed_size_human")"
+            # The free-space line below carries the measured disk change, so
+            # this line stays the bytes Mole itself removed (#1023).
+            local summary_line="Removed: $(colorize_human_size "$freed_size_human")"
 
             if [[ $files_cleaned -gt 0 ]]; then
-                summary_line+=" | Items cleaned: $files_cleaned"
+                summary_line+=" · $(mole_count_label "$files_cleaned" item)"
             fi
 
             summary_details+=("$summary_line")
@@ -2033,7 +2061,6 @@ perform_cleanup() {
         ($total_size_cleaned -gt 0 || "$DRY_RUN_TOTAL_PARTIAL" == "true" || $files_cleaned -gt 0) ]]; then
         if publish_clean_preview_file; then
             summary_details+=("Detailed file list: ${GRAY}$CLEAN_PREVIEW_FINAL_FILE${NC}")
-            summary_details+=("Use ${GRAY}mo clean --whitelist${NC} to add protection rules")
         else
             summary_details+=("Cleanup preview file could not be written safely")
         fi

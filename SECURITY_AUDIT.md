@@ -1,6 +1,6 @@
 # Mole Security Audit
 
-This document describes Mole CLI (macOS), with the 2026-10-26 review starting from `ec968fc8` on `main` (the code is unchanged from `00f8279e`). It covers safety boundaries, destructive-operation controls, release integrity signals, and known limitations. This is a maintainer review, not an independent security certification. Mole Mac and Mole for Windows are outside its scope.
+This document describes Mole CLI (macOS), updated for V1.67.0 on 2026-10-31, with the 2026-10-26 review starting from `ec968fc8` on `main` (the code is unchanged from `00f8279e`). It covers safety boundaries, destructive-operation controls, release integrity signals, and known limitations. This is a maintainer review, not an independent security certification. Mole Mac and Mole for Windows are outside its scope.
 
 ## Review Scope and Evidence
 

@@ -209,13 +209,16 @@ setup() {
 }
 
 @test "run_with_timeout: debug logging when MO_DEBUG=1" {
-    output=$(/bin/bash -c "
+    # On a terminal the notice is still printed; captured output is covered by
+    # "run_with_timeout keeps its debug notice out of captured command output".
+    output=$(script -q /dev/null /bin/bash -c "
         set -euo pipefail
         export MO_DEBUG=1
         source '$PROJECT_ROOT/lib/core/timeout.sh'
-        run_with_timeout 5 echo 'test' 2>&1
-    ")
-    [[ "$output" =~ TIMEOUT ]]
+        run_with_timeout 5 echo 'test'
+    " < /dev/null)
+    # The per-call notice, not the one-time backend line printed at source.
+    [[ "$output" =~ \[TIMEOUT\]\ (Running\ with\ 5s\ timeout|Perl\ fallback,\ 5s|Shell\ fallback,\ 5s):\ echo\ test ]] || return 1
 }
 
 @test "run_with_timeout: no debug logging when MO_DEBUG=0" {
@@ -524,4 +527,141 @@ _tty_bg_field() {
 
     [ "$status" -eq 0 ] || { echo "$output"; return 1; }
     [[ "$output" == "0:no 1:no 124:no 127:no 128:no 129:yes 130:yes 143:yes 159:yes 160:no 192:no 243:no 255:no empty:no " ]]
+}
+
+@test "run_with_timeout keeps its debug notice out of captured command output" {
+    # Callers parse `$(run_with_timeout ... cmd 2>&1)`; under --debug the
+    # wrapper's own notice used to arrive inside that capture, and purge read
+    # it as an lsof warning.
+    mkdir -p "$HOME/fake-timeout"
+    cat > "$HOME/fake-timeout/timeout" <<'SCRIPT'
+#!/bin/bash
+shift 3
+exec "$@"
+SCRIPT
+    chmod +x "$HOME/fake-timeout/timeout"
+    run env HOME="$HOME" PROJECT_ROOT="${BATS_TEST_DIRNAME}/.." MO_DEBUG=1 FAKE_TIMEOUT="$HOME/fake-timeout/timeout" \
+        /bin/bash --noprofile --norc <<'EOF'
+set -euo pipefail
+source "$PROJECT_ROOT/lib/core/common.sh"
+for backend in binary perl shell; do
+    case "$backend" in
+        binary) MO_TIMEOUT_BIN="$FAKE_TIMEOUT" MO_TIMEOUT_PERL_BIN="" ;;
+        perl) MO_TIMEOUT_BIN="" MO_TIMEOUT_PERL_BIN="$(command -v perl)" ;;
+        shell) MO_TIMEOUT_BIN="" MO_TIMEOUT_PERL_BIN="" ;;
+    esac
+    : > "$DEBUG_LOG_FILE"
+    out=$(run_with_timeout 5 /bin/sh -c 'echo OUT; echo ERR >&2' 2>&1)
+    [[ "$out" == $'OUT\nERR' ]] || { printf 'CAPTURED:%s:%s\n' "$backend" "$out"; exit 1; }
+    grep -q '^\[TIMEOUT\] ' "$DEBUG_LOG_FILE" || { echo "NOT_LOGGED:$backend"; exit 1; }
+    # An unwritable debug log must not put its write error in the capture.
+    chmod 444 "$DEBUG_LOG_FILE"
+    out=$(run_with_timeout 5 /bin/sh -c 'echo OUT' 2>&1)
+    chmod 644 "$DEBUG_LOG_FILE"
+    [[ "$out" == OUT ]] || { printf 'UNWRITABLE:%s:%s\n' "$backend" "$out"; exit 1; }
+done
+echo CLEAN
+EOF
+
+    [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+    [[ "$output" == *CLEAN* ]] || { echo "$output"; return 1; }
+}
+
+@test "run_with_timeout shell fallback stops the command when interrupted" {
+    # A background command ignores SIGINT without job control, so forwarding
+    # INT left it running with no deadline after Ctrl-C. The double case runs
+    # under an exiting caller trap like bin/clean.sh's and presses Ctrl-C again
+    # inside the grace period, which used to skip the KILL.
+    cat > "$HOME/interrupt.sh" <<'EOF'
+source "$PROJECT_ROOT/lib/core/common.sh"
+MO_TIMEOUT_BIN="" MO_TIMEOUT_PERL_BIN=""
+rc_file="$1"
+caller_trap="$2"
+shift 2
+[[ "$caller_trap" == exit ]] && trap 'exit 130' INT
+rc=0
+run_with_timeout 40 "$@" || rc=$?
+echo "$rc" > "$rc_file"
+EOF
+    local mode pid_file rc_file runner_pid cmd_pid ticks caller_trap
+    for mode in plain ignores-term double-interrupt; do
+        pid_file="$HOME/cmd-$mode.pid"
+        rc_file="$HOME/cmd-$mode.rc"
+        rm -f "$pid_file" "$rc_file" # SAFE: test-owned scratch files
+        caller_trap=none
+        [[ "$mode" == double-interrupt ]] && caller_trap="exit"
+        if [[ "$mode" == plain ]]; then
+            # shellcheck disable=SC2016 # $$ and $1 belong to the inner sh.
+            /usr/bin/perl -e '$SIG{INT} = "DEFAULT"; exec @ARGV' \
+                env PROJECT_ROOT="${BATS_TEST_DIRNAME}/.." /bin/bash "$HOME/interrupt.sh" "$rc_file" "$caller_trap" \
+                /bin/sh -c 'echo $$ > "$1"; exec /bin/sleep 39' sh "$pid_file" > /dev/null 2>&1 3>&- &
+        else
+            # shellcheck disable=SC2016 # Perl variables, not Bash.
+            /usr/bin/perl -e '$SIG{INT} = "DEFAULT"; exec @ARGV' \
+                env PROJECT_ROOT="${BATS_TEST_DIRNAME}/.." /bin/bash "$HOME/interrupt.sh" "$rc_file" "$caller_trap" \
+                /usr/bin/perl -e 'open(my $f, ">", $ARGV[0]) or die; print $f $$; close $f; $SIG{TERM} = "IGNORE"; sleep 39' "$pid_file" > /dev/null 2>&1 3>&- &
+        fi
+        runner_pid=$!
+        ticks=0
+        while [[ ! -s "$pid_file" && $ticks -lt 50 ]]; do
+            sleep 0.1
+            ticks=$((ticks + 1))
+        done
+        cmd_pid=$(cat "$pid_file")
+        [[ "$cmd_pid" =~ ^[0-9]+$ ]] || { echo "NO_PID:$mode"; return 1; }
+        kill -INT "$runner_pid"
+        if [[ "$mode" == double-interrupt ]]; then
+            sleep 0.5
+            kill -INT "$runner_pid" 2> /dev/null || true
+        fi
+        ticks=0
+        while kill -0 "$cmd_pid" 2> /dev/null && [[ $ticks -lt 40 ]]; do
+            sleep 0.1
+            ticks=$((ticks + 1))
+        done
+        if kill -0 "$cmd_pid" 2> /dev/null; then
+            kill -KILL "$cmd_pid" 2> /dev/null || true
+            echo "ORPHANED:$mode"
+            return 1
+        fi
+        wait "$runner_pid" 2> /dev/null || true
+        [[ "$(cat "$rc_file" 2> /dev/null)" == 130 ]] || { echo "RC:$mode:$(cat "$rc_file" 2> /dev/null)"; return 1; }
+    done
+}
+
+@test "run_with_timeout passes the caller's stdin through every backend" {
+    # The simulator metadata check feeds awk and the Finder and login item
+    # paths feed osascript through stdin; the shell backend used to hand them
+    # /dev/null, which read every simulator as running.
+    mkdir -p "$HOME/fake-timeout"
+    cat > "$HOME/fake-timeout/timeout" <<'SCRIPT'
+#!/bin/bash
+shift 3
+exec "$@"
+SCRIPT
+    chmod +x "$HOME/fake-timeout/timeout"
+    run env HOME="$HOME" PROJECT_ROOT="${BATS_TEST_DIRNAME}/.." FAKE_TIMEOUT="$HOME/fake-timeout/timeout" \
+        /bin/bash --noprofile --norc <<'EOF'
+set -euo pipefail
+source "$PROJECT_ROOT/lib/core/common.sh"
+for backend in binary perl shell; do
+    case "$backend" in
+        binary) MO_TIMEOUT_BIN="$FAKE_TIMEOUT" MO_TIMEOUT_PERL_BIN="" ;;
+        perl) MO_TIMEOUT_BIN="" MO_TIMEOUT_PERL_BIN="$(command -v perl)" ;;
+        shell) MO_TIMEOUT_BIN="" MO_TIMEOUT_PERL_BIN="" ;;
+    esac
+    out=$(run_with_timeout 5 /usr/bin/awk '{ print "GOT:" $0 }' <<< "hello")
+    [[ "$out" == "GOT:hello" ]] || { printf 'HERESTRING:%s:%s\n' "$backend" "$out"; exit 1; }
+    out=$(run_with_timeout 5 /bin/cat << 'DOC'
+line one
+line two
+DOC
+    )
+    [[ "$out" == $'line one\nline two' ]] || { printf 'HEREDOC:%s:%s\n' "$backend" "$out"; exit 1; }
+done
+echo CLEAN
+EOF
+
+    [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+    [[ "$output" == *CLEAN* ]] || { echo "$output"; return 1; }
 }

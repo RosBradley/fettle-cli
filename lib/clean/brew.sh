@@ -89,7 +89,7 @@ show_brew_cleanup_preview() {
     if [[ -n "$freed" ]]; then
         echo -e "  ${YELLOW}${ICON_DRY_RUN}${NC} Homebrew cleanup · would free ${freed}"
     else
-        echo -e "  ${YELLOW}${ICON_DRY_RUN}${NC} Homebrew cleanup · ${#rows[@]} items"
+        echo -e "  ${YELLOW}${ICON_DRY_RUN}${NC} Homebrew cleanup · $(mole_count_label "${#rows[@]}" item)"
     fi
     printf '    %s\n' "${rows[@]}"
 }
@@ -381,7 +381,7 @@ clean_homebrew() {
                 echo -e "  ${GREEN}${ICON_SUCCESS}${NC} Homebrew cleanup${NC} · ${GREEN}$freed_space${NC}"
                 note_activity
             else
-                echo -e "  ${GREEN}${ICON_SUCCESS}${NC} Homebrew cleanup · ${removed_count} items"
+                echo -e "  ${GREEN}${ICON_SUCCESS}${NC} Homebrew cleanup · $(mole_count_label "${removed_count}" item)"
                 note_activity
             fi
         fi

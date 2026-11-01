@@ -426,7 +426,7 @@ run_optimize_diagnostics() {
             echo -e "  ${GRAY}${ICON_LIST}${NC} Gatekeeper status: ${spctl_status}"
         fi
         if [[ "$managed_count" -gt 0 && "$managed_count" == "$coresim_count" && "$detach_count" -eq 0 ]]; then
-            echo -e "  ${GRAY}${ICON_INFO}${NC} Only system-managed CoreSimulator images are mounted, informational only, not a detach target"
+            echo -e "  ${GRAY}${ICON_ADMIN}${NC} Only system-managed CoreSimulator images are mounted, informational only, not a detach target"
         fi
 
         opt_diag_offer_detach_candidates "$detach_candidates"

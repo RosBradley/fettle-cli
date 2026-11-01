@@ -506,7 +506,9 @@ require_fd() {
 @test "debug traces do not turn healthy installer discovery into a failed scan" {
     touch "$HOME/Downloads/healthy.dmg"
     local backend
+    local debug_log="$HOME/Library/Logs/mole/mole_debug_session.log"
     for backend in fd find; do
+        rm -f "$debug_log" # SAFE: test-owned debug log under the temporary HOME
         # shellcheck disable=SC2016 # The child shell evaluates this script.
         run env MO_DEBUG=1 /bin/bash --noprofile --norc -c '
             export MOLE_TEST_MODE=1
@@ -522,7 +524,9 @@ require_fd() {
             [[ "${INSTALLER_PATHS[0]}" == "$HOME/Downloads/healthy.dmg" ]] || exit 1
         ' bash "$PROJECT_ROOT/bin/installer.sh" "$backend"
         [ "$status" -eq 0 ] || return 1
-        [[ "$output" == *"[TIMEOUT]"* ]] || return 1
+        # Positive control: debug tracing really ran. Off a terminal its
+        # timeout notices land in the debug log, not in captured output.
+        grep -q '\[TIMEOUT\]' "$debug_log" || return 1
     done
 }
 

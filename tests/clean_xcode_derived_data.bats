@@ -385,6 +385,7 @@ should_protect_path() { return 1; }
 is_path_whitelisted() { [[ "$1" == "$excluded" ]]; }
 
 clean_xcode_derived_data
+echo "COVERED=${_MOLE_DERIVED_DATA_COVERED:-}"
 EOF
 
     [ "$status" -eq 0 ] || {
@@ -392,6 +393,8 @@ EOF
         return 1
     }
     [[ "$output" == *"Xcode DerivedData · 1 project, 7168 bytes"* ]] || return 1
+    # The whitelisted project stays on disk, so Large files keeps its row.
+    [[ "$output" == *"COVERED="* && "$output" != *"COVERED=true"* ]] || return 1
     [[ "$output" != *"928768 bytes"* ]]
 }
 
@@ -461,4 +464,24 @@ EOF
     [[ "$output" == *"DEFER:Xcode"* ]] || return 1
     [[ "$output" != *"UNEXPECTED_REGISTER"* ]] || return 1
     [[ "$output" != *"Xcode DerivedData · 1 project"* ]]
+}
+
+@test "clean_xcode_derived_data marks DerivedData covered only when every project is in its row" {
+    run env HOME="$HOME/dry-run-covered" PROJECT_ROOT="$PROJECT_ROOT" /bin/bash --noprofile --norc << 'EOF'
+set -euo pipefail
+source "$PROJECT_ROOT/lib/core/common.sh"
+source "$PROJECT_ROOT/lib/clean/app_caches.sh"
+note_activity() { :; }
+DRY_RUN=true
+pgrep() { return 1; }
+get_path_size_kb() { echo 7; }
+should_protect_path() { return 1; }
+is_path_whitelisted() { return 1; }
+dd_dir="$HOME/Library/Developer/Xcode/DerivedData"
+mkdir -p "$dd_dir/One" "$dd_dir/Two"
+clean_xcode_derived_data
+echo "COVERED=${_MOLE_DERIVED_DATA_COVERED:-}"
+EOF
+    [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+    [[ "$output" == *"COVERED=true"* ]] || { echo "$output"; return 1; }
 }

@@ -173,6 +173,75 @@ EOF
     rm -rf "$base"
 }
 
+@test "safe_clean removes a 0B target without printing a row for it" {
+    local base="$HOME/safe_clean_zero"
+    mkdir -p "$base/empty" "$base/full"
+    : > "$base/empty/zero"
+    printf 'xxxx' > "$base/full/data"
+
+    run env HOME="$HOME" PROJECT_ROOT="$PROJECT_ROOT" MOLE_TEST_MODE=1 /bin/bash --noprofile --norc << EOF
+set -euo pipefail
+source "\$PROJECT_ROOT/lib/core/common.sh"
+source "\$PROJECT_ROOT/bin/clean.sh"
+DRY_RUN=false
+files_cleaned=0
+total_size_cleaned=0
+total_items=0
+start_section_spinner() { :; }
+stop_section_spinner() { :; }
+start_inline_spinner() { :; }
+stop_inline_spinner() { :; }
+note_activity() { echo ACTIVITY; }
+is_path_whitelisted() { return 1; }
+safe_remove() { /bin/rm -rf "\$1"; return 0; } # SAFE: test fixture
+safe_clean "$base/empty" "Empty cache"
+safe_clean "$base/full" "Full cache"
+echo "FILES=\$files_cleaned"
+EOF
+
+    [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+    [[ "$output" != *"Empty cache"* ]] || return 1
+    [[ "$output" == *"Full cache"* ]] || return 1
+    [ "$(printf '%s\n' "$output" | grep -c '^ACTIVITY$')" -eq 1 ] || return 1
+    [[ "$output" == *"FILES=2"* ]] || return 1
+    [[ ! -e "$base/empty" && ! -e "$base/full" ]] || return 1
+    rm -rf "$base"
+}
+
+@test "safe_clean keeps the row when a size could not be read" {
+    local base="$HOME/safe_clean_unsized"
+    mkdir -p "$base/one" "$base/two"
+    printf 'xxxx' > "$base/one/data"
+    printf 'xxxx' > "$base/two/data"
+
+    run env HOME="$HOME" PROJECT_ROOT="$PROJECT_ROOT" MOLE_TEST_MODE=1 /bin/bash --noprofile --norc << EOF
+set -euo pipefail
+source "\$PROJECT_ROOT/lib/core/common.sh"
+source "\$PROJECT_ROOT/bin/clean.sh"
+DRY_RUN=false
+files_cleaned=0
+total_size_cleaned=0
+total_items=0
+start_section_spinner() { :; }
+stop_section_spinner() { :; }
+start_inline_spinner() { :; }
+stop_inline_spinner() { :; }
+note_activity() { :; }
+is_path_whitelisted() { return 1; }
+# A sizing failure that is neither a timeout nor a signal reads as 0.
+get_cleanup_path_size_kb() { return 1; }
+_cleanup_path_sizes_kb() { return 1; }
+safe_remove() { /bin/rm -rf "\$1"; return 0; } # SAFE: test fixture
+safe_clean "$base/one" "Unsized single"
+safe_clean "$base/two"/* "Unsized batch"
+EOF
+
+    [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+    [[ "$output" == *"Unsized single"* ]] || { echo "$output"; return 1; }
+    [[ "$output" == *"Unsized batch"* ]] || { echo "$output"; return 1; }
+    rm -rf "$base"
+}
+
 @test "safe_clean colors a real cleanup size by unit like the dry-run preview" {
     local base="$HOME/safe_clean_color"
     mkdir -p "$base"
@@ -280,6 +349,40 @@ EOF
     [[ "$output" != *"UNEXPECTED_REGISTER"* ]] || return 1
     [[ "$output" != *"UNEXPECTED_REMOVE"* ]] || return 1
     [[ "$output" != *"would clean"* ]]
+}
+
+@test "safe_clean_guarded dry-run shows loading while the guard checks each item" {
+    if ! /usr/bin/script -q /dev/null /usr/bin/true < /dev/null > /dev/null 2>&1; then
+        skip "script cannot allocate a TTY in this environment"
+    fi
+    local base="$HOME/safe_clean_guarded_dry_loading"
+    mkdir -p "$base"
+    local i
+    for i in 1 2 3 4 5; do printf 'x' > "$base/item$i.log"; done
+    local raw="$HOME/guarded-dry-loading.raw"
+
+    # shellcheck disable=SC2016  # inner bash expands these from its environment
+    PROJECT_ROOT="$PROJECT_ROOT" HOME="$HOME" BASE="$base" TERM=xterm-256color MOLE_TEST_MODE=1 \
+        /usr/bin/script -q -F "$raw" /bin/bash --noprofile --norc -c '
+            set -euo pipefail
+            source "$PROJECT_ROOT/lib/core/common.sh"
+            source "$PROJECT_ROOT/bin/clean.sh"
+            DRY_RUN=true
+            spinning=""
+            start_section_spinner() { spinning="$1"; echo "SPIN:$1"; }
+            stop_section_spinner() { spinning=""; echo "STOP"; }
+            stop_inline_spinner() { spinning=""; echo "STOP"; }
+            note_activity() { :; }
+            is_path_whitelisted() { return 1; }
+            delete_guard() { echo "GUARD_WHILE:${spinning:-none}"; }
+            safe_clean_guarded delete_guard "$BASE"/item*.log "Guarded cache"
+        ' < /dev/null > /dev/null 2>&1
+
+    local content
+    content=$(tr -d '\r' < "$raw")
+    [[ "$content" == *"GUARD_WHILE:Checking Guarded cache..."* ]] || { echo "$content"; return 1; }
+    [[ "$content" != *"GUARD_WHILE:none"* ]] || { echo "$content"; return 1; }
+    [[ "$content" == *"GUARD_WHILE:Checking Guarded cache..."*"STOP"*"Guarded cache"*"dry"* ]] || { echo "$content"; return 1; }
 }
 
 @test "safe_clean_guarded dry-run stops at the first target-specific denial" {
@@ -1107,7 +1210,7 @@ EOF
 
     [ "$status" -eq 0 ]
     [[ "$output" == *"Free space: 75.16GB"* ]] || return 1
-    [[ "$output" == *"Tracked cleanup:"* ]] || return 1
+    [[ "$output" == *"Removed:"* ]] || return 1
     [[ "$output" == *"1.02GB"* ]] || return 1
     [[ "$output" == *"Free space: 76.19GB (+1.02GB)"* ]] || return 1
     [[ "$output" != *"Space freed:"* ]] || return 1
@@ -1232,9 +1335,10 @@ PLIST
     [[ -n "$preview_total" && "$preview_items" =~ ^[0-9]+$ && "$preview_categories" =~ ^[0-9]+$ ]] || return 1
     [[ "$output" != *"Category total"* ]] || return 1
     printf '%s\n' "$output" | grep -F "Potential space:" |
-        grep -F "Items: $preview_items" |
-        grep -F "Categories: $preview_categories" |
+        grep -E " · $preview_items items?\b" |
         grep -qF "$preview_total" || return 1
+    # The box keeps two lines: the total and the file list.
+    [[ "$output" != *"Categories:"* && "$output" != *"add protection rules"* ]] || return 1
 }
 
 @test "dry-run ledger keeps shell-timeout child candidates and unknown sizes" {
@@ -1727,14 +1831,16 @@ EOF
 }
 
 @test "_clean_mail_downloads removes old attachments" {
-    mkdir -p "$HOME/Library/Mail Downloads"
-    touch "$HOME/Library/Mail Downloads/old.pdf"
-    touch -t 202301010000 "$HOME/Library/Mail Downloads/old.pdf"
+    # One opening's folder with Mail's untouched copy inside, a month old.
+    mkdir -p "$HOME/Library/Mail Downloads/OPENING"
+    touch "$HOME/Library/Mail Downloads/OPENING/old.pdf"
+    touch -t 202301010000 "$HOME/Library/Mail Downloads/OPENING/old.pdf"
+    touch -t 202301010000 "$HOME/Library/Mail Downloads/OPENING"
 
     # The cleanup threshold uses allocated blocks; a sparse file stays below it.
     dd if=/dev/zero of="$HOME/Library/Mail Downloads/dummy.dat" bs=1024 count=6000 2> /dev/null
 
-    [ -f "$HOME/Library/Mail Downloads/old.pdf" ]
+    [ -f "$HOME/Library/Mail Downloads/OPENING/old.pdf" ]
 
     run env HOME="$HOME" PROJECT_ROOT="$PROJECT_ROOT" /bin/bash --noprofile --norc << 'EOF'
 set -euo pipefail
@@ -1745,13 +1851,15 @@ _clean_mail_downloads
 EOF
 
     [ "$status" -eq 0 ]
-    [ ! -f "$HOME/Library/Mail Downloads/old.pdf" ]
+    [ ! -f "$HOME/Library/Mail Downloads/OPENING/old.pdf" ]
 }
 
 @test "_clean_mail_downloads uses dry-run wording and keeps attachments" {
-    mkdir -p "$HOME/Library/Mail Downloads"
-    touch "$HOME/Library/Mail Downloads/old.pdf"
-    touch -t 202301010000 "$HOME/Library/Mail Downloads/old.pdf"
+    # One opening's folder with Mail's untouched copy inside, a month old.
+    mkdir -p "$HOME/Library/Mail Downloads/OPENING"
+    touch "$HOME/Library/Mail Downloads/OPENING/old.pdf"
+    touch -t 202301010000 "$HOME/Library/Mail Downloads/OPENING/old.pdf"
+    touch -t 202301010000 "$HOME/Library/Mail Downloads/OPENING"
 
     # The cleanup threshold uses allocated blocks; a sparse file stays below it.
     dd if=/dev/zero of="$HOME/Library/Mail Downloads/dummy.dat" bs=1024 count=6000 2> /dev/null
@@ -1767,7 +1875,7 @@ EOF
     [ "$status" -eq 0 ]
     [[ "$output" == *"Would clean 1 mail attachments"* ]] || return 1
     [[ "$output" != *"Cleaned 1 mail attachments"* ]] || return 1
-    [ -f "$HOME/Library/Mail Downloads/old.pdf" ]
+    [ -f "$HOME/Library/Mail Downloads/OPENING/old.pdf" ]
 }
 
 @test "clean_time_machine_failed_backups detects running backup correctly" {

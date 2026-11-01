@@ -5,7 +5,7 @@ description: >-
   guidance, then land authorized fixes. Use for weekly or whole-CLI reviews.
   Not for a single defect or individual PR review.
 metadata:
-  version: "1.3.0"
+  version: "1.4.0"
   internal: true
   when_to_use: "每周体检、全面检查 CLI、审查 macOS 和 Windows CLI"
 ---
@@ -118,7 +118,11 @@ existing SYNC.md row before adding a new one.
    one commit message, a rule repeated in several places or grown more than 20% past the size recorded after
    its last compression (`references/rule-compression.md`), and
    fixes on one branch that SYNC.md should route to the other (a safety or
-   correctness contract the other CLI shares) without a row there.
+   correctness contract the other CLI shares) without a row there. A fix in
+   the window for something a user or a published release met with no
+   `docs/incidents.md` row is a finding, and so is a layer that keeps appearing
+   in that table (three `unit` rows in a week mean the write-time sweeps are
+   being skipped).
 
 ## Phase 3: Report
 
@@ -133,6 +137,13 @@ reporting it: read the code, or reproduce with a fixture `HOME` and
 questions only the maintainer can answer. Mole for Windows (the paid app) and
 Mole Mac are out of scope here; note a cross-product item only as a SYNC.md
 candidate.
+
+When this skill's prompts (`references/prompts.md`) or the model running them
+changed since the last run, rescore first: for each `docs/incidents.md` row,
+check out `<Fixed>^` in a detached worktree and run the matching dimension's
+prompt on the files the fix touched. Record in `docs/weekly-audit.md` how many
+rows it found and which it missed, so a prompt change that loses recall shows
+up before it is trusted on new code.
 
 ## Phase 4: Land what the maintainer approves
 

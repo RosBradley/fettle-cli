@@ -95,14 +95,16 @@ EOF
 }
 
 @test "check_android_ndk reports multiple NDK versions" {
-    run /bin/bash -c 'HOME=$(mktemp -d) && mkdir -p "$HOME/Library/Android/sdk/ndk"/{21.0.1,22.0.0,20.0.0} && source "$0" && note_activity() { :; } && NC="" && GREEN="" && GRAY="" && YELLOW="" && ICON_REVIEW="⊙" && check_android_ndk' "$PROJECT_ROOT/lib/clean/dev.sh"
+    run /bin/bash -c 'HOME=$(mktemp -d) && mkdir -p "$HOME/Library/Android/sdk/ndk"/{21.0.1,22.0.0,20.0.0} && source "${0%/clean/dev.sh}/core/common.sh" && source "$0" && note_activity() { :; } && check_android_ndk' "$PROJECT_ROOT/lib/clean/dev.sh"
 
     [ "$status" -eq 0 ]
-    [[ "$output" == *"Android NDK versions · 3 found"* ]]
+    local plain
+    plain=$(printf '%s' "$output" | sed $'s/\033\\[[0-9;]*m//g')
+    [[ "$plain" == *"Android NDK versions · 3 · 20.0.0 and 21.0.1 besides 22.0.0"* ]] || { echo "$plain"; return 1; }
 }
 
 @test "check_android_ndk silent when only one NDK" {
-    run /bin/bash -c 'HOME=$(mktemp -d) && mkdir -p "$HOME/Library/Android/sdk/ndk/22.0.0" && source "$0" && note_activity() { :; } && NC="" && GREEN="" && GRAY="" && YELLOW="" && ICON_REVIEW="⊙" && check_android_ndk' "$PROJECT_ROOT/lib/clean/dev.sh"
+    run /bin/bash -c 'HOME=$(mktemp -d) && mkdir -p "$HOME/Library/Android/sdk/ndk/22.0.0" && source "${0%/clean/dev.sh}/core/common.sh" && source "$0" && note_activity() { :; } && check_android_ndk' "$PROJECT_ROOT/lib/clean/dev.sh"
 
     [ "$status" -eq 0 ]
     [[ "$output" != *"NDK versions"* ]]
@@ -1613,7 +1615,8 @@ EOF
 @test "clean_xcode_xctest_devices dry-run keeps XCTestDevices directory" {
     local xctest_root="$HOME/Library/Developer/XCTestDevices"
     mkdir -p "$xctest_root"
-    touch "$xctest_root/test-device"
+    # A 0B target removes silently, so the preview row needs real bytes.
+    printf 'device' > "$xctest_root/test-device"
 
     run env HOME="$HOME" PROJECT_ROOT="$PROJECT_ROOT" /bin/bash --noprofile --norc << 'EOF'
 set -euo pipefail
@@ -1679,14 +1682,16 @@ EOF
 }
 
 @test "check_rust_toolchains reports multiple toolchains" {
-    run /bin/bash -c 'HOME=$(mktemp -d) && mkdir -p "$HOME/.rustup/toolchains"/{stable,nightly,1.75.0}-aarch64-apple-darwin && source "$0" && note_activity() { :; } && NC="" && GREEN="" && GRAY="" && YELLOW="" && ICON_REVIEW="⊙" && rustup() { :; } && export -f rustup && check_rust_toolchains' "$PROJECT_ROOT/lib/clean/dev.sh"
+    run /bin/bash -c 'HOME=$(mktemp -d) && mkdir -p "$HOME/.rustup/toolchains"/{stable,nightly,1.75.0}-aarch64-apple-darwin && printf "default_toolchain = \"stable-aarch64-apple-darwin\"\n" > "$HOME/.rustup/settings.toml" && source "${0%/clean/dev.sh}/core/common.sh" && source "$0" && note_activity() { :; } && rustup() { :; } && export -f rustup && check_rust_toolchains' "$PROJECT_ROOT/lib/clean/dev.sh"
 
     [ "$status" -eq 0 ]
-    [[ "$output" == *"Rust toolchains · 3 found"* ]]
+    local plain
+    plain=$(printf '%s' "$output" | sed $'s/\033\\[[0-9;]*m//g')
+    [[ "$plain" == *"Rust toolchains · 3 · 1.75.0 and nightly besides stable"* ]] || { echo "$plain"; return 1; }
 }
 
 @test "check_rust_toolchains silent when only one toolchain" {
-    run /bin/bash -c 'HOME=$(mktemp -d) && mkdir -p "$HOME/.rustup/toolchains/stable-aarch64-apple-darwin" && source "$0" && note_activity() { :; } && NC="" && GREEN="" && GRAY="" && YELLOW="" && ICON_REVIEW="⊙" && rustup() { :; } && export -f rustup && check_rust_toolchains' "$PROJECT_ROOT/lib/clean/dev.sh"
+    run /bin/bash -c 'HOME=$(mktemp -d) && mkdir -p "$HOME/.rustup/toolchains/stable-aarch64-apple-darwin" && source "${0%/clean/dev.sh}/core/common.sh" && source "$0" && note_activity() { :; } && rustup() { :; } && export -f rustup && check_rust_toolchains' "$PROJECT_ROOT/lib/clean/dev.sh"
 
     [ "$status" -eq 0 ]
     [[ "$output" != *"Rust toolchains"* ]]
@@ -1767,6 +1772,8 @@ EOF
 set -euo pipefail
 source "$PROJECT_ROOT/lib/core/common.sh"
 source "$PROJECT_ROOT/lib/clean/dev.sh"
+# Idle: these cases cover retention, not the open-file hold.
+_mole_container_cache_has_open_handle() { return 1; }
 note_activity() { :; }
 safe_clean() { echo "$1|$2"; }
 clean_dev_ai_agents
@@ -1781,6 +1788,87 @@ EOF
     [[ "$output" == *"/1.0.5|GitHub Copilot CLI old version"* ]] || return 1
     [[ "$output" == *"/1.0.32|GitHub Copilot CLI old version"* ]] || return 1
     [[ "$output" != *"/1.0.34|"* ]]
+}
+
+@test "clean_dev_ai_agents keeps an old release a running session still has open" {
+    # Claude Code keeps each session on the binary it started from; a session
+    # was found running 2.1.311 from the Trash after Mole removed it.
+    local claude_root="$HOME/.local/share/claude/versions"
+    rm -rf "$HOME/.local/share/claude" "$HOME/.local/share/cursor-agent" "$HOME/.copilot"
+    mkdir -p "$claude_root"
+    touch -t 202604160000 "$claude_root/2.1.110"
+    touch -t 202604170000 "$claude_root/2.1.111"
+    touch -t 202604180000 "$claude_root/2.1.112"
+    touch -t 202604190000 "$claude_root/2.1.113"
+
+    run env HOME="$HOME" PROJECT_ROOT="$PROJECT_ROOT" /bin/bash --noprofile --norc << 'EOF'
+set -euo pipefail
+source "$PROJECT_ROOT/lib/core/common.sh"
+source "$PROJECT_ROOT/lib/clean/dev.sh"
+note_activity() { :; }
+safe_clean() { echo "$1|$2"; }
+_mole_container_cache_has_open_handle() {
+    case "${1##*/}" in
+        2.1.111) return 0 ;; # a session runs it
+        2.1.110) return 2 ;; # lsof could not tell
+        *) return 1 ;;
+    esac
+}
+clean_dev_ai_agents
+EOF
+
+    [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+    # The positive control: an idle old release still goes.
+    [[ "$output" == *"/2.1.112|Claude Code old version"* ]] || { echo "$output"; return 1; }
+    [[ "$output" != *"/2.1.111|"* ]] || { echo "$output"; return 1; }
+    [[ "$output" != *"/2.1.110|"* ]] || { echo "$output"; return 1; }
+    [[ "$output" != *"/2.1.113|"* ]] || return 1
+    [[ "$output" != *"stopped"* ]]
+}
+
+@test "clean_dev_ai_agents keeps an open old release through the real safe_clean_guarded" {
+    # Production loads bin/clean.sh, so the guard runs inside _safe_clean_impl,
+    # not the standalone fallback loop above.
+    local claude_root="$HOME/.local/share/claude/versions"
+    rm -rf "$HOME/.local/share/claude" "$HOME/.local/share/cursor-agent" "$HOME/.copilot"
+    mkdir -p "$claude_root"
+    touch -t 202604160000 "$claude_root/2.1.110"
+    touch -t 202604170000 "$claude_root/2.1.111"
+    touch -t 202604180000 "$claude_root/2.1.112"
+    touch -t 202604190000 "$claude_root/2.1.113"
+
+    run env HOME="$HOME" PROJECT_ROOT="$PROJECT_ROOT" MOLE_TEST_MODE=1 /bin/bash --noprofile --norc << 'EOF'
+set -euo pipefail
+source "$PROJECT_ROOT/lib/core/common.sh"
+source "$PROJECT_ROOT/bin/clean.sh"
+DRY_RUN=false
+files_cleaned=0
+total_size_cleaned=0
+total_items=0
+start_section_spinner() { :; }
+stop_section_spinner() { :; }
+start_inline_spinner() { :; }
+stop_inline_spinner() { :; }
+note_activity() { :; }
+is_path_whitelisted() { return 1; }
+get_cleanup_path_size_kb() { echo 1; }
+safe_remove() { echo "REMOVE|$1"; return 0; }
+_mole_container_cache_has_open_handle() {
+    case "${1##*/}" in
+        2.1.111) return 0 ;;
+        2.1.110) return 2 ;;
+        *) return 1 ;;
+    esac
+}
+declare -f safe_clean_guarded > /dev/null || { echo "NO_GUARDED"; exit 1; }
+clean_dev_ai_agents
+EOF
+
+    [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+    [[ "$output" == *"REMOVE|$claude_root/2.1.112"* ]] || { echo "$output"; return 1; }
+    [[ "$output" != *"REMOVE|$claude_root/2.1.111"* ]] || { echo "$output"; return 1; }
+    [[ "$output" != *"REMOVE|$claude_root/2.1.110"* ]] || { echo "$output"; return 1; }
+    [[ "$output" != *"REMOVE|$claude_root/2.1.113"* ]]
 }
 
 @test "clean_dev_ai_agents protects the active version pointed at by ~/.local/bin/<agent>" {
@@ -1807,6 +1895,8 @@ EOF
 set -euo pipefail
 source "$PROJECT_ROOT/lib/core/common.sh"
 source "$PROJECT_ROOT/lib/clean/dev.sh"
+# Idle: these cases cover retention, not the open-file hold.
+_mole_container_cache_has_open_handle() { return 1; }
 note_activity() { :; }
 safe_clean() { echo "$1|$2"; }
 clean_dev_ai_agents
@@ -1865,6 +1955,8 @@ EOF
 set -euo pipefail
 source "$PROJECT_ROOT/lib/core/common.sh"
 source "$PROJECT_ROOT/lib/clean/dev.sh"
+# Idle: these cases cover retention, not the open-file hold.
+_mole_container_cache_has_open_handle() { return 1; }
 note_activity() { :; }
 safe_clean() { echo "$1"; }
 MOLE_AI_AGENTS_KEEP=2 clean_dev_ai_agents
@@ -3102,6 +3194,8 @@ EOF
 set -euo pipefail
 source "$PROJECT_ROOT/lib/core/common.sh"
 source "$PROJECT_ROOT/lib/clean/dev.sh"
+# Idle: these cases cover retention, not the open-file hold.
+_mole_container_cache_has_open_handle() { return 1; }
 note_activity() { :; }
 safe_clean() { echo "$1|$2"; }
 clean_dev_ai_agents

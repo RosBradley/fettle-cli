@@ -25,6 +25,7 @@ import platform
 import pty
 import re
 import select
+import shutil
 import signal
 import struct
 import subprocess
@@ -32,6 +33,7 @@ import sys
 import tempfile
 import termios
 import time
+import urllib.error
 import urllib.request
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -272,8 +274,18 @@ def build(run):
 
 def download(run):
     api = f"https://api.github.com/repos/{FIXTURE_REPO}/releases/latest"
-    with urllib.request.urlopen(urllib.request.Request(api, headers={"Accept": "application/vnd.github+json"}), timeout=30) as resp:
-        release = json.load(resp)
+    try:
+        with urllib.request.urlopen(urllib.request.Request(api, headers={"Accept": "application/vnd.github+json"}), timeout=30) as resp:
+            release = json.load(resp)
+    except urllib.error.HTTPError as err:
+        # Anonymous API calls share the egress IP's 60/hour, which a proxy
+        # exhausts; a signed-in gh has its own quota.
+        if err.code not in (403, 429) or not shutil.which("gh"):
+            raise
+        fallback = capture(["gh", "api", f"repos/{FIXTURE_REPO}/releases/latest"], timeout=30)
+        if fallback.returncode:
+            raise StepFailed(f"release lookup rate limited and gh api failed: {fallback.stderr.strip()}")
+        release = json.loads(fallback.stdout)
     asset = next(a for a in release["assets"] if a["name"].endswith(".dmg"))
     digest = asset.get("digest") or ""
     if not digest.startswith("sha256:"):

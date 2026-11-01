@@ -1327,7 +1327,8 @@ codex_daemon_fixture() {
         0.159.0-aarch64-apple-darwin 0.160.1-aarch64-apple-darwin \
         0.161.0-aarch64-apple-darwin local-0a1b2c3d4e5f-aarch64-apple-darwin; do
         mkdir -p "$root/releases/$name/bin"
-        touch "$root/releases/$name/bin/codex"
+        # A real binary has bytes; an empty one would measure 0B and hide the row.
+        printf 'codex' > "$root/releases/$name/bin/codex"
     done
     mkdir -p "$root/releases/.unpack-tmp"
     ln -s "$root/releases/0.161.0-aarch64-apple-darwin" "$root/current"

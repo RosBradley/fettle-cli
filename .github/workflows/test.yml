@@ -114,6 +114,11 @@ jobs:
       - name: Check for unsafe rm usage
         run: python3 scripts/audit_destructive_sinks.py
 
+      # The only job with full history, so the ledger's commits are resolved
+      # here; check.sh in the shallow Check job only shape-checks them.
+      - name: Check the incident ledger
+        run: python3 scripts/audit_incidents.py
+
       - name: Verify app protection
         run: |
           echo "Verifying critical file protection..."

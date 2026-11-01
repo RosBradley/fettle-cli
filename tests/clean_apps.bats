@@ -36,7 +36,7 @@ EOF
 
     [ "$status" -eq 0 ]
     [[ "$output" == *"DS test"* ]] || return 1
-    [[ "$output" == *$'\033[0;33m→\033[0m'* ]]
+    [[ "$output" == *$'\033[0;33m○\033[0m'* ]]
 }
 
 @test "clean_ds_store_tree uses green for successful cleanups" {
@@ -1129,8 +1129,8 @@ clean_orphaned_app_data
 EOF
 
     [ "$status" -eq 0 ] || return 1
-    [[ "$output" == *"Would clean 1 items, about 2.0MB"* ]] || return 1
-    [[ "$output" != *"Cleaned 1 items"* ]] || return 1
+    [[ "$output" == *"Would clean 1 item, about 2.0MB"* ]] || return 1
+    [[ "$output" != *"Cleaned 1 item"* ]] || return 1
     [ -d "$test_home/Library/Caches/com.test.orphan-dry-run" ] || return 1
 }
 

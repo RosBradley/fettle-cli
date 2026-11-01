@@ -193,6 +193,178 @@ EOF
     [ "$status" -eq 0 ]
 }
 
+@test "Darwin temp root prune takes only stale Mole registries and temp entries" {
+    run env HOME="$HOME" PROJECT_ROOT="$PROJECT_ROOT" /bin/bash --noprofile --norc <<'EOF'
+set -euo pipefail
+source "$PROJECT_ROOT/lib/core/base.sh"
+
+darwin_root="$HOME/darwin-T"
+other_root="$HOME/user-folder"
+rm -rf "$darwin_root" "$other_root"
+mkdir -p "$darwin_root" "$other_root"
+_mole_darwin_user_temp_dir() { printf '%s/\n' "$darwin_root"; }
+
+dead_pid=99990
+while ps -p "$dead_pid" > /dev/null 2>&1; do dead_pid=$((dead_pid + 1)); done
+fresh_dead_pid=$((dead_pid + 1))
+while ps -p "$fresh_dead_pid" > /dev/null 2>&1; do fresh_dead_pid=$((fresh_dead_pid + 1)); done
+
+old=()
+for name in "mole.registry.$dead_pid" "mole.registry.$$" mole.AbC123 mole.hard01 \
+    mole.probe.Ab12Cd mole.Ab12Cde mole-checksums.Ab12Cd notes.txt; do
+    touch "$darwin_root/$name"
+    old+=("$darwin_root/$name")
+done
+ln "$darwin_root/mole.hard01" "$darwin_root/hard-link"
+mkdir -p "$darwin_root/mole.Empty1" "$darwin_root/mole.Full01" "$darwin_root/mole.OwnDir"
+touch "$darwin_root/mole.Owned1"
+old+=("$darwin_root/mole.Owned1" "$darwin_root/mole.OwnDir")
+printf '%s\n' "$darwin_root/mole.Owned1" "$darwin_root/mole.OwnDir" > "$darwin_root/mole.registry.$$"
+ln -s "$other_root/mole.Other1" "$darwin_root/mole.Link01"
+touch -h -t 202001010101 "$darwin_root/mole.Link01"
+touch "$darwin_root/mole.Full01/kept"
+touch "$darwin_root/mole.Fresh1" "$darwin_root/mole.registry.$fresh_dead_pid" "$other_root/mole.Other1"
+touch -t 202001010101 "${old[@]}" "$darwin_root/mole.Empty1" "$darwin_root/mole.Full01" "$other_root/mole.Other1"
+
+prune_stale_mole_tmpdir_leftovers "$other_root"
+[[ -e "$other_root/mole.Other1" ]] || exit 1
+
+prune_stale_mole_tmpdir_leftovers "$darwin_root"
+for gone in "mole.registry.$dead_pid" mole.AbC123 mole.Empty1; do
+    [[ ! -e "$darwin_root/$gone" ]] || { echo "kept $gone"; exit 1; }
+done
+for kept in "mole.registry.$$" mole.hard01 mole.probe.Ab12Cd mole.Ab12Cde \
+    mole-checksums.Ab12Cd notes.txt mole.Full01/kept mole.Fresh1 "mole.registry.$fresh_dead_pid" \
+    mole.Owned1 mole.OwnDir mole.Link01; do
+    [[ -e "$darwin_root/$kept" ]] || { echo "removed $kept"; exit 1; }
+done
+EOF
+
+    [ "$status" -eq 0 ]
+}
+
+@test "Darwin temp root prune runs from temp root setup and keeps everything when ps fails" {
+    run env HOME="$HOME" PROJECT_ROOT="$PROJECT_ROOT" /bin/bash --noprofile --norc <<'EOF'
+set -euo pipefail
+source "$PROJECT_ROOT/lib/core/base.sh"
+
+darwin_root="$HOME/darwin-T-setup"
+rm -rf "$darwin_root"
+mkdir -p "$darwin_root"
+_mole_darwin_user_temp_dir() { printf '%s/\n' "$darwin_root"; }
+touch "$darwin_root/mole.Stale1" "$darwin_root/mole.registry.99999999"
+touch -t 202001010101 "$darwin_root/mole.Stale1" "$darwin_root/mole.registry.99999999"
+
+ps() { return 1; }
+prune_stale_mole_tmpdir_leftovers "$darwin_root"
+echo "survived ps failure"
+[[ -e "$darwin_root/mole.Stale1" && -e "$darwin_root/mole.registry.99999999" ]] || exit 1
+unset -f ps
+
+unset MOLE_RESOLVED_TMPDIR MOLE_TEMP_REGISTRY_FILE
+TMPDIR="$darwin_root" ensure_mole_temp_root
+[[ ! -e "$darwin_root/mole.Stale1" && ! -e "$darwin_root/mole.registry.99999999" ]] || exit 1
+EOF
+
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"survived ps failure"* ]]
+}
+
+@test "Darwin temp root prune lists the root once a day and only after a complete pass" {
+    run env HOME="$HOME" PROJECT_ROOT="$PROJECT_ROOT" /bin/bash --noprofile --norc <<'EOF'
+set -euo pipefail
+source "$PROJECT_ROOT/lib/core/base.sh"
+
+darwin_root="$HOME/darwin-T-daily"
+rm -rf "$darwin_root"
+mkdir -p "$darwin_root"
+_mole_darwin_user_temp_dir() { printf '%s/\n' "$darwin_root"; }
+
+# A failed process listing proves nothing, so it must not stamp the day.
+ps() { return 1; }
+prune_stale_mole_tmpdir_leftovers "$darwin_root"
+unset -f ps
+[[ ! -e "$darwin_root/mole.prune-stamp" ]] || { echo "stamped after ps failure"; exit 1; }
+
+touch "$darwin_root/mole.Stale1"
+touch -t 202001010101 "$darwin_root/mole.Stale1"
+prune_stale_mole_tmpdir_leftovers "$darwin_root"
+[[ ! -e "$darwin_root/mole.Stale1" ]] || { echo "first pass kept a stale entry"; exit 1; }
+[[ -f "$darwin_root/mole.prune-stamp" ]] || { echo "no stamp after a complete pass"; exit 1; }
+
+# Within the day the root is not listed again.
+touch "$darwin_root/mole.Stale2"
+touch -t 202001010101 "$darwin_root/mole.Stale2"
+prune_stale_mole_tmpdir_leftovers "$darwin_root"
+[[ -e "$darwin_root/mole.Stale2" ]] || { echo "listed again within a day"; exit 1; }
+
+# A day-old stamp lets the next run list it.
+touch -t 202001010101 "$darwin_root/mole.prune-stamp"
+prune_stale_mole_tmpdir_leftovers "$darwin_root"
+[[ ! -e "$darwin_root/mole.Stale2" ]] || { echo "old stamp still skipped the pass"; exit 1; }
+echo "daily ok"
+EOF
+
+    [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+    [[ "$output" == *"daily ok"* ]]
+}
+
+@test "Darwin temp root prune clears a backlog larger than one argument list" {
+    run env HOME="$HOME" PROJECT_ROOT="$PROJECT_ROOT" /bin/bash --noprofile --norc <<'EOF'
+set -euo pipefail
+source "$PROJECT_ROOT/lib/core/base.sh"
+
+darwin_root="$HOME/darwin-T-backlog"
+rm -rf "$darwin_root"
+mkdir -p "$darwin_root"
+_mole_darwin_user_temp_dir() { printf '%s/\n' "$darwin_root"; }
+
+# 80,000 names exceed ARG_MAX when passed as operands (the limit falls
+# between 50k and 70k on macOS), which once left the backlog untouched
+# while the pass still stamped the day.
+(cd "$darwin_root" && /usr/bin/seq -f 'mole.%06g' 100000 179999 |
+    /usr/bin/xargs /usr/bin/touch -t 202001010101)
+[[ "$(/bin/ls "$darwin_root" | /usr/bin/wc -l | tr -d ' ')" -eq 80000 ]] || { echo "fixture short"; exit 1; }
+prune_stale_mole_tmpdir_leftovers "$darwin_root"
+left=$(/usr/bin/find "$darwin_root" -mindepth 1 -maxdepth 1 -name 'mole.[0-9]*' | /usr/bin/wc -l | tr -d ' ')
+[[ "$left" -eq 0 ]] || { echo "left=$left"; exit 1; }
+[[ -f "$darwin_root/mole.prune-stamp" ]] || { echo "no stamp"; exit 1; }
+echo "backlog ok"
+EOF
+
+    [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+    [[ "$output" == *"backlog ok"* ]]
+}
+
+@test "Darwin temp root prune removes nothing and leaves no stamp when the listing fails" {
+    run env HOME="$HOME" PROJECT_ROOT="$PROJECT_ROOT" /bin/bash --noprofile --norc <<'EOF'
+set -euo pipefail
+source "$PROJECT_ROOT/lib/core/base.sh"
+
+darwin_root="$HOME/darwin-T-listfail"
+rm -rf "$darwin_root"
+mkdir -p "$darwin_root"
+_mole_darwin_user_temp_dir() { printf '%s/\n' "$darwin_root"; }
+touch "$darwin_root/mole.Stale1"
+touch -t 202001010101 "$darwin_root/mole.Stale1"
+
+# The root listing fails partway: what it printed proves nothing.
+failing_find() {
+    printf 'O./mole.Stale1\n'
+    return 1
+}
+FIND_BSD=failing_find
+prune_stale_mole_tmpdir_leftovers "$darwin_root"
+FIND_BSD=/usr/bin/find
+[[ -e "$darwin_root/mole.Stale1" ]] || { echo "removed after a failed listing"; exit 1; }
+[[ ! -e "$darwin_root/mole.prune-stamp" ]] || { echo "stamped after a failed listing"; exit 1; }
+echo "listing ok"
+EOF
+
+    [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+    [[ "$output" == *"listing ok"* ]]
+}
+
 @test "prepare_mole_tmpdir falls back to /tmp when TMPDIR and invoking home are unavailable" {
     result=$(env HOME="$HOME" TMPDIR="/var/empty" /bin/bash -c "
         source '$PROJECT_ROOT/lib/core/base.sh'
@@ -389,4 +561,32 @@ printf 'PASS\n'
 EOF
     [ "$status" -eq 0 ] || return 1
     [[ "$output" == *PASS* ]]
+}
+
+@test "Darwin temp prune retains every candidate when a live registry cannot be read" {
+    run env HOME="$HOME" PROJECT_ROOT="$PROJECT_ROOT" /bin/bash --noprofile --norc <<'EOF'
+set -euo pipefail
+source "$PROJECT_ROOT/lib/core/base.sh"
+darwin_root="$HOME/unreadable-registry"
+mkdir -p "$darwin_root"
+_mole_darwin_user_temp_dir() { printf '%s\n' "$darwin_root"; }
+for mode in 000 600; do
+    printf fixture > "$darwin_root/mole.Owned1"
+    printf fixture > "$darwin_root/mole.Stale1"
+    printf '%s\n' "$darwin_root/mole.Owned1" > "$darwin_root/mole.registry.$$"
+    touch -t 202001010101 "$darwin_root/mole.Owned1" "$darwin_root/mole.Stale1"
+    # A second live registry is readable, so the failed read can be partial.
+    printf '%s\n' "$darwin_root/mole.Other1" > "$darwin_root/mole.registry.$PPID"
+    chmod "$mode" "$darwin_root/mole.registry.$$"
+    prune_stale_mole_tmpdir_leftovers "$darwin_root"
+    chmod 600 "$darwin_root/mole.registry.$$"
+    [[ -f "$darwin_root/mole.Owned1" ]] || { echo OWNED_REMOVED; exit 1; }
+    if [[ "$mode" == 000 ]]; then
+        [[ -f "$darwin_root/mole.Stale1" ]] || { echo INCOMPLETE_SCAN_REMOVED; exit 2; }
+    else
+        [[ ! -e "$darwin_root/mole.Stale1" ]] || { echo CONTROL_NOT_REMOVED; exit 3; }
+    fi
+done
+EOF
+    [ "$status" -eq 0 ] || { echo "$output"; return 1; }
 }
