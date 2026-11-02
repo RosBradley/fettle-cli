@@ -134,7 +134,7 @@ func takeoverRows(apps []localApp, index []caskInfo, managedTokens, managedApps 
 		if !ok || managedTokens[cask.Token] {
 			continue
 		}
-		available := strings.SplitN(cask.Version, ",", 2)[0]
+		available, _, _ := strings.Cut(cask.Version, ",")
 		if !newerThanApp(available, app.Short, app.Build) {
 			continue
 		}

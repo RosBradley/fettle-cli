@@ -79,7 +79,9 @@ full_scan_rows() {
 	[[ "$output" == *"Xcode"*"App Store"* ]] || return 1
 	[[ "$output" == *"git"*"Command-line tool"* ]] || return 1
 	[[ "$output" == *"macOS Sequoia 15.1"*"macOS (needs a restart, opens Settings)"* ]] || return 1
-	[[ "$output" != *"●"* && "$output" != *"○"* ]] || return 1
+	# The DRY RUN banner's own icon is a ○, so only the list after it is checked.
+	local list="${output#*DRY RUN MODE}"
+	[[ "$list" != *"●"* && "$list" != *"○"* ]] || return 1
 	[ ! -s "$CALLS" ]
 }
 

@@ -146,8 +146,7 @@ func (p *pane) run(argv []string) ([]string, int, error) {
 	go func() {
 		err := cmd.Wait()
 		code := 0
-		var exitErr *exec.ExitError
-		if errors.As(err, &exitErr) {
+		if exitErr, ok := errors.AsType[*exec.ExitError](err); ok {
 			code = exitErr.ExitCode()
 		} else if err != nil {
 			code = 1

@@ -3015,7 +3015,8 @@ EOF
 @test "mo purge: shows in help text" {
 	run env HOME="$HOME" "$PROJECT_ROOT/mole" --help
 	[ "$status" -eq 0 ]
-	[[ "$output" == *"mo purge"* ]]
+	# MoreMole: help shows the moremole command name.
+	[[ "$output" == *"moremole purge"* ]]
 }
 
 @test "mo purge --help includes include-empty option" {

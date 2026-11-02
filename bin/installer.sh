@@ -487,6 +487,7 @@ select_installers() {
         fi
     }
 
+    # shellcheck disable=SC2329  # Function invoked indirectly via trap
     handle_interrupt() {
         restore_terminal
         exit 130
