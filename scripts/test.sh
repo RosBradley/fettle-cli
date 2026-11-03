@@ -312,14 +312,14 @@ if command -v bats > /dev/null 2>&1 && [ -d "tests" ]; then
         if [[ ${#_all[@]} -eq 1 && -d "${_all[0]}" ]]; then
             while IFS= read -r _f; do
                 case "$_f" in
-                    *core_performance.bats | *regression.bats | *core_safe_functions.bats | *clean_system_caches.bats | *optimize.bats | *uninstall_menu.bats | *cli.bats | *uninstall_review.bats | *history.bats) _sequential_files+=("$_f") ;;
+                    *core_performance.bats | *moremole_optimize.bats | *regression.bats | *core_safe_functions.bats | *clean_system_caches.bats | *optimize.bats | *uninstall_menu.bats | *cli.bats | *uninstall_review.bats | *history.bats) _sequential_files+=("$_f") ;;
                     *) _rest+=("$_f") ;;
                 esac
             done < <(find "${_all[0]}" -type f -name '*.bats' | sort)
         else
             for _f in "${_all[@]}"; do
                 case "$_f" in
-                    *core_performance.bats | *regression.bats | *core_safe_functions.bats | *clean_system_caches.bats | *optimize.bats | *uninstall_menu.bats | *cli.bats | *uninstall_review.bats | *history.bats) _sequential_files+=("$_f") ;;
+                    *core_performance.bats | *moremole_optimize.bats | *regression.bats | *core_safe_functions.bats | *clean_system_caches.bats | *optimize.bats | *uninstall_menu.bats | *cli.bats | *uninstall_review.bats | *history.bats) _sequential_files+=("$_f") ;;
                     *) _rest+=("$_f") ;;
                 esac
             done

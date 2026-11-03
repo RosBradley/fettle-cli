@@ -187,6 +187,9 @@ func (m model) View() string {
 	)
 
 	renderFrame := func(cpuCores int) string {
+		// moremole: the card width only holds while this frame draws, so a
+		// later bar drawn outside a frame keeps the classic width.
+		defer func() { statusCardWidth = 0 }()
 		var cardContent string
 		if termWidth <= 80 {
 			cardWidth := termWidth
