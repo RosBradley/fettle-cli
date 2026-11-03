@@ -436,6 +436,23 @@ show_brand_banner
 	[ "$(printf '%s\n' "$output" | awk '/Mole version/ {print $NF; exit}')" = "$expected" ]
 }
 
+@test "moremole remove changes nothing and says what to remove instead" {
+	mkdir -p "$HOME/.local/bin" "$HOME/.config/mole"
+	printf 'keep\n' > "$HOME/.config/mole/my_commands"
+	ln -sfn "$PROJECT_ROOT/mole" "$HOME/.local/bin/mm"
+	ln -sfn /usr/bin/true "$HOME/.local/bin/mo"
+	run env HOME="$HOME" NO_COLOR=1 "$PROJECT_ROOT/mole" remove
+	[ "$status" -eq 1 ] || { echo "$output"; return 1; }
+	[[ "$output" == *"does not remove MoreMole"* ]] || return 1
+	[[ "$output" == *"rm $HOME/.local/bin/mm"*"move $PROJECT_ROOT to the Trash"*"brew uninstall mole"* ]] || return 1
+	# Only links to this folder are listed; another tool's mo is not.
+	[[ "$output" != *".local/bin/mo "* && "$output" != *".local/bin/mo"$'\n'* ]] || return 1
+	[ "$(cat "$HOME/.config/mole/my_commands")" = "keep" ] || return 1
+	[ "$(readlink "$HOME/.local/bin/mm")" = "$PROJECT_ROOT/mole" ] || return 1
+	grep -qF "SKIPPED $PROJECT_ROOT (moremole remove is not supported)" "$HOME/Library/Logs/mole/operations.log" || return 1
+	rm -f "$HOME/.local/bin/mm" "$HOME/.local/bin/mo" # SAFE: test-owned links under the test HOME
+}
+
 @test "the help screen names commands moremole, in one aligned column" {
 	run env HOME="$HOME" NO_COLOR=1 "$PROJECT_ROOT/mole" --help
 	[ "$status" -eq 0 ] || { echo "$output"; return 1; }

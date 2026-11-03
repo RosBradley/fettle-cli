@@ -28,13 +28,38 @@ die() {
     exit 1
 }
 
-# Point $LINK_DIR/$1 at $2, replacing only an existing link.
+# Every change this makes to the Mac leaves an operations.log row, as Mole's
+# own commands do. Logging never stops the setup.
+oplog() {
+    declare -F log_operation > /dev/null || return 0
+    log_operation "install" "$@" 2> /dev/null || true
+}
+
+# Whether the link at $1 belongs to MoreMole: it points at a MoreMole folder's
+# mole, this one or an earlier copy.
+is_moremole_link() {
+    local target
+    [[ -L "$1" ]] || return 1
+    target="$(readlink "$1")"
+    [[ "$target" == */mole && -f "$(dirname "$target")/lib/moremole/menu.sh" ]]
+}
+
+# Point $LINK_DIR/$1 at $2. Only a MoreMole link is replaced; anything else
+# with that name is someone else's and stays.
 link_command() {
     local link="$LINK_DIR/$1" target="$2"
-    if [[ -e "$link" && ! -L "$link" ]]; then
+    if [[ -L "$link" && "$(readlink "$link")" == "$target" ]]; then
+        printf '  %s -> %s\n' "$link" "$target"
+        return 0
+    fi
+    if [[ -e "$link" || -L "$link" ]] && ! is_moremole_link "$link"; then
+        if [[ -L "$link" ]]; then
+            die "$link already links to $(readlink "$link"), which isn't MoreMole. Remove that link or rename it, then run this again."
+        fi
         die "$link already exists and is not a link. Move it aside, then run this again."
     fi
     ln -sfn "$target" "$link"
+    oplog "REBUILT" "$link" "links to $target"
     printf '  %s -> %s\n' "$link" "$target"
 }
 
@@ -48,6 +73,7 @@ ensure_path() {
     fi
     # shellcheck disable=SC2016  # $HOME and $PATH expand when ~/.zshrc runs.
     printf '\n%s\nexport PATH="$HOME/.local/bin:$PATH"\n' "$PATH_MARKER" >> "$SHELL_RC"
+    oplog "REBUILT" "$SHELL_RC" "added ~/.local/bin to PATH"
     printf 'Added ~/.local/bin to PATH in %s.\n' "$SHELL_RC"
     NEW_WINDOW_NEEDED=true
 }
@@ -61,6 +87,7 @@ remove_old_alias() {
     local kept
     kept="$(grep -vE "$pattern" "$SHELL_RC" || true)"
     printf '%s\n' "$kept" > "$SHELL_RC"
+    oplog "REMOVED" "$SHELL_RC" "old alias mm= line"
     printf 'Removed the old "alias mm=" line from %s; the mm command replaces it.\n' "$SHELL_RC"
     NEW_WINDOW_NEEDED=true
 }
@@ -79,7 +106,11 @@ offer_official_removal() {
     printf 'Remove it? Your settings in ~/.config/mole stay. (y/N): '
     IFS= read -r answer || answer=""
     if [[ "$answer" == "y" || "$answer" == "Y" ]]; then
-        brew uninstall mole
+        if brew uninstall mole; then
+            oplog "REMOVED" "mole" "official Mole, uninstalled with Homebrew"
+        else
+            oplog "FAILED" "mole" "brew uninstall mole failed"
+        fi
         hash -r
     else
         printf 'Kept. Remove it later with: brew uninstall mole\n'
@@ -130,7 +161,10 @@ link_mole_names() {
             printf '%s already runs %s, so it stays as it is.\n' "$name" "$taken"
             continue
         fi
-        ln -sfn "$repo_root/mole" "$link"
+        if ! is_our_link "$link" "$repo_root/mole"; then
+            ln -sfn "$repo_root/mole" "$link"
+            oplog "REBUILT" "$link" "links to $repo_root/mole"
+        fi
         linked+=("$name")
     done
     case ${#linked[@]} in
@@ -146,6 +180,11 @@ main() {
         die "this script must stay in the scripts folder of your moremole folder."
 
     NEW_WINDOW_NEEDED=false
+    # Mole's operation log, for oplog. Setup carries on without it.
+    if [[ -f "$repo_root/lib/core/base.sh" && -f "$repo_root/lib/core/log.sh" ]]; then
+        # shellcheck source=/dev/null
+        source "$repo_root/lib/core/base.sh" && source "$repo_root/lib/core/log.sh" || true
+    fi
 
     printf 'Setting up the moremole and mm commands:\n'
     mkdir -p "$LINK_DIR"

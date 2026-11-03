@@ -397,6 +397,8 @@ esac'
 	[[ "$output" == *"updated=1 failed=2"* ]] || return 1
 	[[ "$output" == *"Updated after replacing Homebrew's leftover copy: Font X"* ]] || return 1
 	[[ "$output" == *"Not updated: Outside: outside: It seems there is already a Font at '/Users/me/Library/Fonts/X.ttf'."* ]] || return 1
+	# The log says the update needed --force.
+	grep -qE "REBUILT Font X \(updated to 3\.5\.1, .*retried with --force\)" "$HOME/Library/Logs/mole/operations.log" || { cat "$HOME/Library/Logs/mole/operations.log"; return 1; }
 
 	local calls
 	calls=$(cat "$CALLS")

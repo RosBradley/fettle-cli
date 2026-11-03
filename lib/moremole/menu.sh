@@ -968,3 +968,36 @@ update_mole() {
     printf 'Install MoreMole with:\n  %s\n' "$MOREMOLE_INSTALL_LINE"
     return 1
 }
+
+# Mole's own remover looks for the official Mole: it leaves MoreMole's links
+# and folder in place, says Mole was uninstalled, and moves ~/.config/mole,
+# MoreMole's commands included, to the Trash. So it never runs here; this
+# says what to remove instead and changes nothing.
+if declare -F remove_mole > /dev/null; then
+    eval "$(declare -f remove_mole | sed '1s/^remove_mole /_moremole_official_remove_mole /')"
+fi
+
+remove_mole() {
+    if [[ "${MOREMOLE_TEST_MOLE_REMOVER:-0}" == "1" ]]; then
+        _moremole_official_remove_mole "$@"
+        return
+    fi
+    local -a links=()
+    local name link
+    for name in moremole mm mo mole; do
+        link="$HOME/.local/bin/$name"
+        [[ -L "$link" && "$(readlink "$link")" == "$SCRIPT_DIR/mole" ]] && links+=("$link")
+    done
+    printf 'moremole remove does not remove MoreMole: Mole'"'"'s remover looks for the official Mole, and would move ~/.config/mole, your MoreMole commands included, to the Trash.\n'
+    printf '\nTo remove MoreMole, nothing else:\n'
+    if [[ ${#links[@]} -gt 0 ]]; then
+        printf '  rm'
+        printf ' %q' "${links[@]}"
+        printf '\n'
+    fi
+    printf '  then move %s to the Trash.\n' "$SCRIPT_DIR"
+    printf 'Your settings in ~/.config/mole and the logs in ~/Library/Logs/mole stay.\n'
+    printf '\nTo remove the official Mole installed with Homebrew: brew uninstall mole\n'
+    log_operation "remove" "SKIPPED" "$SCRIPT_DIR" "moremole remove is not supported" || true
+    return 1
+}

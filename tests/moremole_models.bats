@@ -130,7 +130,7 @@ installed_models() {
 	[ ! -s "$CALLS" ]
 }
 
-@test "with Ollama off it offers to turn it on, then turns it off again" {
+@test "a dry run with Ollama off leaves it off and says how to see the models" {
 	sed -i.bak 's/^running=1$/running=0/' "$ROWS_DIR/status"
 	installed_models
 	run models_env /bin/bash -c '
@@ -139,7 +139,21 @@ installed_models() {
 		printf "\n" | main --dry-run
 	' bash "$PROJECT_ROOT/bin/moremole-models.sh" "$SCRIPTED"
 	[ "$status" -eq 0 ] || { echo "$output"; return 1; }
-	[[ "$output" == *"Turn Ollama on?"*"4 models"*"Ollama was off, so it is off again."* ]] || return 1
+	[[ "$output" == *"Ollama is off, and a dry run doesn't turn it on."*"Open the Ollama app"* ]] || return 1
+	[[ "$output" != *"Turn Ollama on?"* ]] || return 1
+	[ ! -s "$CALLS" ]
+}
+
+@test "with Ollama off it offers to turn it on, then turns it off again" {
+	sed -i.bak 's/^running=1$/running=0/' "$ROWS_DIR/status"
+	installed_models
+	run models_env /bin/bash -c '
+		source "$1"
+		eval "$2"
+		printf "\n" | main --remove
+	' bash "$PROJECT_ROOT/bin/moremole-models.sh" "$SCRIPTED"
+	[ "$status" -eq 0 ] || { echo "$output"; return 1; }
+	[[ "$output" == *"Turn Ollama on?"*"Ollama was off, so it is off again."* ]] || return 1
 	[ "$(cat "$CALLS")" = "open -g -a /Applications/Ollama.app
 osascript -e quit app \"Ollama\"" ] || { cat "$CALLS"; return 1; }
 

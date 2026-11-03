@@ -235,6 +235,7 @@ offer_mas_install() {
         *) return 0 ;;
     esac
     if "$brew" install mas; then
+        log_operation "$MOLE_CURRENT_COMMAND" "REBUILT" "mas" "installed with Homebrew to check App Store apps"
         drop_notice mas-missing
         spin "Checking App Store apps..."
         load_update_rows < <(run_helper store)
@@ -456,11 +457,11 @@ host_advice() {
 }
 
 record_update() {
-    local idx="$1" ok="$2" reason="${3:-}"
+    local idx="$1" ok="$2" reason="${3:-}" note="${4:-}"
     local name="${U_NAME[idx]}"
     if [[ "$ok" == "true" ]]; then
         total_updated=$((total_updated + 1))
-        log_operation "$MOLE_CURRENT_COMMAND" "REBUILT" "$name" "updated to ${U_TO[idx]:-latest}, $(kind_label "${U_KIND[idx]}")"
+        log_operation "$MOLE_CURRENT_COMMAND" "REBUILT" "$name" "updated to ${U_TO[idx]:-latest}, $(kind_label "${U_KIND[idx]}")${note:+, $note}"
     else
         total_failed=$((total_failed + 1))
         UPDATE_FAILURES+=("$name${reason:+: $reason}")
@@ -471,8 +472,9 @@ record_update() {
 # Whether a failed cask upgrade stopped only because Homebrew found a copy
 # of one of the cask's own files left in its own folder for that cask, as an
 # upgrade that stopped partway can leave behind ("It seems there is already
-# a Font at '<Caskroom>/<token>/<version>/<file>'"). --force lets Homebrew
-# replace that copy, and nothing outside the folder.
+# a Font at '<Caskroom>/<token>/<version>/<file>'"). The retry's --force
+# covers the whole upgrade, not only that copy: Homebrew may then overwrite
+# any of this cask's own files where it installs them.
 leftover_copy_in_caskroom() {
     local tool="$1" token="$2" error caskroom path
     # Homebrew names the cask first: "<token>: It seems there is already ...".
@@ -546,11 +548,11 @@ install_update() {
     if moremole_run_shown "${cmd[@]}"; then
         record_update "$idx" true
     elif [[ "$kind" == "app" ]] && leftover_copy_in_caskroom "$tool" "$id"; then
-        echo -e "${YELLOW}${ICON_WARNING}${NC} Homebrew kept a copy of this app's file from an earlier update in its own folder; trying again with --force, which replaces only that copy."
+        echo -e "${YELLOW}${ICON_WARNING}${NC} Homebrew kept a copy of this app's file from an earlier update in its own folder; trying again with --force, which lets Homebrew overwrite this app's own files."
         cmd=("$tool" upgrade --cask --greedy --force "$id")
         if moremole_run_shown "${cmd[@]}"; then
             RETRIED_NAMES+=("${U_NAME[idx]}")
-            record_update "$idx" true
+            record_update "$idx" true "" "retried with --force"
         else
             record_update "$idx" false "$(update_failure_reason "${cmd[0]}")"
         fi

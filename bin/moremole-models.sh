@@ -143,6 +143,11 @@ ensure_ollama() {
         echo "Open the Ollama app, then run moremole models again."
         return 1
     fi
+    if [[ "${MOLE_DRY_RUN:-0}" == "1" ]]; then
+        echo -e "${YELLOW}${ICON_WARNING}${NC} Ollama is off, and a dry run doesn't turn it on."
+        echo "Open the Ollama app, then run this again to see its models."
+        return 2
+    fi
 
     echo -e "${GRAY}Ollama is off. It needs to be on to look at its models; it goes off again when this is done.${NC}"
     echo -ne "${PURPLE}${ICON_ARROW}${NC} Turn Ollama on?  ${GREEN}Enter${NC} turn on, ${GRAY}ESC${NC} cancel: "

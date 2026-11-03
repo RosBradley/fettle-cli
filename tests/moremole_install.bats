@@ -77,6 +77,46 @@ install() {
 	[ "$(cat "$FAKE_HOME/.local/bin/mm")" = "mine" ]
 }
 
+@test "installer never takes over a link that isn't MoreMole's" {
+	mkdir -p "$FAKE_HOME/.local/bin" "$HOME/other"
+	printf '#!/bin/bash\necho OTHER\n' > "$HOME/other/mm"
+	ln -s "$HOME/other/mm" "$FAKE_HOME/.local/bin/mm"
+	run install
+	[ "$status" -ne 0 ] || return 1
+	[[ "$output" == *"already links to $HOME/other/mm, which isn't MoreMole"* ]] || return 1
+	[ "$(readlink "$FAKE_HOME/.local/bin/mm")" = "$HOME/other/mm" ]
+}
+
+@test "installer moves a link from an earlier MoreMole folder to this one" {
+	mkdir -p "$FAKE_HOME/.local/bin" "$HOME/old-copy/lib/moremole"
+	: > "$HOME/old-copy/lib/moremole/menu.sh"
+	ln -s "$HOME/old-copy/mole" "$FAKE_HOME/.local/bin/mm"
+	run install
+	[ "$status" -eq 0 ] || { echo "$output"; return 1; }
+	[ "$(readlink "$FAKE_HOME/.local/bin/mm")" = "$REPO/mole" ]
+}
+
+@test "installer logs each change it makes in operations.log" {
+	mkdir -p "$REPO/lib/core"
+	cp "$PROJECT_ROOT/lib/core/base.sh" "$PROJECT_ROOT/lib/core/log.sh" "$REPO/lib/core/"
+	# shellcheck disable=SC2016  # Literal ~/.zshrc text, not an expansion.
+	printf 'alias mm="$HOME/moremole/mole"\n' > "$FAKE_HOME/.zshrc"
+	run install
+	[ "$status" -eq 0 ] || { echo "$output"; return 1; }
+	local log="$FAKE_HOME/Library/Logs/mole/operations.log"
+	grep -qF "[install] REBUILT $FAKE_HOME/.local/bin/moremole (links to $REPO/mole)" "$log" || { cat "$log"; return 1; }
+	grep -qF "[install] REBUILT $FAKE_HOME/.local/bin/mm (links to $REPO/mole)" "$log" || return 1
+	grep -qF "[install] REBUILT $FAKE_HOME/.zshrc (added ~/.local/bin to PATH)" "$log" || return 1
+	grep -qF "[install] REMOVED $FAKE_HOME/.zshrc (old alias mm= line)" "$log" || return 1
+
+	# Running it again changes nothing, so it logs nothing new.
+	local before
+	before=$(grep -c '\[install\] ' "$log")
+	run install
+	[ "$status" -eq 0 ] || { echo "$output"; return 1; }
+	[ "$(grep -c '\[install\] ' "$log")" -eq "$before" ]
+}
+
 @test "installer only suggests removing a Homebrew Mole without a terminal" {
 	BREW_HAS_MOLE=1 run install
 	[ "$status" -eq 0 ] || { echo "$output"; return 1; }
