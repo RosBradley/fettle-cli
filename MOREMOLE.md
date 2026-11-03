@@ -6,7 +6,7 @@ moremole is a personal fork of [Mole](https://github.com/tw93/Mole) by tw93, mod
 - **The main menu lists every command** from Mole's More screen (M), not just the first five. Each command has its own row, with its preview (dry-run) and other variants beside it, and a bar at the bottom of the window describes the highlighted item and lists the keys.
 - **You can add your own commands to the menu,** and edit or remove them, right in the menu. They get a section of their own.
 - **Commands run inside a MoreMole screen:** the title and the command's summary stay at the top and a bar at the bottom says it's running, while its output scrolls between them, like the menu. When it finishes, the bar says so and shows the keys; you scroll back through everything it printed, search it with /, and open Clean's file list with F. A cancelled command returns to the menu straight away.
-- **Status fills the window:** its bars stretch with the window, it lists every CPU core, and it has a GPU card.
+- **Status fills the window:** its bars stretch with the window, it has a GPU card, and R changes how often it refreshes.
 - **Software updates** finds updates for Homebrew apps and tools, App Store apps, macOS and apps with their own updater, and installs the ones you pick.
 - **AI models** checks your Ollama models for updates, downloads new ones from Ollama's library, and removes the ones you pick. If Ollama is off, it offers to turn it on, and turns it off again when done.
 - **Pick lists have a search line and open A–Z:** type to narrow the list, and sort by name, size or date. Installer files uses the same list, so it gains both.
@@ -65,7 +65,7 @@ Every command works from the command line and in scripts as in Mole: same comman
 - `moremole update` (and `mo update` once `mo` runs MoreMole) updates MoreMole the way it was installed (see Updating), instead of installing a Mole release; the help screen leaves out Mole's `--force` and `--nightly`, which MoreMole's update does not use.
 - `moremole updates` (Software updates) and `moremole models` (AI models) are new.
 - The help screen names commands `moremole ...`; hints inside commands still say `mo ...`.
-- `remove` is Mole's own and is not in the menu: it would move `~/.config/mole`, with your menu commands and protected lists, to the Trash.
+- `moremole remove` doesn't run Mole's remover, which would leave MoreMole in place and move `~/.config/mole`, with your menu commands and protected lists, to the Trash. It changes nothing: it lists the links and folder to delete, notes that your settings stay, and records the refusal in History. It is not in the menu.
 
 ## The menu
 
@@ -140,7 +140,7 @@ They're saved in `~/.config/mole/my_commands`, one per line as name, a Tab, then
 
 - The bars stretch to fill the window; make the window wider for longer bars.
 - **R** changes how often Status refreshes: 0.5, 1, 2, 5 or 10 seconds, starting at 1. It remembers your choice. A line at the bottom shows the current setting and the keys.
-- Every CPU core is listed. **C** cycles through 2, 4, 8 and all cores and remembers your choice; a window too short for all of them shows fewer.
+- **C** (Mole's own key) cycles through 2, 4, 8 and all CPU cores and remembers your choice; a window too short for all of them shows fewer.
 - The GPU card shows total GPU use, updated with every refresh like CPU use, plus the chip and its GPU core count. macOS reports GPU use for the GPU as a whole, not for each GPU core.
 
 If you pull changes with `git pull`, the next update rebuilds the Go parts if needed, or run `make build` yourself.
@@ -170,7 +170,13 @@ It checks Homebrew, the App Store, macOS and your other apps, then shows one A�
 - Pinned formulae (`brew pin`) are left out. Apps that report no version number (`latest`) are marked "always reinstalls".
 - "older version, Homebrew's choice" marks an update to a lower version number: Homebrew moved that formula to another line on purpose (openssl@3 went from 3.6 to its long-term 3.5 line).
 - "Own updater" reads the update feed the app names in its Info.plist (`SUFeedURL`), skipping beta channels and versions that need a newer macOS. Installing stays with the app, which checks the download's signature: the apps open after the other updates, and the summary names them. If an app doesn't offer the update, choose Check for Updates in its menu. Apps Homebrew manages, App Store and Apple apps, and apps offered for Move to Homebrew aren't checked this way.
-- An app joins "Move to Homebrew" only when exactly one Homebrew app matches its name, that app doesn't update itself, and its version is clearly newer. App Store and Apple apps never do.
+- An app joins "Move to Homebrew" only when all of these hold:
+  - exactly one Homebrew app matches its name, and that Homebrew app doesn't update itself;
+  - your copy is the only one, at the place Homebrew would put it (`/Applications/<name>.app`);
+  - its bundle ID is one the Homebrew app names;
+  - Homebrew's version is clearly newer.
+
+  App Store and Apple apps never qualify. Most Homebrew apps name a different install location for their app, so these apps can't qualify either, and the offer is rare.
 - Software updates is a moremole addition. Mole leaves package management out on purpose, so this part won't be offered to Mole.
 
 ## AI models
@@ -185,7 +191,7 @@ For [Ollama](https://ollama.com) models. Choose **AI models** in the menu, or ru
 | AI model removal | `moremole models --remove` | Removes the models you pick |
 | Preview | `moremole models --remove --dry-run` | Lists your models and their sizes, removing nothing |
 
-- **Ollama off:** the models are only reachable while Ollama runs. If it's off, AI models asks first (Enter turns it on, ESC goes back), opens the Ollama app in the background (or runs `ollama serve` when there's only the command), and turns it off again when it's done, so Ollama ends as it was found. The summary says so. If Ollama isn't installed, it says where to get it. From a script it doesn't turn Ollama on; it says to open the app.
+- **Ollama off:** the models are only reachable while Ollama runs. If it's off, AI models asks first (Enter turns it on, ESC goes back), opens the Ollama app in the background (or runs `ollama serve` when there's only the command), and turns it off again when it's done, so Ollama ends as it was found. The summary says so. If Ollama isn't installed, it says where to get it. From a script, or in a Preview, it doesn't turn Ollama on; it says to open the app.
 - **Update check:** for each model, it asks the model's registry (Ollama's, or another such as hf.co) for the model's current manifest and compares it with the one Ollama saved when it downloaded the model. A model that changed shows "update available"; one built on this Mac (`ollama create`) shows "made on this Mac"; one it couldn't reach shows "couldn't check", and the list ends with how many couldn't be checked instead of "No updates". The list shows only models with an update, none selected. Updating runs `ollama pull`, which downloads only the parts that changed.
 - **Download:** Ollama has no list of its models for programs, so the list comes from its web page, ollama.com/library: one row per model and size (`gemma3:4b`, `gemma3:27b`), with what it can do (tools, vision, thinking...) and how often it's pulled. Models that only run on Ollama's servers are left out, and the ones you have say "(installed)". Search finds a model by name, ability or description. Before downloading, the confirm screen gives each model's download size (from the registry) and whether it fits this Mac's memory: "fits" up to half the memory, "tight" up to three quarters, "too big" beyond. If the page can't be read (offline, or redesigned), it asks for a name as the library shows it and checks it with the registry first.
 - **Removal:** the list shows every model, A–Z; S sorts by size, then date. A model in use is unloaded first (`ollama stop`), then `ollama rm` deletes it: Ollama's models don't go to the Trash, and the confirm screen says so. Models share some files, so the space freed can be less than the sizes shown; the summary counts only models that were removed.

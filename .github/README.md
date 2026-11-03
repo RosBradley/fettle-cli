@@ -24,13 +24,63 @@ MoreMole is a macOS cleanup and maintenance tool for the terminal, built on [Mol
 
 ## What it adds to Mole
 
-- **One menu for everything.** Every Mole command has its own row, with its preview (see what it would do, without doing it) beside it.
-- **Your own commands** in the menu: add, edit and remove them without leaving it.
-- **A results screen.** Commands run inside a fixed frame. When they finish, you can scroll back through everything they printed and search it with `/`.
-- **Software updates.** Finds updates for Homebrew apps and tools, App Store apps, macOS and apps with their own updater, and installs the ones you pick.
-- **AI models.** Checks your [Ollama](https://ollama.com) models for updates, downloads new ones from Ollama's library (with a check of whether they fit your Mac's memory), and removes the ones you pick.
-- **Lists you can search** and sort by name, size or date. Nothing is ever selected for you.
-- **A Status screen that fills the window,** with every CPU core and a GPU card.
+### One menu for everything
+
+Mole's menu shows five commands and keeps the rest behind a help screen. MoreMole's menu lists every one: Clean, Optimize, Analyze, Status, History, Purge, Installer files, Slim, Touch ID and Shell completion, plus MoreMole's own Software updates and AI models.
+
+- **Each row has its variants beside it.** Preview shows what a command would do without doing anything. Other variants include Analyze's External drives, History's Export and Purge's Choose folders.
+- **A bar at the bottom** describes the highlighted row and lists the keys.
+- **Your own commands** get a section of their own. Add, edit and remove them from the menu itself. They run with your shell and are saved in `~/.config/mole/my_commands`.
+- **The menu has a screen of its own,** as `vim` does. Quitting returns your terminal exactly as it was.
+
+### A results screen
+
+Commands started from the menu run inside a fixed frame. The title and summary stay at the top, a "Running" bar stays at the bottom, and the output scrolls between them.
+
+- **When the command finishes,** the bar shows ✓, ! or ■ (finished, ended with an error, or stopped). The summary moves to the top.
+- **Scroll back** through everything it printed, and **search** it with `/`. After Clean's Preview, **F** opens the full list of files Clean would remove.
+- **Cancel** a command and you're back in the menu straight away, with nothing to dismiss.
+
+### Software updates (`moremole updates`)
+
+Mole leaves app updates out on purpose. MoreMole brings every source into one list:
+
+- Homebrew apps and command-line tools, App Store apps, macOS, and apps with their own updater (Sparkle).
+- Each row names its source. **Preview** only lists what's available.
+- A confirm screen says what each pick will do: an app will quit, your copy will be replaced, or a password is needed.
+- **It never updates the terminal app it's running in,** because that could stop the update partway. It tells you to update that app another way.
+- The summary says what updated, what didn't and why, with the tool's own error line. Each one is recorded in History.
+- Occasionally an app you installed yourself has a newer Homebrew version. MoreMole offers to move that app to Homebrew, but only when the app, its location and its bundle ID all match exactly.
+
+### AI models (`moremole models`)
+
+For [Ollama](https://ollama.com):
+
+- **Check for updates.** It compares each model with its registry, then downloads only the parts that changed.
+- **Download** from Ollama's library. You can search by name, ability (tools, vision, thinking) or description. Each model shows its download size and whether it fits your Mac's memory: fits, tight or too big.
+- **Remove** the models you pick. A model in use is unloaded first. The confirm screen says that removed models don't go to the Trash.
+- If Ollama is off, it offers to turn it on, and turns it off again when it's done.
+
+### Lists you can search
+
+Software removal, Slim, Installer files, Software updates and AI models share one pick list:
+
+- **`/` searches** as you type, matching anywhere in the name.
+- **Lists open A–Z.** S sorts by size, then by date (oldest first), and O flips the order.
+- **Nothing is selected for you.** That includes Purge, where Mole selected everything older than 7 days.
+
+### A Status screen that fills the window
+
+- Bars stretch to the width of the window.
+- A GPU card shows GPU use, the chip and its GPU core count.
+- **R** changes how often Status refreshes: from every 0.5 seconds to every 10.
+
+### And smaller things
+
+- **Optimize** names what it applied, or would apply in a Preview, in its summary.
+- **Update MoreMole** installs the newest MoreMole release, checked against its published checksums. Mole's own updater never runs, because it would replace MoreMole with Mole.
+- **`moremole remove`** changes nothing. It tells you exactly what to delete to remove MoreMole, instead of running Mole's remover, which would also move your settings to the Trash.
+- **`mo` and `mole`** run MoreMole too, so scripts written for Mole keep working.
 
 ## Install
 
