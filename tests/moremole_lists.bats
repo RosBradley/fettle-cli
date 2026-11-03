@@ -97,7 +97,7 @@ read_key() {
 		INSTALLER_PATHS=("$HOME/Downloads/b-tool.pkg" "$HOME/Downloads/a-app.dmg" "$HOME/Library/Caches/Homebrew/downloads/${hash}--C-Cask.dmg")
 		INSTALLER_SIZES=(2048 1048576 4096)
 		DISPLAY_NAMES=("b-tool.pkg  2KB | Downloads" "a-app.dmg  1MB | Downloads" "C-Cask.dmg  4KB | Homebrew")
-		for keys in "ENTER" "CHAR:s ENTER" "CHAR:s CHAR:s ENTER" "CHAR:/ CHAR:c CHAR:a CHAR:s CHAR:k ENTER ENTER"; do
+		for keys in "SPACE ENTER" "CHAR:s SPACE ENTER" "CHAR:s CHAR:s SPACE ENTER" "CHAR:/ CHAR:c CHAR:a CHAR:s CHAR:k ENTER SPACE ENTER"; do
 			printf "%s\n" $keys > "$KEYS_FILE"
 			: > "$KEY_STATE"
 			# The command'"'"'s own menu step, which uses the shared list.
@@ -108,10 +108,10 @@ read_key() {
 	[ "$status" -eq 0 ] || { echo "$output"; return 1; }
 	# A-Z: a-app.dmg (1) first; size: a-app.dmg (1MB) first; date: oldest,
 	# a-app.dmg, first. Search finds the Homebrew download by its name.
-	[[ "$output" == *"ENTER -> 1"* ]] || return 1
-	[[ "$output" == *"CHAR:s ENTER -> 1"* ]] || return 1
-	[[ "$output" == *"CHAR:s CHAR:s ENTER -> 1"* ]] || return 1
-	[[ "$output" == *"CHAR:c CHAR:a CHAR:s CHAR:k ENTER ENTER -> 2"* ]] || return 1
+	[[ "$output" == *$'SPACE ENTER -> 1\n'* ]] || return 1
+	[[ "$output" == *"CHAR:s SPACE ENTER -> 1"* ]] || return 1
+	[[ "$output" == *"CHAR:s CHAR:s SPACE ENTER -> 1"* ]] || return 1
+	[[ "$output" == *"CHAR:c CHAR:a CHAR:s CHAR:k ENTER SPACE ENTER -> 2"* ]] || return 1
 	[[ "$output" != *CANCELLED* ]]
 }
 
@@ -132,7 +132,7 @@ read_key() {
 		DISPLAY_NAMES=("a.dmg" "b.pkg" "c.dmg")
 		# O on A-Z gives Z-A; S then S gives date, oldest first (b.pkg);
 		# one more S comes back to A-Z.
-		for keys in "CHAR:o ENTER" "CHAR:s ENTER" "CHAR:s CHAR:s ENTER" "CHAR:s CHAR:s CHAR:s ENTER"; do
+		for keys in "CHAR:o SPACE ENTER" "CHAR:s SPACE ENTER" "CHAR:s CHAR:s SPACE ENTER" "CHAR:s CHAR:s CHAR:s SPACE ENTER"; do
 			printf "%s\n" $keys > "$KEYS_FILE"
 			: > "$KEY_STATE"
 			moremole_select_installers 2> "$MENU_OUTPUT" || echo CANCELLED
@@ -140,12 +140,28 @@ read_key() {
 		done
 	' bash "$PROJECT_ROOT" "$SCRIPTED_MENU"
 	[ "$status" -eq 0 ] || { echo "$output"; return 1; }
-	[[ "$output" == *$'CHAR:o ENTER -> 2\n'* ]] || return 1
-	[[ "$output" == *$'\nCHAR:s ENTER -> 0\n'* ]] || return 1
-	[[ "$output" == *$'\nCHAR:s CHAR:s ENTER -> 1\n'* ]] || return 1
+	[[ "$output" == *$'CHAR:o SPACE ENTER -> 2\n'* ]] || return 1
+	[[ "$output" == *$'\nCHAR:s SPACE ENTER -> 0\n'* ]] || return 1
+	[[ "$output" == *$'\nCHAR:s CHAR:s SPACE ENTER -> 1\n'* ]] || return 1
 	# The last line, so nothing follows it.
-	[[ "$output" == *$'\nCHAR:s CHAR:s CHAR:s ENTER -> 0' ]] || return 1
+	[[ "$output" == *$'\nCHAR:s CHAR:s CHAR:s SPACE ENTER -> 0' ]] || return 1
 	[[ "$output" != *CANCELLED* ]]
+}
+
+@test "installer files: Enter with nothing selected removes nothing" {
+	keys ENTER ENTER
+	run env TERM=xterm-256color MOLE_TEST_MODE=1 /bin/bash -c '
+		source "$1/bin/installer.sh"
+		eval "$2"
+		INSTALLER_PATHS=("$HOME/Downloads/a.dmg" "$HOME/Downloads/b.pkg")
+		INSTALLER_SIZES=(4096 1024)
+		DISPLAY_NAMES=("a.dmg" "b.pkg")
+		if show_installer_menu 2> "$MENU_OUTPUT" > /dev/null; then echo PICKED; else echo NOTHING; fi
+		printf "RESULT=[%s]\n" "$MOLE_SELECTION_RESULT"
+	' bash "$PROJECT_ROOT" "$SCRIPTED_MENU"
+	[ "$status" -eq 0 ] || { echo "$output"; return 1; }
+	[[ "$output" == *"NOTHING"*"RESULT=[]"* ]] || return 1
+	[[ "$output" != *PICKED* ]]
 }
 
 @test "the app removal list and Slim open A-Z" {

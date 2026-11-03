@@ -487,7 +487,8 @@ pick() {
     shift
     MOLE_SELECTION_RESULT=""
     PICKED=()
-    local rc=0
+    # Enter with nothing picked picks nothing, never the row under the cursor.
+    local rc=0 _MOLE_MENU_KEEP_EMPTY=true
     hide_cursor
     paginated_multi_select "$title" "$@" || rc=$?
     show_cursor
@@ -537,7 +538,10 @@ pick_to_download() {
 
 # Remove: pick installed models and remove them with `ollama rm`.
 run_remove() {
-    load_models < <(run_helper list)
+    # The registry check tells which models can be downloaded again.
+    spin "Checking models with Ollama's registry..."
+    load_models < <(run_helper list --check)
+    unspin
     print_notices
     if has_notice service-failed; then
         return 1
@@ -564,15 +568,27 @@ run_remove() {
     fi
 
     local total=0 loaded=false
+    local -a no_copy=()
     echo -e "${PURPLE_BOLD}Models to remove:${NC}"
     for i in "${PICKED[@]}"; do
         [[ "${M_SIZE[i]}" =~ ^[0-9]+$ ]] && total=$((total + M_SIZE[i]))
         [[ "${M_LOADED[i]}" == "1" ]] && loaded=true
+        case "${M_STATUS[i]}" in
+            current | update) ;;
+            *) no_copy+=("$(mole_terminal_safe_text "${M_NAME[i]}")") ;;
+        esac
         printf '  %s%s%s %s %s%s%s\n' "$RED" "$ICON_ERROR" "$NC" "$(mole_terminal_safe_text "${M_NAME[i]}")" \
             "$GRAY" "$(human_size "${M_SIZE[i]}")" "$NC"
     done
     printf '\n%sFrees up to %s; models share some files, which stay while another model uses them.%s\n' "$GRAY" "$(bytes_to_human "$total")" "$NC"
-    printf '%sOllama deletes them; they do not go to the Trash. You can download them again.%s\n' "$GRAY" "$NC"
+    if [[ ${#no_copy[@]} -eq 0 ]]; then
+        printf '%sOllama deletes them; they do not go to the Trash. You can download them again.%s\n' "$GRAY" "$NC"
+    else
+        printf '%sOllama deletes them; they do not go to the Trash.%s\n' "$GRAY" "$NC"
+        local listed
+        listed=$(printf '%s, ' "${no_copy[@]}")
+        echo -e "${YELLOW}${ICON_WARNING}${NC} Made on this Mac or not found in Ollama's registry, so they may not download again: ${listed%, }"
+    fi
     [[ "$loaded" != "true" ]] || printf '%sA model in use is unloaded first.%s\n' "$GRAY" "$NC"
     if ! confirm "Remove ${#PICKED[@]} models"; then
         moremole_note_cancel
@@ -610,6 +626,10 @@ run_download() {
 
     local -a chosen=()
     if [[ ${#L_NAME[@]} -eq 0 ]]; then
+        if [[ "${MOLE_DRY_RUN:-0}" == "1" ]]; then
+            echo "Nothing to list without Ollama's model list; nothing was downloaded."
+            return 0
+        fi
         interactive || return 1
         local typed
         echo "Type a model's name as ollama.com/library shows it, such as gemma3:4b."

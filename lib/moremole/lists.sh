@@ -33,6 +33,8 @@ moremole_select_installers() {
     local MOLE_MENU_SORT_MODE=name MOLE_MENU_SORT_REVERSE=false
     # The installer screen already owns the alternate screen.
     local MOLE_MANAGED_ALT_SCREEN=1 _MOLE_MENU_SELECT_ALL=true
+    # Enter with nothing picked removes nothing, never the row under the cursor.
+    local _MOLE_MENU_KEEP_EMPTY=true
 
     MOLE_SELECTION_RESULT=""
     paginated_multi_select "Select Installers to Remove" "${DISPLAY_NAMES[@]}" || return 1

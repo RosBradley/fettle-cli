@@ -369,6 +369,8 @@ select_updates() {
         rows+=("$(update_row_text "$i")")
     done
     export _MOLE_MENU_SELECT_ALL=true
+    # Enter with nothing picked installs nothing, never the row under the cursor.
+    local _MOLE_MENU_KEEP_EMPTY=true
 
     MOLE_SELECTION_RESULT=""
     local rc=0

@@ -71,11 +71,11 @@ func TestNewerThanAppUsesADottedBuildNumberToo(t *testing.T) {
 
 func TestTakeoverRowsOfferOnlyClearNewerMatches(t *testing.T) {
 	index := []caskInfo{
-		caskFromJSON(t, `{"token": "vlc", "name": ["VLC"], "version": "3.0.21,abc", "artifacts": [{"app": ["VLC.app"]}]}`),
+		caskFromJSON(t, `{"token": "vlc", "name": ["VLC"], "version": "3.0.21,abc", "artifacts": [{"app": ["VLC.app"]}, {"zap": [{"trash": ["~/Library/Preferences/org.videolan.vlc.plist", "~/Library/Caches/org.videolan.*"]}]}]}`),
 		caskFromJSON(t, `{"token": "same", "version": "2.0", "artifacts": [{"app": ["Same.app"]}]}`),
 		caskFromJSON(t, `{"token": "selfupdating", "version": "9.0", "auto_updates": true, "artifacts": [{"app": ["Self.app"]}]}`),
 		caskFromJSON(t, `{"token": "withpkg", "version": "9.0", "artifacts": [{"pkg": ["x.pkg"]}, {"app": ["Pkg.app"]}]}`),
-		caskFromJSON(t, `{"token": "firefox", "version": "130.0", "artifacts": [{"app": ["Firefox.app"]}]}`),
+		caskFromJSON(t, `{"token": "firefox", "version": "130.0", "artifacts": [{"uninstall": [{"quit": "org.mozilla.firefox"}]}, {"app": ["Firefox.app"]}]}`),
 		caskFromJSON(t, `{"token": "firefox@beta", "version": "131.0b1", "artifacts": [{"app": ["Firefox.app"]}]}`),
 		caskFromJSON(t, `{"token": "twin-a", "version": "5.0", "artifacts": [{"app": ["Twin.app"]}]}`),
 		caskFromJSON(t, `{"token": "twin-b", "version": "5.0", "artifacts": [{"app": ["Twin.app"]}]}`),
@@ -84,11 +84,11 @@ func TestTakeoverRowsOfferOnlyClearNewerMatches(t *testing.T) {
 		caskFromJSON(t, `{"token": "apple", "version": "9.0", "artifacts": [{"app": ["Pages.app"]}]}`),
 	}
 	apps := []localApp{
-		{FileName: "VLC.app", BundleID: "org.videolan.vlc", Short: "3.0.20", Build: "3.0.20"},
+		{Path: "/Applications/VLC.app", FileName: "VLC.app", BundleID: "org.videolan.vlc", Short: "3.0.20", Build: "3.0.20"},
 		{FileName: "Same.app", Short: "2.0"},
 		{FileName: "Self.app", Short: "1.0"},
 		{FileName: "Pkg.app", Short: "1.0"},
-		{FileName: "Firefox.app", Short: "129.0"},
+		{Path: "/Applications/Firefox.app", FileName: "Firefox.app", BundleID: "org.mozilla.firefox", Short: "129.0"},
 		{FileName: "Twin.app", Short: "1.0"},
 		{FileName: "Managed.app", Short: "1.0"},
 		{FileName: "Gone.app", Short: "1.0"},
@@ -97,7 +97,7 @@ func TestTakeoverRowsOfferOnlyClearNewerMatches(t *testing.T) {
 	}
 	got := takeoverRows(apps, index, map[string]bool{"managed": true}, map[string]bool{})
 	want := []Row{
-		{Kind: "takeover", ID: "firefox", Name: "Firefox", Installed: "129.0", Available: "130.0", Note: "replaces your copy"},
+		{Kind: "takeover", ID: "firefox", Name: "Firefox", Installed: "129.0", Available: "130.0", Note: "replaces your copy", Bundle: "org.mozilla.firefox"},
 		{Kind: "takeover", ID: "vlc", Name: "VLC", Installed: "3.0.20", Available: "3.0.21", Note: "replaces your copy", Bundle: "org.videolan.vlc"},
 	}
 	if !reflect.DeepEqual(got, want) {
@@ -107,6 +107,57 @@ func TestTakeoverRowsOfferOnlyClearNewerMatches(t *testing.T) {
 	// An app Homebrew already installed is never offered again.
 	if got := takeoverRows(apps[:1], index, map[string]bool{}, map[string]bool{"VLC.app": true}); len(got) != 0 {
 		t.Errorf("managed app offered: %#v", got)
+	}
+}
+
+// --force deletes whatever is at the cask's target, so only an app the cask
+// names by bundle ID, sitting at that target as the only copy, is offered.
+func TestTakeoverRowsNeedTheCasksBundleIDAndTheOnlyCopyAtItsTarget(t *testing.T) {
+	index := []caskInfo{
+		caskFromJSON(t, `{"token": "foo", "version": "5.0", "artifacts": [{"uninstall": [{"quit": "com.vendor.foo"}]}, {"app": ["Foo.app"]}]}`),
+		caskFromJSON(t, `{"token": "nameonly", "version": "5.0", "artifacts": [{"app": ["NameOnly.app"]}, {"zap": [{"trash": "~/Library/Caches/NameOnly"}]}]}`),
+	}
+	foo := localApp{Path: "/Applications/Foo.app", FileName: "Foo.app", BundleID: "com.vendor.foo", Short: "1.0"}
+	if got := takeoverRows([]localApp{foo}, index, nil, nil); len(got) != 1 || got[0].ID != "foo" {
+		t.Fatalf("the clear case is not offered: %#v", got)
+	}
+
+	other := foo
+	other.BundleID = "com.othervendor.foo"
+	sub := foo
+	sub.Path = "/Applications/Setapp/Foo.app"
+	home := foo
+	home.Path = "/Users/me/Applications/Foo.app"
+	renamed := localApp{Path: "/Applications/Foo Old.app", FileName: "Foo Old.app", BundleID: "com.vendor.foo", Short: "4.0"}
+	nameOnly := localApp{Path: "/Applications/NameOnly.app", FileName: "NameOnly.app", BundleID: "com.vendor.nameonly", Short: "1.0"}
+	noID := foo
+	noID.BundleID = ""
+	for name, apps := range map[string][]localApp{
+		"another vendor's app with the same name": {other},
+		"a copy outside the cask's target":        {sub},
+		"a copy in ~/Applications":                {home},
+		"a second copy in a subfolder":            {foo, sub},
+		"a second copy under another name":        {foo, renamed},
+		"a cask that never names a bundle ID":     {nameOnly},
+		"an app with no bundle ID":                {noID},
+	} {
+		if got := takeoverRows(apps, index, nil, nil); len(got) != 0 {
+			t.Errorf("%s: offered %#v", name, got)
+		}
+	}
+}
+
+func TestCaskBundleIDsComeFromQuitAndExactZapPaths(t *testing.T) {
+	c := caskFromJSON(t, `{"token": "a", "artifacts": [
+		{"uninstall": [{"quit": ["com.a.app", "com.a.helper"], "launchctl": "com.a.agent"}]},
+		{"zap": [{"trash": ["~/Library/Preferences/com.a.prefs.plist", "~/Library/Saved Application State/com.a.state.savedState", "~/Library/Caches/com.a.*", "~/Library/Application Support/A App"]}, {"rmdir": "~/Library/Containers/com.a.box"}]}
+	]}`)
+	want := []string{"com.a.app", "com.a.helper", "com.a.prefs", "com.a.state", "com.a.box"}
+	if got := c.bundleIDs(); !reflect.DeepEqual(got, want) {
+		t.Errorf("got %v, want %v", got, want)
+	}
+	if c.namesBundleID("com.a.agent") || !c.namesBundleID("COM.A.APP") || c.namesBundleID("") {
+		t.Error("namesBundleID matches a launchctl label, misses a case variant, or accepts an empty ID")
 	}
 }
 

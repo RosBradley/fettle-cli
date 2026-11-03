@@ -29,6 +29,9 @@ const (
 	plutilPath       = "/usr/bin/plutil"
 	plistTimeout     = 10 * time.Second
 	plistWorkers     = 8
+
+	// caskAppDir is where Homebrew installs a cask's app unless told otherwise.
+	caskAppDir = "/Applications"
 )
 
 // takeoverArtifacts are the cask parts a plain app install may have. A cask
@@ -79,6 +82,67 @@ func (c caskInfo) appNames() (names []string, plain bool) {
 	return names, plain
 }
 
+// bundleIDs returns the bundle IDs the cask itself names: the apps its
+// uninstall and zap steps quit, and the exact files they trash that are named
+// after a bundle ID (~/Library/Preferences/<id>.plist and the like).
+func (c caskInfo) bundleIDs() []string {
+	var ids []string
+	for _, raw := range c.Artifacts {
+		var artifact map[string]json.RawMessage
+		if json.Unmarshal(raw, &artifact) != nil {
+			continue
+		}
+		for _, key := range []string{"uninstall", "zap"} {
+			var steps []map[string]json.RawMessage
+			if json.Unmarshal(artifact[key], &steps) != nil {
+				continue
+			}
+			for _, step := range steps {
+				ids = append(ids, jsonStrings(step["quit"])...)
+				for _, kind := range []string{"trash", "delete", "rmdir"} {
+					for _, path := range jsonStrings(step[kind]) {
+						name := filepath.Base(path)
+						if strings.ContainsAny(name, "*?[{") {
+							continue
+						}
+						name = strings.TrimSuffix(strings.TrimSuffix(name, ".plist"), ".savedState")
+						if strings.Count(name, ".") >= 2 && !strings.ContainsAny(name, " /") {
+							ids = append(ids, name)
+						}
+					}
+				}
+			}
+		}
+	}
+	return ids
+}
+
+// namesBundleID says whether the cask names this exact bundle ID.
+func (c caskInfo) namesBundleID(id string) bool {
+	if id == "" {
+		return false
+	}
+	for _, known := range c.bundleIDs() {
+		if strings.EqualFold(known, id) {
+			return true
+		}
+	}
+	return false
+}
+
+// jsonStrings reads a cask value that is either one string or a list of them.
+func jsonStrings(raw json.RawMessage) []string {
+	var one string
+	if json.Unmarshal(raw, &one) == nil {
+		return []string{one}
+	}
+	var many []string
+	if json.Unmarshal(raw, &many) == nil {
+		return many
+	}
+	return nil
+}
+
 // localApp is an app found in an Applications folder.
 type localApp struct {
 	Path     string
@@ -112,6 +176,12 @@ func installedCasks(brew string) (tokens, apps map[string]bool, err error) {
 // one Homebrew has a newer version of. A match must be unambiguous, the cask
 // must install only the app, and casks for apps that update themselves are
 // left out: those apps keep themselves current. None starts selected.
+//
+// `brew install --cask --force` overwrites whatever sits at the cask's target
+// and deletes it for good, so the app must also be the copy at that target,
+// the only copy of that name or bundle ID, and carry a bundle ID the cask
+// itself names. A same-named app from another vendor, or a second copy the
+// row never showed, is left alone.
 func takeoverRows(apps []localApp, index []caskInfo, managedTokens, managedApps map[string]bool) []Row {
 	byApp := map[string][]caskInfo{}
 	for _, c := range index {
@@ -125,13 +195,26 @@ func takeoverRows(apps []localApp, index []caskInfo, managedTokens, managedApps 
 		byApp[names[0]] = append(byApp[names[0]], c)
 	}
 
+	copies := map[string]int{}
+	for _, app := range apps {
+		copies["name:"+strings.ToLower(app.FileName)]++
+		if app.BundleID != "" {
+			copies["id:"+strings.ToLower(app.BundleID)]++
+		}
+	}
+
 	var rows []Row
 	for _, app := range apps {
 		if managedApps[app.FileName] || strings.HasPrefix(app.BundleID, "com.apple.") {
 			continue
 		}
+		if app.Path != filepath.Join(caskAppDir, app.FileName) ||
+			copies["name:"+strings.ToLower(app.FileName)] != 1 ||
+			copies["id:"+strings.ToLower(app.BundleID)] != 1 {
+			continue
+		}
 		cask, ok := pickCask(byApp[app.FileName])
-		if !ok || managedTokens[cask.Token] {
+		if !ok || managedTokens[cask.Token] || !cask.namesBundleID(app.BundleID) {
 			continue
 		}
 		available, _, _ := strings.Cut(cask.Version, ",")

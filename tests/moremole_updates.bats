@@ -124,6 +124,36 @@ full_scan_rows() {
 	[[ "$output" == *"version=18.1"* ]]
 }
 
+@test "Enter with nothing selected installs nothing" {
+	full_scan_rows
+	printf '%s\n' ENTER ENTER > "$BATS_TEST_TMPDIR/keys"
+	run updates_env KEYS_FILE="$BATS_TEST_TMPDIR/keys" KEY_STATE="$BATS_TEST_TMPDIR/key-state" /bin/bash -c '
+		source "$1"
+		enter_alt_screen() { :; }
+		leave_alt_screen() { :; }
+		stty() { :; }
+		tput() { if [[ "$1" == cols ]]; then echo 80; else echo 20; fi; }
+		drain_pending_input() { :; }
+		read_key() {
+			local index key
+			index=$(cat "$KEY_STATE" 2>/dev/null || echo 0)
+			index=$((index + 1))
+			printf "%s\n" "$index" > "$KEY_STATE"
+			key=$(sed -n "${index}p" "$KEYS_FILE")
+			printf "%s\n" "${key:-QUIT}"
+		}
+		for source in brew store apps macos; do
+			load_update_rows < "$ROWS_DIR/$source"
+		done
+		order_update_rows
+		if select_updates; then echo PICKED; else echo NOTHING; fi
+		printf "RESULT=[%s]\n" "$MOLE_SELECTION_RESULT"
+	' bash "$PROJECT_ROOT/bin/moremole-updates.sh"
+	[ "$status" -eq 0 ] || { echo "$output"; return 1; }
+	[[ "$output" == *"NOTHING"*"RESULT=[]"* ]] || return 1
+	[ ! -s "$CALLS" ]
+}
+
 @test "the pick list starts with nothing selected, in A-Z order" {
 	full_scan_rows
 	printf '%s\n' SPACE DOWN DOWN SPACE ENTER > "$BATS_TEST_TMPDIR/keys"

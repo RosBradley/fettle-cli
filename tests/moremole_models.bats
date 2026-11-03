@@ -202,7 +202,7 @@ osascript -e quit app \"Ollama\"" ] || { cat "$CALLS"; return 1; }
 }
 
 @test "removing picks from every model, stops one in use, and frees only what was removed" {
-	row list model broken:1b 1000000000 1788343200 "" 0
+	row list-check model broken:1b 1000000000 1788343200 current 0
 	installed_models
 	# A-Z, as Ollama lists them: broken, gemma3, llama3.2 (in use), qwen3.
 	# Pick broken and llama3.2.
@@ -213,13 +213,56 @@ osascript -e quit app \"Ollama\"" ] || { cat "$CALLS"; return 1; }
 		printf "\n" | main --remove
 	' bash "$PROJECT_ROOT/bin/moremole-models.sh" "$SCRIPTED"
 	[ "$status" -eq 1 ] || { echo "$output"; return 1; }
-	[[ "$output" == *"Models to remove:"*"broken:1b"*"llama3.2:latest"*"Frees up to 3.00GB"*"do not go to the Trash"*"A model in use is unloaded first"* ]] || return 1
+	[[ "$output" == *"Models to remove:"*"broken:1b"*"llama3.2:latest"*"Frees up to 3.00GB"*"do not go to the Trash. You can download them again."*"A model in use is unloaded first"* ]] || return 1
+	[[ "$output" != *"may not download again"* ]] || return 1
 	[[ "$output" == *"Some models did not finish"*"Removed"*"1"*"Not done: broken:1b: model is damaged"*"Freed up to 2.00GB"* ]] || return 1
 	[ "$(cat "$CALLS")" = "ollama rm broken:1b
 ollama stop llama3.2:latest
 ollama rm llama3.2:latest" ] || { cat "$CALLS"; return 1; }
 	grep -q "REMOVED llama3.2:latest (removed with ollama rm)" "$HOME/Library/Logs/mole/operations.log" || return 1
 	grep -q "FAILED broken:1b (model is damaged)" "$HOME/Library/Logs/mole/operations.log"
+}
+
+@test "removing a model made on this Mac warns it may not download again" {
+	installed_models
+	# A-Z: gemma3, llama3.2, my-assistant (made on this Mac), qwen3; pick my-assistant.
+	printf '%s\n' DOWN DOWN SPACE ENTER > "$KEYS_FILE"
+	run models_env /bin/bash -c '
+		source "$1"
+		eval "$2"
+		printf "\033" | main --remove
+	' bash "$PROJECT_ROOT/bin/moremole-models.sh" "$SCRIPTED"
+	[ "$status" -eq 0 ] || { echo "$output"; return 1; }
+	[[ "$output" == *"my-assistant:latest"*"do not go to the Trash."*"may not download again: my-assistant:latest"* ]] || return 1
+	[[ "$output" != *"You can download them again"* ]] || return 1
+	[ ! -s "$CALLS" ]
+}
+
+@test "Enter with nothing selected removes no model" {
+	installed_models
+	printf '%s\n' ENTER ENTER > "$KEYS_FILE"
+	run models_env /bin/bash -c '
+		source "$1"
+		eval "$2"
+		printf "\n" | main --remove
+	' bash "$PROJECT_ROOT/bin/moremole-models.sh" "$SCRIPTED"
+	[ "$status" -eq 0 ] || { echo "$output"; return 1; }
+	[[ "$output" != *"Models to remove:"* ]] || return 1
+	[ ! -s "$CALLS" ]
+}
+
+@test "a dry run with no library to show downloads nothing and asks nothing" {
+	row library notice library-failed "Couldn't read Ollama's model list at ollama.com/library (HTTP 503)."
+	printf 'gemma3:4b 3300000000\n' > "$ROWS_DIR/sizes"
+	run models_env /bin/bash -c '
+		source "$1"
+		eval "$2"
+		printf "gemma3:4b\n\n" | main --download --dry-run
+	' bash "$PROJECT_ROOT/bin/moremole-models.sh" "$SCRIPTED"
+	[ "$status" -eq 0 ] || { echo "$output"; return 1; }
+	[[ "$output" == *"nothing was downloaded"* ]] || return 1
+	[[ "$output" != *"Model to download"* && "$output" != *"Models downloaded"* ]] || return 1
+	[ ! -s "$CALLS" ]
 }
 
 @test "downloading picks from the library and says whether each fits this Mac" {
