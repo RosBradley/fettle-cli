@@ -11,6 +11,16 @@ import (
 	"github.com/tw93/mole/internal/units"
 )
 
+// Keep the fallback within both dimensions so the renderer cannot clip away
+// its explanation. A later resize recomputes the dashboard from the model.
+func renderTerminalTooSmall(width, height int) string {
+	return lipgloss.NewStyle().
+		Width(width).
+		MaxWidth(width).
+		MaxHeight(height).
+		Render("Terminal too small. Enlarge the window to view status.")
+}
+
 var (
 	titleStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("#C79FD7")).Bold(true)
 	subtleStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#737373"))
@@ -904,9 +914,7 @@ func renderBatteryCard(batts []BatteryStatus, thermal ThermalStatus, probed bool
 
 		if b.CycleCount > 0 {
 			cycleText := fmt.Sprintf("%d cycles", b.CycleCount)
-			if b.CycleCount > batteryCycleDanger {
-				cycleText = dangerStyle.Render(cycleText)
-			} else if b.CycleCount > batteryCycleWarn {
+			if b.CycleCount > batteryCycleWarn {
 				cycleText = warnStyle.Render(cycleText)
 			}
 			healthParts = append(healthParts, cycleText)

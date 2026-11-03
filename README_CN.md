@@ -1,4 +1,4 @@
-<p align="right"><b>macOS</b> · <a href="https://github.com/tw93/Mole/tree/windows">Windows</a></p>
+<p align="right"><b>macOS</b> · <a href="https://github.com/tw93/Mole/tree/windows#readme">Windows</a> · <a href="https://github.com/tw93/Mole/tree/linux#readme">Linux</a></p>
 
 <div align="center">
   <h1>Mole</h1>
@@ -8,7 +8,7 @@
   <a href="https://github.com/tw93/mole/releases"><img src="https://img.shields.io/github/v/release/tw93/mole?label=version&style=flat-square" alt="Version"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-GPL_v3-blue.svg?style=flat-square" alt="License"></a>
   <a href="https://github.com/tw93/mole/commits"><img src="https://img.shields.io/github/commit-activity/m/tw93/mole?style=flat-square" alt="Commits"></a>
-  <a href="https://twitter.com/HiTw93"><img src="https://img.shields.io/badge/follow-Tw93-red?style=flat-square&logo=Twitter" alt="Twitter"></a>
+  <a href="https://x.com/HiTw93"><img src="https://img.shields.io/badge/follow-Tw93-red?style=flat-square&logo=x" alt="Twitter"></a>
   <a href="https://t.me/+9f9gf4ZrFSQ2OWVl"><img src="https://img.shields.io/badge/chat-Telegram-blueviolet?style=flat-square&logo=Telegram" alt="Telegram"></a>
 </div>
 
@@ -135,7 +135,7 @@ nix profile remove mole
 
 </details>
 
-**Windows 上安装**（[Windows CLI](https://github.com/tw93/Mole/tree/windows)）
+**Windows 上安装**（[Windows CLI](https://github.com/tw93/Mole/tree/windows#readme)）
 
 ```powershell
 iwr -useb https://raw.githubusercontent.com/tw93/Mole/windows/quick-install.ps1 | iex
@@ -471,7 +471,7 @@ Raycast 装好后要手动设置一次：
 </a>
 
 <br/><br/>
-来自 X (Twitter) 用户的真实使用反馈：
+来自 𝕏 用户的真实使用反馈：
 
 <img src="./docs/img/mole-love.png" alt="社区反馈" width="1000" />
 
@@ -480,7 +480,7 @@ Raycast 装好后要手动设置一次：
 ## 支持项目
 
 - 购买 [Mole for Mac](https://mole.fit) 是支持 Mole 持续开发最直接的方式
-- 如果 Mole 帮到了你，欢迎点个 Star、[分享给朋友](https://twitter.com/intent/tweet?url=https://github.com/tw93/Mole&text=Mole%20-%20Deep%20clean%20and%20optimize%20your%20Mac.)，或在 GitHub 提交 Issue 和 PR
+- 如果 Mole 帮到了你，欢迎点个 Star、[分享给朋友](https://x.com/intent/tweet?url=https://github.com/tw93/Mole&text=Mole%20-%20Deep%20clean%20and%20optimize%20your%20Mac.)，或在 GitHub 提交 Issue 和 PR
 - 我养了两只猫，汤圆和可乐，如果 Mole 用着顺手，欢迎投喂她们一顿 <a href="https://cats.tw93.fun?name=Mole" target="_blank">罐头 🥩</a>
 
 已经投喂的好心人 🐱

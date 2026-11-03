@@ -1,4 +1,4 @@
-<p align="right"><b>macOS</b> · <a href="https://github.com/tw93/Mole/tree/windows">Windows</a></p>
+<p align="right"><b>macOS</b> · <a href="https://github.com/tw93/Mole/tree/windows#readme">Windows</a> · <a href="https://github.com/tw93/Mole/tree/linux#readme">Linux</a></p>
 
 <div align="center">
   <h1>Mole</h1>
@@ -8,7 +8,7 @@
   <a href="https://github.com/tw93/mole/releases"><img src="https://img.shields.io/github/v/release/tw93/mole?label=version&style=flat-square" alt="Version"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-GPL_v3-blue.svg?style=flat-square" alt="License"></a>
   <a href="https://github.com/tw93/mole/commits"><img src="https://img.shields.io/github/commit-activity/m/tw93/mole?style=flat-square" alt="Commits"></a>
-  <a href="https://twitter.com/HiTw93"><img src="https://img.shields.io/badge/follow-Tw93-red?style=flat-square&logo=Twitter" alt="Twitter"></a>
+  <a href="https://x.com/HiTw93"><img src="https://img.shields.io/badge/follow-Tw93-red?style=flat-square&logo=x" alt="Twitter"></a>
   <a href="https://t.me/+9f9gf4ZrFSQ2OWVl"><img src="https://img.shields.io/badge/chat-Telegram-blueviolet?style=flat-square&logo=Telegram" alt="Telegram"></a>
 </div>
 
@@ -135,7 +135,7 @@ nix profile remove mole
 
 </details>
 
-**Windowsでインストール**（[Windows版CLI](https://github.com/tw93/Mole/tree/windows)）
+**Windowsでインストール**（[Windows版CLI](https://github.com/tw93/Mole/tree/windows#readme)）
 
 ```powershell
 iwr -useb https://raw.githubusercontent.com/tw93/Mole/windows/quick-install.ps1 | iex
@@ -471,7 +471,7 @@ Moleの開発に貢献いただいたすべての方に感謝申し上げます�
 </a>
 
 <br/><br/>
-X (Twitter) で寄せられた実際の声：
+𝕏 で寄せられた実際の声：
 
 <img src="./docs/img/mole-love.png" alt="コミュニティフィードバック" width="1000" />
 
@@ -480,7 +480,7 @@ PAPAYA 電腦教室 による [Moleチュートリアル動画](https://www.yout
 ## サポート
 
 - [Mole for Mac](https://mole.fit) の購入が、Moleの継続開発を支援する最も直接的な方法です
-- Moleが役に立った場合は、GitHubのStarや [Xでのシェア](https://twitter.com/intent/tweet?url=https://github.com/tw93/Mole&text=Mole%20-%20Deep%20clean%20and%20optimize%20your%20Mac.)、Issue・PRでのフィードバックをお願いします
+- Moleが役に立った場合は、GitHubのStarや [Xでのシェア](https://x.com/intent/tweet?url=https://github.com/tw93/Mole&text=Mole%20-%20Deep%20clean%20and%20optimize%20your%20Mac.)、Issue・PRでのフィードバックをお願いします
 - 我が家には「湯圓（タンユエン）」と「コーラ」という2匹の猫がいて、Moleが役に立ったら彼女たちに <a href="https://cats.tw93.fun?name=Mole" target="_blank">缶詰 🥩</a> をごちそうしてもらえるとうれしいです
 
 支援してくださった方々 🐱

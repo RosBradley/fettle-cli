@@ -2538,6 +2538,40 @@ EOF
     }
 }
 
+@test "official_uninstaller_vendor routes TeamViewer and the antivirus apps to their own uninstallers" {
+    run env HOME="$HOME" PROJECT_ROOT="$PROJECT_ROOT" /bin/bash --noprofile --norc <<'EOF'
+set -euo pipefail
+source "$PROJECT_ROOT/lib/core/common.sh"
+expect() {
+    local got=""
+    got=$(official_uninstaller_vendor "$1" "${3:-}" "") || got=""
+    [[ "$got" == "$2" ]] || echo "MISMATCH|$1|$got|want $2"
+}
+expect com.teamviewer.TeamViewer TeamViewer
+expect com.teamviewer.TeamViewerQS TeamViewer
+expect com.avast.avast Avast
+expect com.avg.hub AVG
+expect com.example.app AVG "AVG AntiVirus"
+expect com.malwarebytes.mbam.frontend.application Malwarebytes
+expect com.bitdefender.antivirusformac Bitdefender
+expect com.intego.virusbarrier.app Intego
+expect com.kaspersky.kav.gui Kaspersky
+expect com.symantec.nfm Norton
+expect com.trendmicro.tmsm.mainui "Trend Micro"
+expect com.adobe.gcclient "Adobe Genuine Service"
+# The same vendors' ordinary apps stay ordinary.
+expect com.kaspersky.passwordmanager ""
+expect com.intego.washingmachine ""
+expect com.bitdefender.virusscanner ""
+expect com.adobe.Photoshop ""
+echo DONE
+EOF
+
+    [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+    [[ "$output" == *"DONE"* ]] || { echo "$output"; return 1; }
+    [[ "$output" != *"MISMATCH|"* ]] || { echo "$output"; return 1; }
+}
+
 @test "batch_uninstall_applications blocks official-uninstaller apps" {
     mkdir -p "$HOME/Applications/Falcon.app"
 
@@ -3603,6 +3637,37 @@ EOF
     [ "$status" -eq 0 ]
 }
 
+@test "decode_file_list rejects NUL bytes without an empty regex error" {
+    run env HOME="$HOME" PROJECT_ROOT="$PROJECT_ROOT" /bin/bash --noprofile --norc << 'EOF'
+set -euo pipefail
+source "$PROJECT_ROOT/lib/core/common.sh"
+source "$PROJECT_ROOT/lib/uninstall/batch.sh"
+
+encoded=$(printf '/path/one\0/path/two' | base64 | tr -d '\n')
+result=$(decode_file_list "$encoded" "TestApp" 2>&1)
+[[ "$result" == *"contains null bytes"* ]] || exit 1
+[[ "$result" != *"empty (sub)expression"* ]] || exit 1
+[[ "$result" != *"/path/one"* ]] || exit 1
+EOF
+
+    [ "$status" -eq 0 ]
+}
+
+@test "decode_file_list keeps non-UTF-8 paths under a UTF-8 locale" {
+    run env HOME="$HOME" PROJECT_ROOT="$PROJECT_ROOT" LC_ALL=en_US.UTF-8 /bin/bash --noprofile --norc << 'EOF'
+set -euo pipefail
+source "$PROJECT_ROOT/lib/core/common.sh"
+source "$PROJECT_ROOT/lib/uninstall/batch.sh"
+
+encoded=$(printf '/Users/test/caf\xe9/data' | base64 | tr -d '\n')
+result=$(decode_file_list "$encoded" "TestApp" 2>&1)
+[[ "$result" != *"null bytes"* ]] || exit 1
+[[ "$result" == "/Users/test/caf"*"/data" ]] || exit 1
+EOF
+
+    [ "$status" -eq 0 ]
+}
+
 @test "login item helper discovery discards partial results and preserves cancellation" {
     local app="$HOME/Applications/PartialHelpers.app"
     local helper="$app/Contents/Library/LoginItems/Partial.app"
@@ -3688,6 +3753,22 @@ if grep -q 'decode_file_list "$encoded_login_item_helpers"' "$PROJECT_ROOT/lib/u
     exit 1
 fi
 exit 0
+EOF
+
+    [ "$status" -eq 0 ]
+}
+
+@test "decode_bundle_id_list rejects NUL bytes without an empty regex error" {
+    run env HOME="$HOME" PROJECT_ROOT="$PROJECT_ROOT" /bin/bash --noprofile --norc << 'EOF'
+set -euo pipefail
+source "$PROJECT_ROOT/lib/core/common.sh"
+source "$PROJECT_ROOT/lib/uninstall/batch.sh"
+
+encoded=$(printf 'com.example.App\0com.example.Helper' | base64 | tr -d '\n')
+result=$(decode_bundle_id_list "$encoded" "TestApp" 2>&1)
+[[ "$result" == *"contains null bytes"* ]] || exit 1
+[[ "$result" != *"empty (sub)expression"* ]] || exit 1
+[[ "$result" != *"com.example.App"* ]] || exit 1
 EOF
 
     [ "$status" -eq 0 ]
@@ -4621,6 +4702,45 @@ actual=$(cat "$trace_file")
 INNER
 
     [ "$status" -eq 0 ]
+}
+
+@test "interactive uninstall still exits 1 when an app failed before the user quits with q" {
+    for failed in 1 0; do
+        run env HOME="$HOME" PROJECT_ROOT="$PROJECT_ROOT" FAILED="$failed" TERM=xterm-256color \
+            /bin/bash --noprofile --norc << 'INNER'
+set -euo pipefail
+source "$PROJECT_ROOT/bin/uninstall.sh"
+app_cache_file="$HOME/apps-cache.txt"
+touch "$app_cache_file"
+log_operation_session_start() { :; }
+hide_cursor() { :; }
+show_cursor() { :; }
+clear_screen() { :; }
+start_uninstall_interactive_screen() { :; }
+stop_uninstall_interactive_screen() { :; }
+drain_pending_input() { :; }
+mole_tty_is_foreground() { return 0; }
+scan_applications() { printf '%s\n' "$app_cache_file"; }
+load_applications() { return 0; }
+select_calls=0
+select_apps_for_uninstall() {
+    select_calls=$((select_calls + 1))
+    if [[ $select_calls -eq 1 ]]; then
+        selected_apps=("1700000000|/Applications/Test.app|Test|com.example.Test|1MB|Today|1024")
+        return 0
+    fi
+    _MOLE_MENU_USER_QUIT=1
+    return 1
+}
+batch_uninstall_applications() { MOLE_UNINSTALL_FAILED_APPS=$((MOLE_UNINSTALL_FAILED_APPS + FAILED)); }
+# Enter returns to the list after the batch; the second selection quits.
+printf '\n' | main
+INNER
+        [ "$status" -eq "$failed" ] || {
+            echo "failed=$failed status=$status $output"
+            return 1
+        }
+    done
 }
 
 @test "main keeps scan and selector on one alternate screen until cancel (#1194)" {
@@ -6972,6 +7092,81 @@ EOF
     [[ "$output" == *"Matched 1 app(s)"* ]] || return 1
     [[ "$output" == *"BATCH_CALLED"* ]] || return 1
     [[ "$output" != *"Proceed with uninstallation"* ]]
+}
+
+@test "by-name uninstall exits 1 when an app fails and 0 when none did" {
+    for failed in 1 0; do
+        run env NO_COLOR=1 HOME="$HOME" PROJECT_ROOT="$PROJECT_ROOT" TERM="xterm-256color" \
+            FAILED="$failed" MOLE_UNINSTALL_FAILED_APPS=7 /bin/bash --noprofile --norc << 'EOF'
+set -euo pipefail
+source "$PROJECT_ROOT/bin/uninstall.sh"
+log_operation_session_start() { :; }
+hide_cursor() { :; }
+show_cursor() { :; }
+clear_screen() { :; }
+scan_applications() { printf 'fixture\n' > "$HOME/apps.list"; printf '%s\n' "$HOME/apps.list"; }
+load_applications() { apps_data=(); return 0; }
+match_apps_by_name() { selected_apps=("1700000000|/Applications/Test.app|Test|com.example.Test|1MB|Today|1024"); }
+batch_uninstall_applications() { MOLE_UNINSTALL_FAILED_APPS=$((MOLE_UNINSTALL_FAILED_APPS + FAILED)); }
+main TestApp < /dev/null
+EOF
+        [ "$status" -eq "$failed" ] || {
+            echo "failed=$failed status=$status $output"
+            return 1
+        }
+    done
+}
+
+@test "batch_uninstall_applications adds a failed app removal to MOLE_UNINSTALL_FAILED_APPS" {
+    local fixture_home
+    fixture_home=$(mktemp -d "$HOME/failed-count-fixture.XXXXXX")
+    HOME="$fixture_home" create_app_artifacts
+
+    run env HOME="$fixture_home" PROJECT_ROOT="$PROJECT_ROOT" /bin/bash --noprofile --norc << 'EOF'
+set -euo pipefail
+source "$PROJECT_ROOT/lib/core/common.sh"
+source "$PROJECT_ROOT/lib/uninstall/batch.sh"
+source "$PROJECT_ROOT/tests/helpers/uninstall.bash"
+mole_test_isolate_uninstall_inventory
+brew() { :; }
+request_sudo_access() { return 0; }
+start_inline_spinner() { :; }
+stop_inline_spinner() { :; }
+enter_alt_screen() { :; }
+leave_alt_screen() { :; }
+hide_cursor() { :; }
+show_cursor() { :; }
+remove_apps_from_dock() { :; }
+force_kill_app() { return 0; }
+sudo() { return 0; }
+
+app_bundle="$HOME/Applications/TestApp.app"
+mkdir -p "$app_bundle"
+# The real batch runs; only the bundle's own removal fails, as a permission
+# error would, so the counter has to come from the batch's failure branch.
+eval "$(declare -f mole_delete | sed '1s/mole_delete/_real_mole_delete/')"
+mole_delete() {
+    [[ "$1" == "$app_bundle" ]] && return 1
+    _real_mole_delete "$@"
+}
+
+selected_apps=("0|$app_bundle|TestApp|com.example.TestApp|0|Never")
+files_cleaned=0
+total_items=0
+total_size_cleaned=0
+MOLE_UNINSTALL_FAILED_APPS=0
+mole_test_select_all_uninstall_data
+# Not a pipe: the batch must run in this shell for the counter to be visible.
+MOLE_TEST_MODE=1 batch_uninstall_applications < <(printf 'd\n') > "$HOME/batch_output.log" 2>&1 || true
+[[ -d "$app_bundle" ]] || { echo "bundle removed despite failing sink"; cat "$HOME/batch_output.log"; exit 1; }
+printf 'FAILED_APPS=%s\n' "$MOLE_UNINSTALL_FAILED_APPS"
+EOF
+
+    [ "$status" -eq 0 ] || {
+        echo "$output"
+        return 1
+    }
+    [[ "$output" == *"FAILED_APPS=1"* ]]
 }
 
 @test "by-name matched list renders control characters as placeholders" {

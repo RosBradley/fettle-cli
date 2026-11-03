@@ -2009,6 +2009,8 @@ uninstall_list_apps() {
 main() {
     # Set current command for operation logging
     export MOLE_CURRENT_COMMAND="uninstall"
+    # Apps that failed across this run's batches; nonzero exits 1.
+    MOLE_UNINSTALL_FAILED_APPS=0
 
     # Default to Trash routing so an accidental uninstall is recoverable.
     # The caller can opt back into rm -rf with --permanent. See #723.
@@ -2122,6 +2124,7 @@ main() {
         # full preview and asks there, after sizing and leftover discovery. A
         # y/N prompt here runs before that scan, so it cannot serve as review.
         batch_uninstall_applications
+        [[ ${MOLE_UNINSTALL_FAILED_APPS:-0} -eq 0 ]] || return 1
         return 0
     fi
 
@@ -2222,6 +2225,8 @@ main() {
                 stop_uninstall_interactive_screen
                 show_cursor
                 moremole_note_cancel
+                # An app that failed earlier in this run still fails the run.
+                [[ ${MOLE_UNINSTALL_FAILED_APPS:-0} -eq 0 ]] || return 1
                 return 0
             fi
             uninstall_abort "application selection did not complete"
@@ -2328,6 +2333,7 @@ main() {
         # is already finished, so exit cleanly instead of touching terminal input.
         if ! mole_tty_is_foreground; then
             show_cursor
+            [[ ${MOLE_UNINSTALL_FAILED_APPS:-0} -eq 0 ]] || return 1
             return 0
         fi
 
@@ -2349,6 +2355,7 @@ main() {
             :
         else
             show_cursor
+            [[ ${MOLE_UNINSTALL_FAILED_APPS:-0} -eq 0 ]] || return 1
             return 0
         fi
 

@@ -1,4 +1,4 @@
-<p align="right"><b>macOS</b> · <a href="https://github.com/tw93/Mole/tree/windows">Windows</a></p>
+<p align="right"><b>macOS</b> · <a href="https://github.com/tw93/Mole/tree/windows#readme">Windows</a> · <a href="https://github.com/tw93/Mole/tree/linux#readme">Linux</a></p>
 
 <div align="center">
   <h1>Mole</h1>
@@ -8,7 +8,7 @@
   <a href="https://github.com/tw93/mole/releases"><img src="https://img.shields.io/github/v/release/tw93/mole?label=version&style=flat-square" alt="Version"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-GPL_v3-blue.svg?style=flat-square" alt="License"></a>
   <a href="https://github.com/tw93/mole/commits"><img src="https://img.shields.io/github/commit-activity/m/tw93/mole?style=flat-square" alt="Commits"></a>
-  <a href="https://twitter.com/HiTw93"><img src="https://img.shields.io/badge/follow-Tw93-red?style=flat-square&logo=Twitter" alt="Twitter"></a>
+  <a href="https://x.com/HiTw93"><img src="https://img.shields.io/badge/follow-Tw93-red?style=flat-square&logo=x" alt="Twitter"></a>
   <a href="https://t.me/+9f9gf4ZrFSQ2OWVl"><img src="https://img.shields.io/badge/chat-Telegram-blueviolet?style=flat-square&logo=Telegram" alt="Telegram"></a>
 </div>
 
@@ -135,7 +135,7 @@ Für eine deklarative Konfiguration füge `github:tw93/mole/main` als Flake-Inpu
 
 </details>
 
-**Unter Windows** ([Windows-CLI](https://github.com/tw93/Mole/tree/windows))
+**Unter Windows** ([Windows-CLI](https://github.com/tw93/Mole/tree/windows#readme))
 
 ```powershell
 iwr -useb https://raw.githubusercontent.com/tw93/Mole/windows/quick-install.ps1 | iex
@@ -471,7 +471,7 @@ Vielen Dank an alle Mitwirkenden, die Mole voranbringen. Folge ihnen gern ❤️
 </a>
 
 <br/><br/>
-Echtes Feedback von Nutzern auf X (Twitter):
+Echtes Feedback von Nutzern auf 𝕏:
 
 <img src="./docs/img/mole-love.png" alt="Community-Feedback zu Mole" width="1000" />
 
@@ -480,7 +480,7 @@ Video-Anleitung bevorzugt? Sieh dir das [Mole-Tutorial](https://www.youtube.com/
 ## Unterstützung
 
 - Der Kauf von [Mole for Mac](https://mole.fit) ist die direkteste Art, die Entwicklung von Mole zu unterstützen
-- Wenn dir Mole hilft, gib dem Projekt einen Stern, [teile es auf X](https://twitter.com/intent/tweet?url=https://github.com/tw93/Mole&text=Mole%20-%20Deep%20clean%20and%20optimize%20your%20Mac.) oder erstelle ein Issue/PR
+- Wenn dir Mole hilft, gib dem Projekt einen Stern, [teile es auf X](https://x.com/intent/tweet?url=https://github.com/tw93/Mole&text=Mole%20-%20Deep%20clean%20and%20optimize%20your%20Mac.) oder erstelle ein Issue/PR
 - Ich habe zwei Katzen, TangYuan und Coke, und wenn Mole dir gefällt, spendiere ihnen gerne eine Dose <a href="https://cats.tw93.fun?name=Mole" target="_blank">Katzenfutter 🥩</a>
 
 Diese wunderbaren Unterstützer haben das bereits getan 🐱

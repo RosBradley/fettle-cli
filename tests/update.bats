@@ -1026,6 +1026,31 @@ EOF
 	[[ "$output" == *"[update] REBUILT Homebrew mole (updated to 9.9.9)"* ]]
 }
 
+@test "Homebrew update logs the change before an interruptible highlights fetch" {
+	run env HOME="$HOME/interrupted-highlights" PROJECT_ROOT="$PROJECT_ROOT" /bin/bash --noprofile --norc << 'EOF'
+set -euo pipefail
+mkdir -p "$HOME"
+source "$PROJECT_ROOT/lib/core/common.sh"
+run_with_timeout() {
+	shift
+	case "$*" in
+		"brew upgrade mole") printf '==> Upgrading mole\n' ;;
+		"brew list --versions mole") printf 'mole 9.9.9\n' ;;
+	esac
+}
+# Ctrl-C during the network fetch ends the run after brew already upgraded.
+mole_print_release_highlights() { exit 130; }
+(update_via_homebrew "1.0.0") || true
+cat "$OPERATIONS_LOG_FILE"
+EOF
+
+	[ "$status" -eq 0 ] || {
+		echo "$output"
+		return 1
+	}
+	[[ "$output" == *"[update] REBUILT Homebrew mole (updated to 9.9.9)"* ]]
+}
+
 @test "mo update preserves actionable Homebrew diagnostics on failure (#1247)" {
 	local fake_brew_bin="$TEST_ROOT/homebrew/bin"
 	local fake_brew_mole="$TEST_ROOT/homebrew/Cellar/mole/9.9.9/bin/mole"
@@ -2499,6 +2524,31 @@ grep -q -- '--max-time 6 .*proxy=http://127.0.0.1:7890' "$HOME/curl-calls" || ex
 : > "$HOME/curl-calls"
 get_latest_version_from_github > /dev/null
 grep -q -- '--max-time 3 .*proxy=$' "$HOME/curl-calls" || exit 3
+SCRIPT
+ [ "$status" -eq 0 ]
+}
+
+@test "release highlights take the first changelog titles and stop at the next section" {
+ run /bin/bash <<'SCRIPT'
+set -euo pipefail
+source "$PROJECT_ROOT/lib/core/common.sh"
+body=$'Intro\r\n### Changelog\r\n\r\n1. Clearer clean output: Rows say what they hold.\r\n2. `mo slim` is safer: detail\r\n3. Plain item without a colon\r\n4. Fourth: x\r\n5. Fifth: y\r\n\r\n### 更新日志\r\n1. 中文: 不应出现'
+got=$(mole_release_highlight_titles "$body" 4)
+want=$'Clearer clean output\n`mo slim` is safer\nPlain item without a colon\nFourth'
+[[ "$got" == "$want" ]] || { printf 'got: %s\n' "$got"; exit 1; }
+[[ -z "$(mole_release_highlight_titles 'no list here' 4)" ]] || exit 1
+SCRIPT
+ [ "$status" -eq 0 ]
+}
+
+@test "release highlights stay silent off a terminal and never fetch there" {
+ run /bin/bash <<'SCRIPT'
+set -euo pipefail
+source "$PROJECT_ROOT/lib/core/common.sh"
+curl() { touch "$HOME/fetched"; printf '{"body":"### Changelog\\n1. A: b"}\n'; }
+out=$(mole_print_release_highlights 9.8.7)
+[[ -z "$out" ]] || { echo "printed: $out"; exit 1; }
+[[ ! -e "$HOME/fetched" ]] || exit 1
 SCRIPT
  [ "$status" -eq 0 ]
 }

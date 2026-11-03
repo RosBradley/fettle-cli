@@ -1,16 +1,16 @@
 > **This is MoreMole,** a personal fork of [Mole](https://github.com/tw93/Mole) by tw93, with a menu of every command, your own commands and a Status screen that fills the window. It is not affiliated with or endorsed by the Mole project. What's different and how to run it: [MOREMOLE.md](MOREMOLE.md). The rest of this page is Mole's own README.
 
-<p align="right"><b>macOS</b> · <a href="https://github.com/tw93/Mole/tree/windows">Windows</a></p>
+<p align="right"><b>macOS</b> · <a href="https://github.com/tw93/Mole/tree/windows#readme">Windows</a> · <a href="https://github.com/tw93/Mole/tree/linux#readme">Linux</a></p>
 
 <div align="center">
   <h1>Mole</h1>
-  <p><b>Deep clean, uninstall apps, optimize, analyze disk, and monitor your Mac. Free open-source CLI, plus a native Mac app.</b></p>
+  <p><b>Deep clean, uninstall, optimize, analyze disk and monitor your Mac. Free open-source CLI, plus a Mac app.</b></p>
   <p>English · <a href="README_CN.md">中文</a> · <a href="README_TW.md">繁體</a> · <a href="README_JA.md">日本語</a> · <a href="README_KR.md">한국어</a> · <a href="README_DE.md">Deutsch</a> · <a href="README_FR.md">Français</a> · <a href="README_UA.md">Українська</a> · <a href="README_RU.md">Русский</a></p>
   <a href="https://github.com/tw93/mole/stargazers"><img src="https://img.shields.io/github/stars/tw93/mole?style=flat-square" alt="Stars"></a>
   <a href="https://github.com/tw93/mole/releases"><img src="https://img.shields.io/github/v/release/tw93/mole?label=version&style=flat-square" alt="Version"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-GPL_v3-blue.svg?style=flat-square" alt="License"></a>
   <a href="https://github.com/tw93/mole/commits"><img src="https://img.shields.io/github/commit-activity/m/tw93/mole?style=flat-square" alt="Commits"></a>
-  <a href="https://twitter.com/HiTw93"><img src="https://img.shields.io/badge/follow-Tw93-red?style=flat-square&logo=Twitter" alt="Twitter"></a>
+  <a href="https://x.com/HiTw93"><img src="https://img.shields.io/badge/follow-Tw93-red?style=flat-square&logo=x" alt="Twitter"></a>
   <a href="https://t.me/+9f9gf4ZrFSQ2OWVl"><img src="https://img.shields.io/badge/chat-Telegram-blueviolet?style=flat-square&logo=Telegram" alt="Telegram"></a>
 </div>
 
@@ -137,7 +137,7 @@ For a declarative installation, add `github:tw93/mole/main` as a flake input and
 
 </details>
 
-**On Windows** ([Windows CLI](https://github.com/tw93/Mole/tree/windows))
+**On Windows** ([Windows CLI](https://github.com/tw93/Mole/tree/windows#readme))
 
 ```powershell
 iwr -useb https://raw.githubusercontent.com/tw93/Mole/windows/quick-install.ps1 | iex
@@ -481,7 +481,7 @@ Thanks to everyone who helped build Mole. Go follow them. ❤️
 </a>
 
 <br/><br/>
-Real feedback from users who shared Mole on X.
+Real feedback from users who shared Mole on 𝕏.
 
 <img src="./docs/img/mole-love.png" alt="Community feedback on Mole" width="1000" />
 
@@ -490,7 +490,7 @@ Watch the [Mole tutorial video](https://www.youtube.com/watch?v=UEe9-w4CcQ0) by 
 ## Support
 
 - Getting [Mole for Mac](https://mole.fit) is the most direct way to support Mole's development
-- If Mole helped you, give it a star, [share it](https://twitter.com/intent/tweet?url=https://github.com/tw93/Mole&text=Mole%20-%20Deep%20clean%20and%20optimize%20your%20Mac.), or open an issue or PR
+- If Mole helped you, give it a star, [share it](https://x.com/intent/tweet?url=https://github.com/tw93/Mole&text=Mole%20-%20Deep%20clean%20and%20optimize%20your%20Mac.), or open an issue or PR
 - I have two cats, TangYuan and Coke, and if Mole makes your life a little easier, feel free to treat them to <a href="https://cats.tw93.fun?name=Mole" target="_blank">canned food 🥩</a>
 
 These lovely people already did 🐱
