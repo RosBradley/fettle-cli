@@ -1,5 +1,5 @@
 #!/bin/bash
-# moremole - AI models (Ollama).
+# moremole - Ollama models.
 # Checks the installed models for updates and installs the ones picked,
 # downloads models from Ollama's library, and removes models. When Ollama is
 # off it offers to turn it on, and turns it off again when done.
@@ -43,6 +43,8 @@ OLLAMA_APP=""
 OLLAMA_CLI=""
 OLLAMA_RUNNING=0
 MAC_MEMORY=0
+# 1 on Apple silicon, where MLX versions of models run.
+MODELS_APPLE_SILICON=0
 # How this run turned Ollama on, to turn it off again: app, serve or "".
 STARTED=""
 SERVE_PID=""
@@ -59,7 +61,17 @@ L_CAPS=()
 L_PULLS=()
 L_UPDATED=()
 L_INSTALLED=()
+L_SIZES=()
 L_DESC=()
+# The versions of the models picked for download, from their tags pages.
+T_NAME=()
+T_BYTES=()
+T_SIZE=()
+T_CONTEXT=()
+T_INPUT=()
+T_MLX=()
+T_DEFAULT=()
+T_INSTALLED=()
 NOTICE_KEYS=()
 NOTICE_TEXTS=()
 
@@ -87,7 +99,7 @@ Nothing starts selected; you pick. If Ollama is off, it offers to turn
 it on, and turns it off again when done.
 
 Options:
-  --download        Pick models from ollama.com/library to download
+  --download        Pick models from ollama.com/library, then the versions to download
   --remove          Pick installed models to remove
   -n, --dry-run     List, without downloading or removing anything
   --debug           Show detailed logs
@@ -123,6 +135,7 @@ read_status() {
             cli=*) OLLAMA_CLI="${line#cli=}" ;;
             running=*) OLLAMA_RUNNING="${line#running=}" ;;
             memory=*) MAC_MEMORY="${line#memory=}" ;;
+            mlx=*) MODELS_APPLE_SILICON="${line#mlx=}" ;;
         esac
     done < <(run_helper status)
     [[ "$MAC_MEMORY" =~ ^[0-9]+$ ]] || MAC_MEMORY=0
@@ -243,10 +256,11 @@ load_models() {
     done
 }
 
-# Read the library ("model name capabilities pulls updated installed description").
+# Read the library ("model name capabilities pulls updated installed sizes
+# description"), one row per model.
 load_library() {
-    local kind name caps pulls updated installed desc
-    while IFS="$MODELS_FIELD_SEP" read -r kind name caps pulls updated installed desc || [[ -n "${kind:-}" ]]; do
+    local kind name caps pulls updated installed sizes desc
+    while IFS="$MODELS_FIELD_SEP" read -r kind name caps pulls updated installed sizes desc || [[ -n "${kind:-}" ]]; do
         case "$kind" in
             notice) add_notice "$name" "$caps" ;;
             model)
@@ -255,9 +269,52 @@ load_library() {
                 L_PULLS+=("$pulls")
                 L_UPDATED+=("${updated:-0}")
                 L_INSTALLED+=("${installed:-0}")
+                L_SIZES+=("$sizes")
                 L_DESC+=("$desc")
                 ;;
         esac
+    done
+}
+
+# Read the versions of the picked models ("tag name bytes size context input
+# mlx default installed"). TAGS_FAILED holds the models whose tags page
+# couldn't be read.
+TAGS_FAILED=()
+load_tags() {
+    local kind name bytes size context input mlx default installed
+    while IFS="$MODELS_FIELD_SEP" read -r kind name bytes size context input mlx default installed || [[ -n "${kind:-}" ]]; do
+        case "$kind" in
+            notice) [[ "$name" != "tags-failed" ]] || TAGS_FAILED+=("$bytes") ;;
+            tag)
+                T_NAME+=("$name")
+                T_BYTES+=("${bytes:-0}")
+                T_SIZE+=("$size")
+                T_CONTEXT+=("$context")
+                T_INPUT+=("$input")
+                T_MLX+=("${mlx:-0}")
+                T_DEFAULT+=("${default:-0}")
+                T_INSTALLED+=("${installed:-0}")
+                ;;
+        esac
+    done
+}
+
+# A model whose tags page couldn't be read still offers its sizes, without
+# the details the page gives.
+add_plain_versions() {
+    local i="$1" size
+    local -a sizes=()
+    [[ -z "${L_SIZES[i]}" ]] || IFS=',' read -r -a sizes <<< "${L_SIZES[i]}"
+    [[ ${#sizes[@]} -gt 0 ]] || sizes=(latest)
+    for size in "${sizes[@]}"; do
+        T_NAME+=("${L_NAME[i]}:$size")
+        T_BYTES+=(0)
+        T_SIZE+=("")
+        T_CONTEXT+=("")
+        T_INPUT+=("")
+        T_MLX+=(0)
+        T_DEFAULT+=(0)
+        T_INSTALLED+=(0)
     done
 }
 
@@ -320,12 +377,49 @@ model_row_text() {
     printf '%s  %s' "$(fit_cell "${M_NAME[i]}" "$width")" "$extra"
 }
 
+# The sizes a model comes in: "8b, 70b", or the smallest to the largest.
+sizes_text() {
+    local -a sizes=()
+    [[ -n "$1" ]] || return 0
+    IFS=',' read -r -a sizes <<< "$1"
+    if [[ ${#sizes[@]} -le 2 ]]; then
+        printf '%s' "${1//,/, }"
+    else
+        printf '%s–%s' "${sizes[0]}" "${sizes[${#sizes[@]} - 1]}"
+    fi
+}
+
 library_row_text() {
-    local i="$1" width="$2" text
-    text="$(fit_cell "${L_NAME[i]}" "$width")"
-    [[ -z "${L_CAPS[i]}" ]] || text+="  ${L_CAPS[i]//,/, }"
-    [[ -z "${L_PULLS[i]}" ]] || text+="  ${L_PULLS[i]} pulls"
-    [[ "${L_INSTALLED[i]}" != "1" ]] || text+="  (installed)"
+    local i="$1" width="$2" text pulls=""
+    [[ -z "${L_PULLS[i]}" ]] || pulls="${L_PULLS[i]} pulls"
+    text="$(fit_cell "${L_NAME[i]}" "$width")  $(fit_cell "${L_CAPS[i]//,/, }" 30)  $(fit_cell "$(sizes_text "${L_SIZES[i]}")" 12)  $(fit_cell "$pulls" 12)"
+    [[ "${L_INSTALLED[i]}" != "1" ]] || text+="  installed"
+    printf '%s' "$text"
+}
+
+# One word for whether a download fits this Mac's memory, as fit_text says.
+fit_word() {
+    local bytes="$1"
+    [[ "$bytes" =~ ^[0-9]+$ && "$bytes" -gt 0 && "$MAC_MEMORY" -gt 0 ]] || return 0
+    local share=$((bytes * 100 / MAC_MEMORY))
+    if ((share <= 50)); then
+        printf 'fits'
+    elif ((share <= 75)); then
+        printf 'tight'
+    else
+        printf 'too big'
+    fi
+}
+
+# A version: name, size, memory fit, context window, input, MLX, and whether
+# it's the model's default or installed already.
+tag_row_text() {
+    local i="$1" width="$2" text mlx="" note=""
+    [[ "${T_MLX[i]}" != "1" ]] || mlx="MLX"
+    [[ "${T_DEFAULT[i]}" != "1" ]] || note="default"
+    [[ "${T_INSTALLED[i]}" != "1" ]] || note="${note:+$note, }installed"
+    text="$(fit_cell "${T_NAME[i]}" "$width")  $(fit_cell "${T_SIZE[i]:-?}" 11)  $(fit_cell "$(fit_word "${T_BYTES[i]}")" 7)  $(fit_cell "${T_CONTEXT[i]}" 5)  $(fit_cell "${T_INPUT[i]}" 12)  $(fit_cell "$mlx" 3)"
+    [[ -z "$note" ]] || text+="  $note"
     printf '%s' "$text"
 }
 
@@ -525,7 +619,7 @@ pick_to_remove() {
 
 # The library opens A-Z; S sorts by when each model was last updated.
 # Search finds a model by its name, what it can do, or its description.
-pick_to_download() {
+pick_models_to_download() {
     local -a search=()
     local i
     for ((i = 0; i < ${#L_NAME[@]}; i++)); do
@@ -538,7 +632,32 @@ pick_to_download() {
     )
     MOLE_MENU_FILTER_NAMES=$(printf '%s\n' "${search[@]}")
     local MOLE_MENU_SORT_MODE=name MOLE_MENU_SORT_REVERSE=false
-    pick "Select models to download" "$@"
+    pick "Select models, then choose their versions" "$@"
+}
+
+# The versions open smallest first; S sorts A-Z. Search finds a version by
+# its name, MLX, what it reads, or default and installed.
+pick_versions_to_download() {
+    local -a search=() sizes_kb=()
+    local i words
+    for ((i = 0; i < ${#T_NAME[@]}; i++)); do
+        words="${T_NAME[i]} ${T_INPUT[i]//,/}"
+        [[ "${T_MLX[i]}" != "1" ]] || words+=" mlx"
+        [[ "${T_DEFAULT[i]}" != "1" ]] || words+=" default"
+        [[ "${T_INSTALLED[i]}" != "1" ]] || words+=" installed"
+        search+=("$words")
+        sizes_kb+=("$((${T_BYTES[i]:-0} / 1024))")
+    done
+    local MOLE_MENU_META_SIZEKB MOLE_MENU_FILTER_NAMES
+    MOLE_MENU_META_SIZEKB=$(
+        IFS=','
+        printf '%s' "${sizes_kb[*]}"
+    )
+    MOLE_MENU_FILTER_NAMES=$(printf '%s\n' "${search[@]}")
+    local MOLE_MENU_SORT_MODE=size MOLE_MENU_SORT_REVERSE=true
+    local title="Select versions: size, fit in memory, context, input"
+    [[ "${MODELS_APPLE_SILICON:-0}" != "1" ]] || title+=", MLX for Apple silicon"
+    pick "$title" "$@"
 }
 
 # Remove: pick installed models and remove them with `ollama rm`.
@@ -654,18 +773,44 @@ run_download() {
         done
         return 0
     else
-        local -a rows=()
+        local -a rows=() models=()
         local i width
         width=$(name_width "${L_NAME[@]}")
         for ((i = 0; i < ${#L_NAME[@]}; i++)); do
             rows+=("$(library_row_text "$i" "$width")")
         done
-        if ! pick_to_download "${rows[@]}"; then
+        if ! pick_models_to_download "${rows[@]}"; then
             moremole_note_cancel
             return 0
         fi
         for i in "${PICKED[@]}"; do
-            chosen+=("${L_NAME[i]}")
+            models+=("${L_NAME[i]}")
+        done
+
+        # Each model's tags page lists its versions, with what they need.
+        spin "Reading the versions of ${#models[@]} models..."
+        load_tags < <(run_helper tags "${models[@]}")
+        unspin
+        local failed
+        for i in "${PICKED[@]}"; do
+            for failed in "${TAGS_FAILED[@]+"${TAGS_FAILED[@]}"}"; do
+                if [[ "$failed" == "${L_NAME[i]}" ]]; then
+                    echo -e "${YELLOW}${ICON_WARNING}${NC} Couldn't read the versions of $(mole_terminal_safe_text "$failed") at ollama.com/library/$(mole_terminal_safe_text "$failed")/tags, so its sizes are listed without details."
+                    add_plain_versions "$i"
+                fi
+            done
+        done
+        rows=()
+        width=$(name_width "${T_NAME[@]}")
+        for ((i = 0; i < ${#T_NAME[@]}; i++)); do
+            rows+=("$(tag_row_text "$i" "$width")")
+        done
+        if ! pick_versions_to_download "${rows[@]}"; then
+            moremole_note_cancel
+            return 0
+        fi
+        for i in "${PICKED[@]}"; do
+            chosen+=("${T_NAME[i]}")
         done
     fi
 
@@ -728,7 +873,7 @@ main() {
     done
 
     if [[ ! -x "$MODELS_HELPER" ]]; then
-        echo -e "${RED}${ICON_ERROR}${NC} AI models needs building first. In your moremole folder, run: make build" >&2
+        echo -e "${RED}${ICON_ERROR}${NC} Ollama models needs building first. In your moremole folder, run: make build" >&2
         return 1
     fi
     if [[ "${MOLE_DRY_RUN:-0}" == "1" ]]; then

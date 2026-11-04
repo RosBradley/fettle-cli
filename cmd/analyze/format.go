@@ -110,6 +110,7 @@ func formatPercent(percent float64, known bool) string {
 }
 
 func coloredProgressBar(value, maxValue int64, percent float64) string {
+	barWidth := analyzeBarWidth() // moremole: stretches with the window
 	if value <= 0 || maxValue <= 0 {
 		return strings.Repeat(" ", barWidth)
 	}
@@ -203,8 +204,8 @@ func calculateNameWidth(termWidth int) int {
 	if available < 24 {
 		return 24
 	}
-	if available > 60 {
-		return 60
+	if available > classicNameWidth {
+		return analyzeNameWidth() // moremole: wider windows get longer names
 	}
 	return available
 }

@@ -31,8 +31,8 @@ readonly MOREMOLE_BUILTIN_ROWS=(
     "Shell completion|mole|completion|Set up Tab completion for moremole and mm;Preview|mole|completion --dry-run|Show the shell setup edits, without making them"
     "Software updates|mole|moremole-updates|Update apps, tools and macOS;Preview|mole|moremole-updates --dry-run|List available updates, without installing anything"
     "Software removal|mole|uninstall|Remove apps completely;Preview|mole|uninstall --dry-run|Show what Software removal would remove, without removing anything"
-    "AI models|mole|moremole-models|Check Ollama models for updates and install them;Preview|mole|moremole-models --dry-run|List Ollama models and their updates, without changing anything;Download|mole|moremole-models --download|Download models from Ollama's library"
-    "AI model removal|mole|moremole-models --remove|Remove Ollama models;Preview|mole|moremole-models --remove --dry-run|List Ollama models and their sizes, without removing anything"
+    "Ollama models|mole|moremole-models|Check your Ollama models for updates and install them;Preview|mole|moremole-models --dry-run|List your Ollama models and their updates, without changing anything;Download new|mole|moremole-models --download|Choose new models from Ollama's library, then the versions to download"
+    "Ollama model removal|mole|moremole-models --remove|Remove Ollama models;Preview|mole|moremole-models --remove --dry-run|List your Ollama models and their sizes, without removing anything"
     "Update MoreMole|update||Get the newest MoreMole, with Mole's latest changes"
 )
 readonly MOREMOLE_SECTION_LABEL="My commands"
@@ -385,7 +385,7 @@ _moremole_command_title() {
         uninstall.sh) title="Software removal" ;;
         optimize.sh) title="Optimize" ;;
         moremole-updates.sh) title="Software updates" ;;
-        moremole-models.sh) title="AI models" ;;
+        moremole-models.sh) title="Ollama models" ;;
         *) title="$(_moremole_command_heading "$1")" ;;
     esac
     [[ -n "$title" ]] || title="${1##*/}"

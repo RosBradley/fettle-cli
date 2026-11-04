@@ -102,9 +102,10 @@ var fetchLibrary = func() (string, error) {
 
 var errEmptyLibrary = errors.New("no models found on the page")
 
-// libraryLines lists one row per model and size that can be downloaded:
-// "llama3.1:8b", or "name:latest" for a model with no size tags. Models
-// that only run on Ollama's servers are left out. Installed ones are marked.
+// libraryLines lists one row per model that can be downloaded, with the
+// size tags it comes in (8b,70b), or none for a model with only "latest".
+// Models that only run on Ollama's servers are left out. A model is marked
+// installed when any of its versions is.
 func libraryLines(fetch func() (string, error), s service) []string {
 	page, err := fetch()
 	var models []libraryModel
@@ -119,30 +120,24 @@ func libraryLines(fetch func() (string, error), s service) []string {
 	installed := map[string]bool{}
 	if local, err := s.models(); err == nil {
 		for _, m := range local {
-			installed[m.Name] = true
+			name, _, _ := strings.Cut(m.Name, ":")
+			installed[name] = true
 		}
 	}
 	var lines []string
 	for _, m := range models {
-		sizes := m.Sizes
-		if len(sizes) == 0 {
-			if m.Cloud {
-				continue
-			}
-			sizes = []string{"latest"}
+		if len(m.Sizes) == 0 && m.Cloud {
+			continue
 		}
 		updated := ""
 		if !m.Updated.IsZero() {
 			updated = strconv.FormatInt(m.Updated.Unix(), 10)
 		}
-		for _, size := range sizes {
-			name := m.Name + ":" + size
-			isInstalled := "0"
-			if installed[name] || (size == "latest" && installed[m.Name]) {
-				isInstalled = "1"
-			}
-			lines = append(lines, row("model", name, strings.Join(m.Capabilities, ","), m.Pulls, updated, isInstalled, m.Description))
+		isInstalled := "0"
+		if installed[m.Name] {
+			isInstalled = "1"
 		}
+		lines = append(lines, row("model", m.Name, strings.Join(m.Capabilities, ","), m.Pulls, updated, isInstalled, strings.Join(m.Sizes, ","), m.Description))
 	}
 	return lines
 }

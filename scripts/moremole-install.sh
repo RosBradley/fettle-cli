@@ -4,7 +4,7 @@
 # Links both names in ~/.local/bin to this folder's `mole`, so updates to the
 # folder take effect at once; adds ~/.local/bin to PATH in ~/.zshrc when it is
 # missing; replaces an older `alias mm=` line; builds Analyze, Status,
-# Software updates, AI models and the command screen when one of them was
+# Software updates, Ollama models and the command screen when one of them was
 # never built; offers to remove the official Mole when Homebrew installed it;
 # links Mole's own names, mo and mole, too when no other Mole answers to them;
 # and offers Tab completion for moremole and mm. Safe to run again.
@@ -17,7 +17,7 @@ readonly LINK_DIR="$HOME/.local/bin"
 readonly LINK_NAMES=(moremole mm)
 # What `make build` builds.
 readonly GO_PARTS=(bin/analyze-go bin/status-go bin/moremole-updates-go bin/moremole-models-go bin/moremole-view-go)
-readonly GO_PARTS_NAMES="Analyze, Status, Software updates, AI models and the command screen"
+readonly GO_PARTS_NAMES="Analyze, Status, Software updates, Ollama models and the command screen"
 # Mole's own names, linked only while no other Mole answers to them.
 readonly MOLE_NAMES=(mo mole)
 readonly SHELL_RC="$HOME/.zshrc"

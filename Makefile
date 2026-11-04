@@ -38,7 +38,7 @@ mod-download:
 	exit 1
 
 # Local build (current architecture)
-# MoreMole: also builds the Software updates and AI models helpers and the
+# MoreMole: also builds the Software updates and Ollama models helpers and the
 # command screen.
 build: mod-download
 	@echo "Building for local architecture..."

@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -153,7 +154,7 @@ func TestListLinesShowSizesStatusAndWhatIsLoaded(t *testing.T) {
 	}
 }
 
-func TestLibraryListsDownloadableSizesAndMarksInstalled(t *testing.T) {
+func TestLibraryListsDownloadableModelsAndMarksInstalled(t *testing.T) {
 	page, err := os.ReadFile(filepath.Join("testdata", "library.html"))
 	if err != nil {
 		t.Fatal(err)
@@ -172,19 +173,26 @@ func TestLibraryListsDownloadableSizesAndMarksInstalled(t *testing.T) {
 	s := fakeService(t, `{"models":[{"name":"llama3.1:8b"},{"name":"nomic-embed-text:latest"}]}`, `{"models":[]}`)
 	lines := libraryLines(func() (string, error) { return string(page), nil }, s)
 	var names []string
-	installed := map[string]string{}
+	installed, sizes := map[string]string{}, map[string]string{}
 	for _, l := range lines {
 		f := fields(l)
 		names = append(names, f[1])
 		installed[f[1]] = f[5]
+		sizes[f[1]] = f[6]
 	}
-	// minimax-m2.7 runs only on Ollama's servers; gemma4 is on both.
-	want := []string{"llama3.1:8b", "llama3.1:70b", "llama3.1:405b", "nomic-embed-text:latest", "gemma4:e2b", "gemma4:e4b", "gemma4:12b", "gemma4:26b", "gemma4:31b"}
-	if !reflect.DeepEqual(names, want) {
+	// One row per model. minimax-m2.7 runs only on Ollama's servers; gemma4
+	// is on both.
+	if want := []string{"llama3.1", "nomic-embed-text", "gemma4"}; !reflect.DeepEqual(names, want) {
 		t.Errorf("rows %q\nwant %q", names, want)
 	}
-	if installed["llama3.1:8b"] != "1" || installed["nomic-embed-text:latest"] != "1" || installed["llama3.1:70b"] != "0" {
+	if sizes["llama3.1"] != "8b,70b,405b" || sizes["nomic-embed-text"] != "" || sizes["gemma4"] != "e2b,e4b,12b,26b,31b" {
+		t.Errorf("sizes %v", sizes)
+	}
+	if installed["llama3.1"] != "1" || installed["nomic-embed-text"] != "1" || installed["gemma4"] != "0" {
 		t.Errorf("installed marks %v", installed)
+	}
+	if f := fields(lines[0]); !strings.HasPrefix(f[7], "Llama 3.1 is a new") {
+		t.Errorf("description %q", f[7])
 	}
 
 	failed := libraryLines(func() (string, error) { return "<html>redesigned</html>", nil }, s)
@@ -228,5 +236,73 @@ func TestFindOllamaUsesTheAppsOwnCommand(t *testing.T) {
 	}
 	if got := statusLines(in, true, 16<<30); !reflect.DeepEqual(got, []string{"app=" + app, "cli=" + cli, "running=1", "memory=17179869184"}) {
 		t.Errorf("status %q", got)
+	}
+}
+
+func tagsFixture(t *testing.T) string {
+	t.Helper()
+	page, err := os.ReadFile(filepath.Join("testdata", "tags.html"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(page)
+}
+
+func TestTagsPageGivesEachVersionsSizeContextInputAndMLX(t *testing.T) {
+	tags := parseTags("qwen3.5", tagsFixture(t))
+	var names []string
+	for _, tag := range tags {
+		names = append(names, tag.Name)
+	}
+	// latest repeats 9b, the default; the cloud version has no size.
+	if want := []string{"qwen3.5:9b", "qwen3.5:9b-mlx", "qwen3.5:9b-q4_K_M", "qwen3.5:122b"}; !reflect.DeepEqual(names, want) {
+		t.Fatalf("versions %q\nwant %q", names, want)
+	}
+	nine, mlx, big := tags[0], tags[1], tags[3]
+	if nine.SizeText != "6.6GB-7.6GB" || nine.Bytes != 6_600_000_000 || nine.Context != "256K" || nine.Input != "Text, Image" || !nine.Default || nine.MLX {
+		t.Errorf("9b: %+v", nine)
+	}
+	if !mlx.MLX || mlx.Default || mlx.Bytes != 8_900_000_000 {
+		t.Errorf("9b-mlx: %+v", mlx)
+	}
+	if big.Bytes != 81_000_000_000 || big.MLX {
+		t.Errorf("122b: %+v", big)
+	}
+	if got := parseTags("gemma4", tagsFixture(t)); len(got) != 0 {
+		t.Errorf("another model's page gave versions: %+v", got)
+	}
+}
+
+func TestTagsLinesMarkInstalledAndLeaveOutMLXOnIntel(t *testing.T) {
+	page := tagsFixture(t)
+	fetch := func(model string) (string, error) {
+		if model == "qwen3.5" {
+			return page, nil
+		}
+		return "", errors.New("HTTP 404")
+	}
+	s := fakeService(t, `{"models":[{"name":"qwen3.5:latest"}]}`, `{"models":[]}`)
+	rows := map[string][]string{}
+	var order []string
+	for _, l := range tagsLines([]string{"qwen3.5", "gone", "../x"}, fetch, s, true) {
+		f := fields(l)
+		rows[f[1]] = f
+		order = append(order, f[0]+":"+f[1])
+	}
+	want := []string{"tag:qwen3.5:9b", "tag:qwen3.5:9b-mlx", "tag:qwen3.5:9b-q4_K_M", "tag:qwen3.5:122b", "notice:tags-failed", "notice:tags-failed"}
+	if !reflect.DeepEqual(order, want) {
+		t.Fatalf("rows %q\nwant %q", order, want)
+	}
+	// qwen3.5:latest is installed, which is the default 9b.
+	if f := rows["qwen3.5:9b"]; f[2] != "6600000000" || f[3] != "6.6GB-7.6GB" || f[4] != "256K" || f[5] != "Text, Image" || f[6] != "0" || f[7] != "1" || f[8] != "1" {
+		t.Errorf("9b row %q", f)
+	}
+	if f := rows["qwen3.5:9b-mlx"]; f[6] != "1" || f[8] != "0" {
+		t.Errorf("9b-mlx row %q", f)
+	}
+	for _, l := range tagsLines([]string{"qwen3.5"}, fetch, s, false) {
+		if f := fields(l); f[6] == "1" {
+			t.Errorf("an Intel Mac was offered an MLX version: %q", f)
+		}
 	}
 }

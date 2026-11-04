@@ -1,5 +1,5 @@
 #!/bin/bash
-# MoreMole: shared by Software updates and AI models, which run other tools
+# MoreMole: shared by Software updates and Ollama models, which run other tools
 # (brew, mas, ollama) with their output on screen and read the notices their
 # Go helpers print.
 

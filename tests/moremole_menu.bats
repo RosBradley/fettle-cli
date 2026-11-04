@@ -216,7 +216,7 @@ echo "STILL_IN_MENU"
 	[[ "$output" == *"RUN [$PROJECT_ROOT/bin/moremole-updates.sh] [--dry-run]"* ]] || return 1
 	# Software removal sits under Software updates.
 	[[ "$output" == *"moremole-updates.sh] [--dry-run]"$'\n'*"RUN [$PROJECT_ROOT/bin/uninstall.sh]"$'\n'*"RUN [$PROJECT_ROOT/bin/uninstall.sh] [--dry-run]"* ]] || return 1
-	# AI models, then AI model removal, under it.
+	# Ollama models, then Ollama model removal, under it.
 	[[ "$output" == *"uninstall.sh] [--dry-run]"$'\n'*"RUN [$PROJECT_ROOT/bin/moremole-models.sh]"$'\n'*"RUN [$PROJECT_ROOT/bin/moremole-models.sh] [--dry-run]"$'\n'*"RUN [$PROJECT_ROOT/bin/moremole-models.sh] [--download]"$'\n'*"RUN [$PROJECT_ROOT/bin/moremole-models.sh] [--remove]"$'\n'*"RUN [$PROJECT_ROOT/bin/moremole-models.sh] [--remove] [--dry-run]"$'\n'* ]] || return 1
 	[[ "$output" == *'RUN [/bin/sh] [-c] [echo "hi there"]'* ]]
 }

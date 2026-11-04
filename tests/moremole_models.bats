@@ -1,6 +1,6 @@
 #!/usr/bin/env bats
 # shellcheck disable=SC2016  # inner bash scripts expand their own arguments
-# MoreMole: AI models (bin/moremole-models.sh). A fake helper stands in for
+# MoreMole: Ollama models (bin/moremole-models.sh). A fake helper stands in for
 # moremole-models-go, and fake ollama, open and osascript commands record what
 # would have run; nothing touches a real Ollama.
 
@@ -47,6 +47,13 @@ case "$1" in
 		done
 		;;
 	list) [[ "${2:-}" == --check ]] && cat "$ROWS_DIR/list-check" || cat "$ROWS_DIR/list" ;;
+	tags)
+		shift
+		printf '%s\n' "$*" >> "$ROWS_DIR/tags-asked"
+		for model in "$@"; do
+			awk -F $'\x1f' -v m="$model" '($1 == "tag" && index($2, m ":") == 1) || ($1 == "notice" && $3 == m)' "$ROWS_DIR/tags" 2> /dev/null
+		done
+		;;
 	*) cat "$ROWS_DIR/$1" 2> /dev/null ;;
 esac
 exit 0
@@ -279,23 +286,73 @@ ollama rm llama3.2:latest" ] || { cat "$CALLS"; return 1; }
 	[ ! -s "$CALLS" ]
 }
 
-@test "downloading picks from the library and says whether each fits this Mac" {
-	row library model gemma3:4b "vision" 30.1M 1790000000 1 "Gemma 3 from Google."
-	row library model gemma3:27b "vision" 30.1M 1790000000 0 "Gemma 3 from Google."
-	row library model llama3.1:405b "tools" 120.6M 1733006040 0 "Llama 3.1 from Meta."
-	printf 'gemma3:27b 17000000000\nllama3.1:405b 243000000000\n' > "$ROWS_DIR/sizes"
-	# A-Z: gemma3:27b, gemma3:4b (installed), llama3.1:405b; pick 27b and 405b.
-	printf '%s\n' SPACE DOWN DOWN SPACE ENTER > "$KEYS_FILE"
+library_models() {
+	row library model gemma3 "vision" 30.1M 1790000000 1 "1b,4b,27b" "Gemma 3 from Google."
+	row library model llama3.1 "tools" 120.6M 1733006040 0 "8b,70b,405b" "Llama 3.1 from Meta."
+}
+
+@test "downloading picks models, then their versions, with size, fit, context, input and MLX" {
+	library_models
+	printf 'mlx=1\n' >> "$ROWS_DIR/status"
+	row tags tag gemma3:27b 17000000000 17GB 128K "Text, Image" 0 0 0
+	row tags tag gemma3:4b 3300000000 3.3GB 128K "Text, Image" 0 1 1
+	row tags tag gemma3:4b-mlx 3500000000 3.5GB 128K "Text, Image" 1 0 0
+	row tags tag llama3.1:405b 243000000000 243GB 128K Text 0 0 0
+	printf 'gemma3:27b 17000000000\ngemma3:4b-mlx 3500000000\nllama3.1:405b 243000000000\n' > "$ROWS_DIR/sizes"
+	# Models A-Z: gemma3, llama3.1; pick both. Versions smallest first:
+	# gemma3:4b, gemma3:4b-mlx, gemma3:27b, llama3.1:405b; pick the last three.
+	printf '%s\n' SPACE DOWN SPACE ENTER DOWN SPACE DOWN SPACE DOWN SPACE ENTER > "$KEYS_FILE"
 	run models_env /bin/bash -c '
 		source "$1"
 		eval "$2"
 		printf "\n" | main --download
 	' bash "$PROJECT_ROOT/bin/moremole-models.sh" "$SCRIPTED"
 	[ "$status" -eq 0 ] || { echo "$output"; return 1; }
-	[[ "$output" == *"Models to download:"*"gemma3:27b"*"17.00GB · too big for 17.18GB memory"*"llama3.1:405b"*"243.00GB · too big"* ]] || return 1
-	[[ "$output" == *"Downloads up to 260.00GB"*"Models downloaded"*"Downloaded"*"2"* ]] || return 1
+	[ "$(cat "$ROWS_DIR/tags-asked")" = "gemma3 llama3.1" ] || return 1
+	[[ "$output" == *"Select models, then choose their versions"* ]] || return 1
+	[[ "$output" == *"gemma3"*"vision"*"1b–27b"*"30.1M pulls"*"installed"* ]] || return 1
+	[[ "$output" == *"Select versions: size, fit in memory, context, input, MLX for Apple silicon"* ]] || return 1
+	[[ "$output" == *"gemma3:4b "*"3.3GB"*"fits"*"128K"*"Text, Image"*"default, installed"* ]] || return 1
+	[[ "$output" == *"gemma3:4b-mlx"*"3.5GB"*"fits"*"MLX"* ]] || return 1
+	[[ "$output" == *"llama3.1:405b"*"243GB"*"too big"* ]] || return 1
+	[[ "$output" == *"Models to download:"*"gemma3:27b"*"17.00GB · too big for 17.18GB memory"*"gemma3:4b-mlx"*"3.50GB · fits"*"llama3.1:405b"*"243.00GB · too big"* ]] || return 1
+	[[ "$output" == *"Downloads up to 263.50GB"*"Models downloaded"*"Downloaded"*"3"* ]] || return 1
 	[ "$(cat "$CALLS")" = "ollama pull gemma3:27b
+ollama pull gemma3:4b-mlx
 ollama pull llama3.1:405b" ] || { cat "$CALLS"; return 1; }
+}
+
+@test "an Intel Mac's version list doesn't mention MLX, and cancelling it downloads nothing" {
+	library_models
+	row tags tag gemma3:4b 3300000000 3.3GB 128K "Text, Image" 0 1 0
+	printf '%s\n' SPACE ENTER QUIT > "$KEYS_FILE"
+	run models_env /bin/bash -c '
+		source "$1"
+		eval "$2"
+		main --download
+	' bash "$PROJECT_ROOT/bin/moremole-models.sh" "$SCRIPTED"
+	[ "$status" -eq 0 ] || { echo "$output"; return 1; }
+	[[ "$output" == *"Select versions: size, fit in memory, context, input"* ]] || return 1
+	[[ "$output" != *"MLX"* ]] || return 1
+	[ ! -s "$CALLS" ]
+}
+
+@test "a model whose versions can't be read still offers its sizes" {
+	library_models
+	row tags notice tags-failed llama3.1
+	printf 'llama3.1:70b 43000000000\n' > "$ROWS_DIR/sizes"
+	# Pick llama3.1; its versions are 8b, 70b, 405b with no sizes, A-Z
+	# within equal sizes: pick 70b.
+	printf '%s\n' DOWN SPACE ENTER DOWN SPACE ENTER > "$KEYS_FILE"
+	run models_env /bin/bash -c '
+		source "$1"
+		eval "$2"
+		printf "\n" | main --download
+	' bash "$PROJECT_ROOT/bin/moremole-models.sh" "$SCRIPTED"
+	[ "$status" -eq 0 ] || { echo "$output"; return 1; }
+	[[ "$output" == *"Couldn't read the versions of llama3.1 at ollama.com/library/llama3.1/tags, so its sizes are listed without details."* ]] || return 1
+	[[ "$output" == *"llama3.1:8b"*"llama3.1:70b"*"llama3.1:405b"* ]] || return 1
+	[ "$(cat "$CALLS")" = "ollama pull llama3.1:70b" ] || { cat "$CALLS"; return 1; }
 }
 
 @test "when the library page can't be read, a typed name is checked before downloading" {

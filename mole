@@ -337,7 +337,7 @@ main() {
         "updates")
             run_mole_command "$SCRIPT_DIR/bin/moremole-updates.sh" "${args[@]:1}"
             ;;
-        # MoreMole: AI models (Ollama).
+        # MoreMole: Ollama models.
         "models")
             run_mole_command "$SCRIPT_DIR/bin/moremole-models.sh" "${args[@]:1}"
             ;;
