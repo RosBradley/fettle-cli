@@ -15,7 +15,22 @@ import (
 // that started the shell (macOS sets __CFBundleIdentifier for it), the app
 // TERM_PROGRAM names when it names one ("iTerm.app"), and any app among the
 // parents of this process. A terminal that runs shells through a helper of
-// its own, as iTerm2 can, is not among the parents.
+// its own, as iTerm2 can, is not among the parents. Terminals that name
+// themselves without ".app" (Ghostty, WezTerm, Warp, Hyper, Tabby) or only
+// set a variable of their own (kitty, Alacritty) are found by their app's
+// file name, and the bundle identifier is read from the app itself.
+
+// knownTerminals are those terminals, by TERM_PROGRAM (lowercased) or by a
+// variable each sets, with the file name of their app.
+var knownTerminals = []struct{ program, variable, app string }{
+	{program: "ghostty", app: "Ghostty.app"},
+	{program: "wezterm", app: "WezTerm.app"},
+	{program: "warpterminal", app: "Warp.app"},
+	{program: "hyper", app: "Hyper.app"},
+	{program: "tabby", app: "Tabby.app"},
+	{variable: "KITTY_WINDOW_ID", app: "kitty.app"},
+	{variable: "ALACRITTY_WINDOW_ID", app: "Alacritty.app"},
+}
 
 // appDirs are the folders apps are installed in. Tests replace it.
 var appDirs = func() []string {
@@ -79,8 +94,14 @@ func hostApps(getenv func(string) string, parents []string) []string {
 		ids = append(ids, id)
 	}
 	add(getenv("__CFBundleIdentifier"))
-	if program := getenv("TERM_PROGRAM"); strings.HasSuffix(program, ".app") {
+	program := getenv("TERM_PROGRAM")
+	if strings.HasSuffix(program, ".app") {
 		add(installedBundle(program))
+	}
+	for _, t := range knownTerminals {
+		if (t.program != "" && strings.EqualFold(program, t.program)) || (t.variable != "" && getenv(t.variable) != "") {
+			add(installedBundle(t.app))
+		}
 	}
 	for _, exe := range parents {
 		if app := appPathOf(exe); app != "" {

@@ -48,7 +48,7 @@ Mole leaves app updates out on purpose. MoreMole brings every source into one li
 - Homebrew apps and command-line tools, App Store apps, macOS, and apps with their own updater (Sparkle).
 - Each row names its source. **Preview** only lists what's available.
 - A confirm screen says what each pick will do: an app will quit, your copy will be replaced, or a password is needed.
-- **It never updates the terminal app it's running in,** because that could stop the update partway. It tells you to update that app another way.
+- **It never updates the terminal app it's running in** (iTerm2, Ghostty, WezTerm, Warp, kitty and others), because that could stop the update partway. Instead it gives the steps: for Homebrew, the command to run in Terminal; otherwise the app's Check for Updates or the App Store.
 - The summary says what updated, what didn't and why, with the tool's own error line. Each one is recorded in History.
 - Occasionally an app you installed yourself has a newer Homebrew version. MoreMole offers to move that app to Homebrew, but only when the app, its location and its bundle ID all match exactly.
 

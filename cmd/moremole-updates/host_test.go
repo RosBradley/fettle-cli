@@ -70,3 +70,37 @@ func TestHostAppsFindsTheTerminalEachWay(t *testing.T) {
 		t.Errorf("Apple_Terminal: %q", got)
 	}
 }
+
+func TestHostAppsFindsTerminalsThatNameThemselvesWithoutDotApp(t *testing.T) {
+	useApps(t, map[string]string{
+		"Ghostty.app":   "com.mitchellh.ghostty",
+		"WezTerm.app":   "com.github.wez.wezterm",
+		"Warp.app":      "dev.warp.Warp-Stable",
+		"Hyper.app":     "co.zeit.hyper",
+		"Tabby.app":     "org.tabby",
+		"kitty.app":     "net.kovidgoyal.kitty",
+		"Alacritty.app": "org.alacritty",
+	})
+	for _, tc := range []struct {
+		env  map[string]string
+		want string
+	}{
+		{map[string]string{"TERM_PROGRAM": "ghostty"}, "com.mitchellh.ghostty"},
+		{map[string]string{"TERM_PROGRAM": "WezTerm"}, "com.github.wez.wezterm"},
+		{map[string]string{"TERM_PROGRAM": "WarpTerminal"}, "dev.warp.Warp-Stable"},
+		{map[string]string{"TERM_PROGRAM": "Hyper"}, "co.zeit.hyper"},
+		{map[string]string{"TERM_PROGRAM": "Tabby"}, "org.tabby"},
+		{map[string]string{"KITTY_WINDOW_ID": "1"}, "net.kovidgoyal.kitty"},
+		{map[string]string{"ALACRITTY_WINDOW_ID": "4294967297"}, "org.alacritty"},
+	} {
+		got := hostApps(func(k string) string { return tc.env[k] }, nil)
+		if !reflect.DeepEqual(got, []string{tc.want}) {
+			t.Errorf("%v: got %q, want %q", tc.env, got, tc.want)
+		}
+	}
+	// A terminal that isn't installed in an Applications folder adds nothing.
+	useApps(t, map[string]string{})
+	if got := hostApps(func(k string) string { return map[string]string{"TERM_PROGRAM": "ghostty"}[k] }, nil); len(got) != 0 {
+		t.Errorf("Ghostty not installed: %q", got)
+	}
+}

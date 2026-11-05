@@ -382,11 +382,11 @@ select_updates() {
 
 confirm_updates() {
     local -a indices=("$@") hosts=()
-    local idx installable=0 has_app=false has_takeover=false has_store=false has_macos=false has_settings=false has_feed=false
+    local idx host installable=0 has_app=false has_takeover=false has_store=false has_macos=false has_settings=false has_feed=false
     echo -e "${PURPLE_BOLD}Updates to install:${NC}"
     for idx in "${indices[@]}"; do
         if is_host_update "$idx"; then
-            hosts+=("$(mole_terminal_safe_text "${U_NAME[idx]}")")
+            hosts+=("$idx")
             printf '  %s- %s %s · left out: it runs MoreMole%s\n' "$GRAY" \
                 "$(mole_terminal_safe_text "${U_NAME[idx]}")" "$(version_text "$idx")" "$NC"
             continue
@@ -422,9 +422,9 @@ confirm_updates() {
     if [[ "$has_feed" == "true" ]]; then
         echo -e "${GRAY}Apps with their own updater open at the end; it installs the update.${NC}"
     fi
-    if [[ ${#hosts[@]} -gt 0 ]]; then
-        echo -e "${YELLOW}${ICON_WARNING}${NC} $(host_advice "${hosts[@]}")"
-    fi
+    for host in "${hosts[@]+"${hosts[@]}"}"; do
+        print_host_advice "${YELLOW}${ICON_WARNING}${NC} " "$host"
+    done
     # Nothing to ask when everything picked is left out; the summary says why.
     [[ $installable -gt 0 ]] || return 0
     echo -ne "${PURPLE}${ICON_ARROW}${NC} Install ${installable} updates  ${GREEN}Enter${NC} confirm, ${GRAY}ESC${NC} cancel: "
@@ -444,16 +444,41 @@ confirm_updates() {
     return 1
 }
 
-# The advice for apps left out because MoreMole runs inside them.
+# How to update an app left out because MoreMole runs inside it, which
+# depends on where its update comes from. Terminal is always there to run a
+# Homebrew command from, since macOS ships it and updates it itself.
 host_advice() {
-    local names="$1" verb="runs"
-    shift
-    while [[ $# -gt 0 ]]; do
-        names+=", $1"
-        verb="run"
-        shift
-    done
-    printf '%s %s MoreMole, so updating from here could end this run: use the app'"'"'s own Check for Updates, or update it from another terminal.' "$names" "$verb"
+    local idx="$1" name
+    name=$(mole_terminal_safe_text "${U_NAME[idx]}")
+    printf '%s runs MoreMole, so updating it from here could end this run. ' "$name"
+    if [[ -n "$(host_command "$idx")" ]]; then
+        printf 'To update it, quit %s, open Terminal (Applications › Utilities) and run:' "$name"
+        return 0
+    fi
+    case "${U_KIND[idx]}" in
+        feed) printf 'To update it, choose Check for Updates in the %s menu.' "$name" ;;
+        store) printf 'To update it, open the App Store, click Updates and update %s there.' "$name" ;;
+        *) printf "Use the app's own Check for Updates, or update it from another terminal." ;;
+    esac
+}
+
+# The command host_advice asks to run, the one MoreMole would have run, or
+# nothing when the update isn't Homebrew's or its name isn't a plain token.
+host_command() {
+    local id="${U_ID[$1]}"
+    [[ "$id" =~ ^[a-z0-9][a-z0-9@._+-]*$ ]] || return 0
+    case "${U_KIND[$1]}" in
+        app) printf 'brew upgrade --cask --greedy %s' "$id" ;;
+        takeover) printf 'brew install --cask --force %s' "$id" ;;
+    esac
+}
+
+# The advice and, on a line of its own to copy, the command.
+print_host_advice() {
+    local prefix="$1" idx="$2" command
+    echo -e "${prefix}$(host_advice "$idx")"
+    command=$(host_command "$idx")
+    [[ -z "$command" ]] || echo "    $command"
 }
 
 record_update() {
@@ -494,7 +519,7 @@ install_update() {
     local tool
 
     if is_host_update "$idx"; then
-        HOST_SKIPPED+=("${U_NAME[idx]}")
+        HOST_SKIPPED+=("$idx")
         log_operation "$MOLE_CURRENT_COMMAND" "SKIPPED" "${U_NAME[idx]}" "runs MoreMole; update it from another terminal"
         return 0
     fi
@@ -620,14 +645,12 @@ show_updates_summary() {
     elif [[ ${#SETTINGS_ITEMS[@]} -eq 0 && ${#OPENED_NAMES[@]} -eq 0 ]]; then
         details+=("Nothing was updated")
     fi
-    if [[ ${#HOST_SKIPPED[@]} -gt 0 ]]; then
-        local -a host_names=()
-        local host_name
-        for host_name in "${HOST_SKIPPED[@]}"; do
-            host_names+=("$(mole_terminal_safe_text "$host_name")")
-        done
-        details+=("${ICON_WARNING} Left out: $(host_advice "${host_names[@]}")")
-    fi
+    local host command
+    for host in "${HOST_SKIPPED[@]+"${HOST_SKIPPED[@]}"}"; do
+        details+=("${ICON_WARNING} Left out: $(host_advice "$host")")
+        command=$(host_command "$host")
+        [[ -z "$command" ]] || details+=("    $command")
+    done
     local item
     for item in "${UPDATE_FAILURES[@]+"${UPDATE_FAILURES[@]}"}"; do
         details+=("${ICON_WARNING} Not updated: $(mole_terminal_safe_text "$item")")

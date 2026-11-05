@@ -325,11 +325,11 @@ open $BATS_TEST_TMPDIR/Apps/Other.app" ] || { echo "$calls"; return 1; }
 	rest="${output#*---}"
 	alone="${rest%%---*}"
 	[[ "$confirm" == *"- iTerm2"*"left out: it runs MoreMole"* ]] || return 1
-	[[ "$confirm" == *"iTerm2 runs MoreMole, so updating from here could end this run"*"Check for Updates"*"another terminal"* ]] || return 1
+	[[ "$confirm" == *"iTerm2 runs MoreMole, so updating it from here could end this run. To update it, quit iTerm2, open Terminal (Applications › Utilities) and run:"$'\n'"    brew upgrade --cask --greedy iterm2"$'\n'* ]] || return 1
 	[[ "$confirm" == *"Install 1 updates"*"CONFIRMED"* ]] || return 1
 	# Picking only that app asks nothing; the summary explains.
 	[[ "$alone" == *"left out"*"NO_QUESTION"* && "$alone" != *"Install"*"updates  "* ]] || return 1
-	[[ "$output" == *"Updates installed"*"Updated"*"1"*"Left out: iTerm2 runs MoreMole"* ]] || return 1
+	[[ "$output" == *"Updates installed"*"Updated"*"1"*"Left out: iTerm2 runs MoreMole"*"and run:"$'\n'"    brew upgrade --cask --greedy iterm2"$'\n'* ]] || return 1
 
 	local calls
 	calls=$(cat "$CALLS")
@@ -349,8 +349,29 @@ open $BATS_TEST_TMPDIR/Apps/Other.app" ] || { echo "$calls"; return 1; }
 		show_updates_summary
 	' bash "$PROJECT_ROOT/bin/moremole-updates.sh"
 	[ "$status" -eq 0 ] || { echo "$output"; return 1; }
-	[[ "$output" == *"Nothing installed"*"Nothing was updated"*"Left out: iTerm2 runs MoreMole"* ]] || return 1
+	[[ "$output" == *"Nothing installed"*"Nothing was updated"*"Left out: iTerm2 runs MoreMole"*"To update it, choose Check for Updates in the iTerm2 menu."* ]] || return 1
+	[[ "$output" != *"brew upgrade"* ]] || return 1
 	[ ! -s "$CALLS" ]
+}
+
+@test "each app MoreMole runs inside gets the steps for where its update comes from" {
+	row scan app ghostty Ghostty 1.2.0 1.2.1 "" com.mitchellh.ghostty
+	row scan takeover wezterm WezTerm 2024 2025 "" com.github.wez.wezterm
+	row scan store 1234567 "Store Term" 1.0 1.1 "" com.example.storeterm
+	row scan app 'bad;token' "Odd Term" 1.0 1.1 "" com.example.odd
+	run updates_env /bin/bash -c '
+		source "$1"
+		HOST_BUNDLES=(com.mitchellh.ghostty com.github.wez.wezterm com.example.storeterm com.example.odd)
+		load_update_rows < "$ROWS_DIR/scan"
+		confirm_updates 0 1 2 3 < /dev/null
+	' bash "$PROJECT_ROOT/bin/moremole-updates.sh"
+	[ "$status" -eq 0 ] || { echo "$output"; return 1; }
+	[[ "$output" == *"quit Ghostty, open Terminal (Applications › Utilities) and run:"$'\n'"    brew upgrade --cask --greedy ghostty"$'\n'* ]] || return 1
+	[[ "$output" == *"quit WezTerm, open Terminal (Applications › Utilities) and run:"$'\n'"    brew install --cask --force wezterm"$'\n'* ]] || return 1
+	[[ "$output" == *"To update it, open the App Store, click Updates and update Store Term there."* ]] || return 1
+	# A name that isn't a plain Homebrew token is never printed as a command.
+	[[ "$output" == *"Odd Term runs MoreMole"*"Use the app's own Check for Updates, or update it from another terminal."* ]] || return 1
+	[[ "$output" != *"bad;token"* ]]
 }
 
 @test "a failed update names the tool's own error in the summary and History" {
