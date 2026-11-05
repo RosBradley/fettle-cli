@@ -52,9 +52,9 @@ printf "count=%s\n" "${#MOREMOLE_MY_NAMES[@]}"
 	run /bin/bash --noprofile --norc -c "$(prelude)"'
 moremole_load_menu_items
 moremole_show_menu_items 2 | tail -n 1
-moremole_show_menu_items 36 | tail -n 1
 moremole_show_menu_items 37 | tail -n 1
-moremole_show_menu_items 39 | tail -n 1
+moremole_show_menu_items 38 | tail -n 1
+moremole_show_menu_items 40 | tail -n 1
 '
 	[ "$status" -eq 0 ] || { echo "$output"; return 1; }
 	[[ "$output" == *"Show what Clean would remove, without removing anything"* ]] || return 1
@@ -74,8 +74,8 @@ done
 '
 	[ "$status" -eq 0 ] || { echo "$output"; return 1; }
 	# Row 1 holds items 1-3, Optimize 4-6, Analyze 7-8, Status 9;
-	# Update is 34, the section heading 35 is skipped, Add is 36.
-	[ "$output" = "2 3 3 6 8 8 9 9 9 7 1 1 36 36 34 36 " ]
+	# Update is 35, the section heading 36 is skipped, Add is 37.
+	[ "$output" = "2 3 3 6 8 8 9 9 9 7 1 1 37 37 35 37 " ]
 }
 
 @test "a long list scrolls to keep the selection visible" {
@@ -112,14 +112,14 @@ printf "lines=%s,%s\n" "$(moremole_show_menu_items 1 | wc -l)" "$(moremole_show_
 clear() { :; }
 drain_pending_input() { :; }
 moremole_load_menu_items
-moremole_menu_activate 36 < <(printf "  Say hi \necho hi\n")
+moremole_menu_activate 37 < <(printf "  Say hi \necho hi\n")
 echo "selected=$MOREMOLE_MENU_SELECTED"
 moremole_show_menu_items "$MOREMOLE_MENU_SELECTED" | tail -n 1
 echo "---"
 cat "$MOREMOLE_MY_COMMANDS_FILE"
 '
 	[ "$status" -eq 0 ] || { echo "$output"; return 1; }
-	[[ "$output" == *"selected=40"* ]] || return 1
+	[[ "$output" == *"selected=41"* ]] || return 1
 	[[ "$output" == *'Added "Say hi".'* ]] || return 1
 	[ "${output#*---}" = $'\n# my notes\nOne\techo 1\nSay hi\techo hi' ]
 }
@@ -129,10 +129,10 @@ cat "$MOREMOLE_MY_COMMANDS_FILE"
 clear() { :; }
 drain_pending_input() { :; }
 moremole_load_menu_items
-moremole_menu_activate 36 < <(printf "\n")
-moremole_show_menu_items 36 | tail -n 1
-moremole_menu_activate 36 < <(printf "Name\n\n")
-moremole_show_menu_items 36 | tail -n 1
+moremole_menu_activate 37 < <(printf "\n")
+moremole_show_menu_items 37 | tail -n 1
+moremole_menu_activate 37 < <(printf "Name\n\n")
+moremole_show_menu_items 37 | tail -n 1
 [[ ! -e "$MOREMOLE_MY_COMMANDS_FILE" ]] && echo "NO_FILE"
 '
 	[ "$status" -eq 0 ] || { echo "$output"; return 1; }
@@ -147,15 +147,15 @@ moremole_show_menu_items 36 | tail -n 1
 clear() { :; }
 drain_pending_input() { :; }
 moremole_load_menu_items
-moremole_menu_activate 41 < <(printf "\necho two\n")
+moremole_menu_activate 42 < <(printf "\necho two\n")
 echo "selected=$MOREMOLE_MENU_SELECTED"
-moremole_menu_activate 38 < <(printf "\n\n")
-moremole_show_menu_items 37 | tail -n 1
+moremole_menu_activate 39 < <(printf "\n\n")
+moremole_show_menu_items 38 | tail -n 1
 echo "---"
 cat "$MOREMOLE_MY_COMMANDS_FILE"
 '
 	[ "$status" -eq 0 ] || { echo "$output"; return 1; }
-	[[ "$output" == *"selected=40"* ]] || return 1
+	[[ "$output" == *"selected=41"* ]] || return 1
 	[[ "$output" == *"Nothing changed."* ]] || return 1
 	[ "${output#*---}" = $'\n# my notes\nOne\techo 1\nnot a command\nTwo\techo two' ]
 }
@@ -166,11 +166,11 @@ cat "$MOREMOLE_MY_COMMANDS_FILE"
 clear() { :; }
 drain_pending_input() { :; }
 moremole_load_menu_items
-moremole_menu_activate 39 < <(printf "n\n")
-moremole_show_menu_items 39 | tail -n 1
-moremole_menu_activate 39 < <(printf "y\n")
+moremole_menu_activate 40 < <(printf "n\n")
+moremole_show_menu_items 40 | tail -n 1
+moremole_menu_activate 40 < <(printf "y\n")
 echo "selected=$MOREMOLE_MENU_SELECTED"
-moremole_menu_activate 39 < <(printf "Y\n")
+moremole_menu_activate 40 < <(printf "Y\n")
 echo "selected=$MOREMOLE_MENU_SELECTED"
 echo "---"
 cat "$MOREMOLE_MY_COMMANDS_FILE"
@@ -179,7 +179,7 @@ cat "$MOREMOLE_MY_COMMANDS_FILE"
 	[[ "$output" == *"Nothing removed."* ]] || return 1
 	# Removing the first command selects the one that took its place; removing
 	# the last selects Add.
-	[[ "$output" == *"selected=37"*"selected=36"* ]] || return 1
+	[[ "$output" == *"selected=38"*"selected=37"* ]] || return 1
 	[ "${output#*---}" = $'\n# my notes\nnot a command' ]
 }
 
@@ -206,7 +206,8 @@ moremole_menu_activate 30
 moremole_menu_activate 31
 moremole_menu_activate 32
 moremole_menu_activate 33
-moremole_menu_activate 37
+moremole_menu_activate 34
+moremole_menu_activate 38
 echo "STILL_IN_MENU"
 '
 	[ "$status" -eq 0 ] || { echo "$output"; return 1; }
@@ -218,8 +219,9 @@ echo "STILL_IN_MENU"
 	[[ "$output" == *"RUN [$PROJECT_ROOT/bin/moremole-updates.sh] [--dry-run]"* ]] || return 1
 	# Software removal sits under Software updates.
 	[[ "$output" == *"moremole-updates.sh] [--dry-run]"$'\n'*"RUN [$PROJECT_ROOT/bin/uninstall.sh]"$'\n'*"RUN [$PROJECT_ROOT/bin/uninstall.sh] [--dry-run]"* ]] || return 1
-	# Ollama model updates, Add Hugging Face MLX, then Ollama model removal, under it.
-	[[ "$output" == *"uninstall.sh] [--dry-run]"$'\n'*"RUN [$PROJECT_ROOT/bin/moremole-models.sh]"$'\n'*"RUN [$PROJECT_ROOT/bin/moremole-models.sh] [--dry-run]"$'\n'*"RUN [$PROJECT_ROOT/bin/moremole-models.sh] [--download]"$'\n'*"RUN [$PROJECT_ROOT/bin/moremole-models.sh] [--huggingface]"$'\n'*"RUN [$PROJECT_ROOT/bin/moremole-models.sh] [--huggingface] [--dry-run]"$'\n'*"RUN [$PROJECT_ROOT/bin/moremole-models.sh] [--remove]"$'\n'*"RUN [$PROJECT_ROOT/bin/moremole-models.sh] [--remove] [--dry-run]"$'\n'* ]] || return 1
+	# Ollama model updates, Add Ollama models, Add Hugging Face MLX, then
+	# Ollama model removal, under it.
+	[[ "$output" == *"uninstall.sh] [--dry-run]"$'\n'*"RUN [$PROJECT_ROOT/bin/moremole-models.sh]"$'\n'*"RUN [$PROJECT_ROOT/bin/moremole-models.sh] [--dry-run]"$'\n'*"RUN [$PROJECT_ROOT/bin/moremole-models.sh] [--download]"$'\n'*"RUN [$PROJECT_ROOT/bin/moremole-models.sh] [--download] [--dry-run]"$'\n'*"RUN [$PROJECT_ROOT/bin/moremole-models.sh] [--huggingface]"$'\n'*"RUN [$PROJECT_ROOT/bin/moremole-models.sh] [--huggingface] [--dry-run]"$'\n'*"RUN [$PROJECT_ROOT/bin/moremole-models.sh] [--remove]"$'\n'*"RUN [$PROJECT_ROOT/bin/moremole-models.sh] [--remove] [--dry-run]"$'\n'* ]] || return 1
 	[[ "$output" == *'RUN [/bin/sh] [-c] [echo "hi there"]'* ]]
 }
 
@@ -282,7 +284,7 @@ moremole_menu_activate 2 < /dev/null
 echo "== analyze"
 moremole_run_and_return "$SCRIPT_DIR/bin/analyze.sh" < /dev/null
 echo "== mine"
-moremole_menu_activate 37 < /dev/null
+moremole_menu_activate 38 < /dev/null
 echo "== left: $(find "$TMPDIR" -mindepth 1 | wc -l | tr -d " ")"
 '
 	[ "$status" -eq 0 ] || { echo "$output"; return 1; }
@@ -357,7 +359,7 @@ drain_pending_input() { :; }
 run_mole_command() { "$@"; }
 SHELL=/bin/sh
 moremole_load_menu_items
-moremole_menu_activate 37 < <(printf "\n")
+moremole_menu_activate 38 < <(printf "\n")
 '
 	[ "$status" -eq 0 ] || { echo "$output"; return 1; }
 	[[ "$output" == $'CLEARED\nSay hi\n$ echo hi\n\nhi\n'*"Press Enter"* ]]

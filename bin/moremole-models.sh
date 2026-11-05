@@ -882,7 +882,7 @@ run_update() {
         return 1
     fi
     if [[ ${#M_NAME[@]} -eq 0 ]]; then
-        echo -e "${GREEN}${ICON_SUCCESS}${NC} No models installed. Download one with the Download item."
+        echo -e "${GREEN}${ICON_SUCCESS}${NC} No models installed. Download one with Add Ollama models."
         return 0
     fi
 
@@ -1281,7 +1281,7 @@ run_download() {
 run_huggingface() {
     if [[ "${MODELS_APPLE_SILICON:-0}" != "1" ]]; then
         echo -e "${YELLOW}${ICON_WARNING}${NC} MLX models need a Mac with Apple silicon; this Mac has an Intel chip."
-        echo "Choose Download new for models that run here."
+        echo "Choose Add Ollama models for models that run here."
         return 0
     fi
     spin "Reading the MLX models on Hugging Face that Ollama runs..."
