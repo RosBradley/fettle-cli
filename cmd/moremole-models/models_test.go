@@ -134,22 +134,22 @@ func TestListLinesShowSizesStatusAndWhatIsLoaded(t *testing.T) {
 		return reg.fetch(url, accept)
 	}
 	// Without --check nothing is fetched and the status is empty; A-Z.
-	lines := listLines(s, false, fetch)
+	lines := listLines(s, false, fetch, nil, nil)
 	if calls.Load() != 0 || len(lines) != 3 || fields(lines[0])[1] != "Llama3.2:latest" || fields(lines[0])[4] != "" {
 		t.Fatalf("plain list %q, %d fetches", lines, calls.Load())
 	}
-	lines = listLines(s, true, fetch)
+	lines = listLines(s, true, fetch, nil, nil)
 	want := []string{
-		row("model", "Llama3.2:latest", "2000", "1788256800", "update", "0"),
-		row("model", "my-assistant:latest", "2000", "1788343200", "local", "0"),
-		row("model", "qwen3:4b", "2500", "1790848800", "current", "1"),
+		row("model", "Llama3.2:latest", "2000", "1788256800", "update", "0", ""),
+		row("model", "my-assistant:latest", "2000", "1788343200", "local", "0", ""),
+		row("model", "qwen3:4b", "2500", "1790848800", "current", "1", ""),
 	}
 	if !reflect.DeepEqual(lines, want) {
 		t.Errorf("got %q\nwant %q", lines, want)
 	}
 	// No service: one notice.
 	off := service{base: "http://127.0.0.1:1", client: &http.Client{Timeout: time.Second}}
-	if got := listLines(off, true, fetch); len(got) != 1 || !strings.HasPrefix(got[0], "notice"+fieldSeparator+"service-failed") {
+	if got := listLines(off, true, fetch, nil, nil); len(got) != 1 || !strings.HasPrefix(got[0], "notice"+fieldSeparator+"service-failed") {
 		t.Errorf("no service: %q", got)
 	}
 }
@@ -171,7 +171,7 @@ func TestLibraryListsDownloadableModelsAndMarksInstalled(t *testing.T) {
 	}
 
 	s := fakeService(t, `{"models":[{"name":"llama3.1:8b"},{"name":"nomic-embed-text:latest"}]}`, `{"models":[]}`)
-	lines := libraryLines(func() (string, error) { return string(page), nil }, s)
+	lines := libraryLines(func() (string, error) { return string(page), nil }, s, nil)
 	var names []string
 	installed, sizes := map[string]string{}, map[string]string{}
 	for _, l := range lines {
@@ -191,11 +191,12 @@ func TestLibraryListsDownloadableModelsAndMarksInstalled(t *testing.T) {
 	if installed["llama3.1"] != "1" || installed["nomic-embed-text"] != "1" || installed["gemma4"] != "0" {
 		t.Errorf("installed marks %v", installed)
 	}
-	if f := fields(lines[0]); !strings.HasPrefix(f[7], "Llama 3.1 is a new") {
-		t.Errorf("description %q", f[7])
+	// Without an MLX index (an Intel Mac) the MLX count is empty.
+	if f := fields(lines[0]); f[7] != "" || !strings.HasPrefix(f[8], "Llama 3.1 is a new") {
+		t.Errorf("mlx %q, description %q", f[7], f[8])
 	}
 
-	failed := libraryLines(func() (string, error) { return "<html>redesigned</html>", nil }, s)
+	failed := libraryLines(func() (string, error) { return "<html>redesigned</html>", nil }, s, nil)
 	if len(failed) != 1 || !strings.Contains(failed[0], "library-failed") {
 		t.Errorf("unreadable page: %q", failed)
 	}

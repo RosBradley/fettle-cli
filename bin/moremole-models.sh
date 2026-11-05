@@ -1,10 +1,12 @@
 #!/bin/bash
 # moremole - Ollama models.
 # Checks the installed models for updates and installs the ones picked,
-# downloads models from Ollama's library, and removes models. When Ollama is
-# off it offers to turn it on, and turns it off again when done.
-# moremole-models-go does the looking; this script shows the lists and runs
-# `ollama pull` and `ollama rm`.
+# downloads models from Ollama's library, adds MLX models from Hugging Face,
+# and removes models. When Ollama is off it offers to turn it on, and turns
+# it off again when done.
+# moremole-models-go does the looking and the Hugging Face downloads; this
+# script shows the lists and runs `ollama pull`, `ollama create` and
+# `ollama rm`.
 
 set -euo pipefail
 
@@ -37,6 +39,12 @@ if [[ "${MOLE_TEST_MODE:-0}" == "1" ]]; then
     MODELS_START_WAIT="${MOREMOLE_TEST_START_WAIT:-$MODELS_START_WAIT}"
 fi
 readonly MODELS_FIELD_SEP=$'\x1f'
+# The models MoreMole added from Hugging Face ("name<TAB>repo<TAB>commit"),
+# so Ollama models can check them with Hugging Face, and where their files
+# wait while Ollama adds them.
+HF_RECORD="$HOME/.config/mole/moremole-hf-models"
+HF_STAGING="$HOME/Library/Caches/moremole/models/hf"
+readonly HF_REPO_RE='^[A-Za-z0-9][A-Za-z0-9._-]*/[A-Za-z0-9][A-Za-z0-9._-]*$'
 
 MODE="update"
 OLLAMA_APP=""
@@ -55,6 +63,7 @@ M_SIZE=()
 M_MODIFIED=()
 M_STATUS=()
 M_LOADED=()
+M_REPO=()
 # Models in Ollama's library.
 L_NAME=()
 L_CAPS=()
@@ -62,6 +71,7 @@ L_PULLS=()
 L_UPDATED=()
 L_INSTALLED=()
 L_SIZES=()
+L_MLX=()
 L_DESC=()
 # The versions of the models picked for download, from their tags pages.
 T_NAME=()
@@ -72,6 +82,15 @@ T_INPUT=()
 T_MLX=()
 T_DEFAULT=()
 T_INSTALLED=()
+# MLX models on Hugging Face that Ollama runs.
+H_REPO=()
+H_FAMILY=()
+H_QUANT=()
+H_BYTES=()
+H_DOWNLOADS=()
+H_UPDATED=()
+H_INSTALLED=()
+H_INPUT=()
 NOTICE_KEYS=()
 NOTICE_TEXTS=()
 
@@ -80,6 +99,8 @@ total_failed=0
 FAILURES=()
 SUMMARY_NOTES=()
 SUMMARY_SHOWN=false
+# Downloads from Hugging Face that stopped partway, kept to continue.
+HF_KEPT=()
 
 cleanup() {
     turn_off_if_started > /dev/null 2>&1 || true
@@ -100,6 +121,7 @@ it on, and turns it off again when done.
 
 Options:
   --download        Pick models from ollama.com/library, then the versions to download
+  --huggingface     Pick MLX models from Hugging Face to add to Ollama (Apple silicon)
   --remove          Pick installed models to remove
   -n, --dry-run     List, without downloading or removing anything
   --debug           Show detailed logs
@@ -239,10 +261,11 @@ print_notices() {
     [[ ${#NOTICE_TEXTS[@]} -eq 0 ]] || printf '\n'
 }
 
-# Read installed models ("model name size modified status loaded").
+# Read installed models ("model name size modified status loaded repo");
+# repo is the Hugging Face model it was added from by MoreMole.
 load_models() {
-    local kind name size modified status loaded
-    while IFS="$MODELS_FIELD_SEP" read -r kind name size modified status loaded || [[ -n "${kind:-}" ]]; do
+    local kind name size modified status loaded repo
+    while IFS="$MODELS_FIELD_SEP" read -r kind name size modified status loaded repo || [[ -n "${kind:-}" ]]; do
         case "$kind" in
             notice) add_notice "$name" "$size" ;;
             model)
@@ -251,16 +274,17 @@ load_models() {
                 M_MODIFIED+=("${modified:-0}")
                 M_STATUS+=("$status")
                 M_LOADED+=("${loaded:-0}")
+                M_REPO+=("${repo:-}")
                 ;;
         esac
     done
 }
 
 # Read the library ("model name capabilities pulls updated installed sizes
-# description"), one row per model.
+# mlx description"), one row per model; mlx is how many MLX versions it has.
 load_library() {
-    local kind name caps pulls updated installed sizes desc
-    while IFS="$MODELS_FIELD_SEP" read -r kind name caps pulls updated installed sizes desc || [[ -n "${kind:-}" ]]; do
+    local kind name caps pulls updated installed sizes mlx desc
+    while IFS="$MODELS_FIELD_SEP" read -r kind name caps pulls updated installed sizes mlx desc || [[ -n "${kind:-}" ]]; do
         case "$kind" in
             notice) add_notice "$name" "$caps" ;;
             model)
@@ -270,6 +294,7 @@ load_library() {
                 L_UPDATED+=("${updated:-0}")
                 L_INSTALLED+=("${installed:-0}")
                 L_SIZES+=("$sizes")
+                L_MLX+=("${mlx:-}")
                 L_DESC+=("$desc")
                 ;;
         esac
@@ -294,6 +319,28 @@ load_tags() {
                 T_MLX+=("${mlx:-0}")
                 T_DEFAULT+=("${default:-0}")
                 T_INSTALLED+=("${installed:-0}")
+                ;;
+        esac
+    done
+}
+
+# Read the MLX models on Hugging Face ("hf repo family quant bytes downloads
+# updated installed input").
+load_hf() {
+    local kind repo family quant bytes downloads updated installed input
+    while IFS="$MODELS_FIELD_SEP" read -r kind repo family quant bytes downloads updated installed input || [[ -n "${kind:-}" ]]; do
+        case "$kind" in
+            notice) add_notice "$repo" "$family" ;;
+            hf)
+                [[ "$repo" =~ $HF_REPO_RE ]] || continue
+                H_REPO+=("$repo")
+                H_FAMILY+=("$family")
+                H_QUANT+=("$quant")
+                H_BYTES+=("${bytes:-0}")
+                H_DOWNLOADS+=("${downloads:-0}")
+                H_UPDATED+=("${updated:-0}")
+                H_INSTALLED+=("${installed:-0}")
+                H_INPUT+=("$input")
                 ;;
         esac
     done
@@ -365,7 +412,7 @@ name_width() {
         w=$(get_display_width "$name")
         ((w <= width)) || width=$w
     done
-    ((width <= 36)) || width=36
+    ((width <= ${MODELS_NAME_MAX:-36})) || width=${MODELS_NAME_MAX:-36}
     printf '%s' "$width"
 }
 
@@ -374,6 +421,7 @@ model_row_text() {
     extra="$(human_size "${M_SIZE[i]}")"
     [[ -z "${M_STATUS[i]}" ]] || extra+=" · $(status_text "${M_STATUS[i]}")"
     [[ "${M_LOADED[i]}" != "1" ]] || extra+=" · in use"
+    [[ -z "${M_REPO[i]:-}" ]] || extra+=" · from Hugging Face"
     printf '%s  %s' "$(fit_cell "${M_NAME[i]}" "$width")" "$extra"
 }
 
@@ -389,11 +437,63 @@ sizes_text() {
     fi
 }
 
+# A library model: name, what it can do, its sizes, pulls, and on Apple
+# silicon MLX when it has MLX versions.
 library_row_text() {
-    local i="$1" width="$2" text pulls=""
+    local i="$1" width="$2" text pulls="" mlx=""
     [[ -z "${L_PULLS[i]}" ]] || pulls="${L_PULLS[i]} pulls"
     text="$(fit_cell "${L_NAME[i]}" "$width")  $(fit_cell "${L_CAPS[i]//,/, }" 30)  $(fit_cell "$(sizes_text "${L_SIZES[i]}")" 12)  $(fit_cell "$pulls" 12)"
+    if [[ "${MODELS_APPLE_SILICON:-0}" == "1" ]]; then
+        [[ ! "${L_MLX[i]:-}" =~ ^[1-9][0-9]*$ ]] || mlx="MLX"
+        text+="  $(fit_cell "$mlx" 3)"
+    fi
     [[ "${L_INSTALLED[i]}" != "1" ]] || text+="  installed"
+    printf '%s' "$text"
+}
+
+# A model family as people say it: qwen3_5_moe is Qwen 3.5 MoE.
+family_text() {
+    case "$1" in
+        qwen3_5) printf 'Qwen 3.5' ;;
+        qwen3_5_moe) printf 'Qwen 3.5 MoE' ;;
+        qwen3_5_text) printf 'Qwen 3.5 text' ;;
+        qwen4_exp) printf 'Qwen 4 exp' ;;
+        gemma4) printf 'Gemma 4' ;;
+        nemotron_h) printf 'Nemotron H' ;;
+        nemotron_h_omni) printf 'Nemotron H omni' ;;
+        lfm3) printf 'LFM3' ;;
+        lfm3_vl) printf 'LFM3 VL' ;;
+        lfm3_omni) printf 'LFM3 omni' ;;
+        lfm3_audio) printf 'LFM3 audio' ;;
+        laguna) printf 'Laguna' ;;
+        cohere2_moe) printf 'Cohere 2 MoE' ;;
+        muse_glimmer) printf 'Muse Glimmer' ;;
+        *) printf '%s' "$1" ;;
+    esac
+}
+
+# Download counts the way the library shows pulls: 3.3M, 720K.
+count_text() {
+    local n="$1"
+    [[ "$n" =~ ^[0-9]+$ ]] || return 0
+    if ((n >= 1000000)); then
+        printf '%d.%dM' "$((n / 1000000))" "$((n % 1000000 / 100000))"
+    elif ((n >= 1000)); then
+        printf '%dK' "$((n / 1000))"
+    else
+        printf '%d' "$n"
+    fi
+}
+
+# A Hugging Face model: name, family, quantization, about how big, whether
+# it fits, what it reads, downloads, and whether it's added already.
+hf_row_text() {
+    local i="$1" width="$2" text size="?" downloads=""
+    [[ ! "${H_BYTES[i]}" =~ ^[1-9][0-9]*$ ]] || size="~$(bytes_to_human "${H_BYTES[i]}")"
+    downloads="$(count_text "${H_DOWNLOADS[i]}")"
+    [[ -z "$downloads" ]] || downloads+=" downloads"
+    text="$(fit_cell "${H_REPO[i]}" "$width")  $(fit_cell "$(family_text "${H_FAMILY[i]}")" 15)  $(fit_cell "${H_QUANT[i]}" 6)  $(fit_cell "$size" 9)  $(fit_cell "$(fit_word "${H_BYTES[i]}")" 7)  $(fit_cell "${H_INPUT[i]}" 11)  $(fit_cell "$downloads" 15)"
+    [[ "${H_INSTALLED[i]}" != "1" ]] || text+="  added"
     printf '%s' "$text"
 }
 
@@ -505,6 +605,147 @@ show_summary() {
     SUMMARY_SHOWN=true
 }
 
+# Where a Hugging Face model's files wait while Ollama adds it.
+hf_staging_dir() {
+    printf '%s/%s' "$HF_STAGING" "${1//\//--}"
+}
+
+hf_record_remove() {
+    local name="$1" line kept
+    [[ -f "$HF_RECORD" ]] || return 0
+    kept=$(create_temp_file)
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        [[ "${line%%$'\t'*}" == "$name" ]] || printf '%s\n' "$line"
+    done < "$HF_RECORD" > "$kept"
+    cat "$kept" > "$HF_RECORD"
+}
+
+hf_record_add() {
+    local name="$1" repo="$2" sha="$3"
+    mkdir -p "${HF_RECORD%/*}"
+    hf_record_remove "$name"
+    printf '%s\t%s\t%s\n' "$name" "$repo" "$sha" >> "$HF_RECORD"
+}
+
+# `ollama create` reads the Modelfile in the folder it runs in.
+ollama_create_in() {
+    (cd "$1" && "$OLLAMA_CLI" create "$2")
+}
+
+# Add one model from Hugging Face as NAME: download its files at commit SHA,
+# checked, add them under a name of their own, start that once, and only
+# when it works give it NAME. A model that fails leaves NAME as it was.
+hf_install() {
+    local repo="$1" sha="$2" name="$3" detail="$4" dir trial reason=""
+    # Ollama lists a model without a tag as :latest.
+    [[ "${name##*/}" == *:* ]] || name+=":latest"
+    [[ "$repo" =~ $HF_REPO_RE && "$sha" =~ ^[0-9a-f]{40}$ ]] || {
+        record_hf_failure "$name" "not a Hugging Face model"
+        return 0
+    }
+    dir=$(hf_staging_dir "$repo")
+    trial="${name%:latest}-moremole-check"
+    echo -e "${BLUE}${ICON_ARROW} $(mole_terminal_safe_text "$repo")${NC}"
+    if ! moremole_run_shown "$MODELS_HELPER" hf-download "$repo" "$sha" "$dir"; then
+        reason=$(moremole_run_error_line)
+        HF_KEPT+=("$dir")
+        record_hf_failure "$name" "${reason:-the download stopped}"
+        return 0
+    fi
+    if ! moremole_run_shown ollama_create_in "$dir" "$trial"; then
+        reason=$(moremole_run_error_line)
+        "$OLLAMA_CLI" rm "$trial" > /dev/null 2>&1 || true
+        hf_remove_staging "$dir"
+        record_hf_failure "$name" "Ollama couldn't add it: ${reason:-ollama create failed}"
+        return 0
+    fi
+    hf_remove_staging "$dir"
+
+    spin "Starting it once to check that it works..."
+    local kind key text verified=false
+    while IFS="$MODELS_FIELD_SEP" read -r kind key text || [[ -n "${kind:-}" ]]; do
+        case "$kind" in
+            verified) verified=true ;;
+            notice) reason="$text" ;;
+        esac
+    done < <(run_helper hf-verify "$trial")
+    unspin
+    if [[ "$verified" != "true" ]]; then
+        "$OLLAMA_CLI" rm "$trial" > /dev/null 2>&1 || true
+        record_hf_failure "$name" "it was removed again because ${reason:-it did not start}"
+        return 0
+    fi
+    if ! "$OLLAMA_CLI" cp "$trial" "$name" > /dev/null 2>&1; then
+        "$OLLAMA_CLI" rm "$trial" > /dev/null 2>&1 || true
+        record_hf_failure "$name" "Ollama couldn't name it $name"
+        return 0
+    fi
+    "$OLLAMA_CLI" rm "$trial" > /dev/null 2>&1 || true
+    hf_record_add "$name" "$repo" "$sha"
+    echo -e "${GREEN}${ICON_SUCCESS}${NC} Added as $(mole_terminal_safe_text "$name"), and it works"
+    total_done=$((total_done + 1))
+    log_operation "$MOLE_CURRENT_COMMAND" "REBUILT" "$name" "$detail from Hugging Face $repo at ${sha:0:7}"
+    printf '\n'
+}
+
+record_hf_failure() {
+    local name="$1" reason="$2"
+    total_failed=$((total_failed + 1))
+    FAILURES+=("$name: $reason")
+    log_operation "$MOLE_CURRENT_COMMAND" "FAILED" "$name" "$reason"
+    echo -e "${YELLOW}${ICON_WARNING}${NC} $(mole_terminal_safe_text "$name"): $(mole_terminal_safe_text "$reason")"
+    printf '\n'
+}
+
+# The staging folder is MoreMole's own copy of the download; Ollama keeps
+# its own once the model is added.
+hf_remove_staging() {
+    local dir="$1"
+    [[ "$dir" == "$HF_STAGING"/* && "$dir" != *..* && -d "$dir" ]] || return 0
+    rm -rf "$dir" # SAFE: MoreMole's own Hugging Face download folder under ~/Library/Caches/moremole/models/hf, already added to Ollama
+}
+
+# Read hf-files rows ("files repo sha bytes count name") into the F_ arrays;
+# a model Hugging Face couldn't give is named in a warning.
+F_REPO=()
+F_SHA=()
+F_BYTES=()
+F_NAME=()
+load_hf_files() {
+    local kind repo sha bytes count name
+    F_REPO=() F_SHA=() F_BYTES=() F_NAME=()
+    while IFS="$MODELS_FIELD_SEP" read -r kind repo sha bytes count name || [[ -n "${kind:-}" ]]; do
+        case "$kind" in
+            files)
+                [[ "$repo" =~ $HF_REPO_RE && "$sha" =~ ^[0-9a-f]{40}$ ]] || continue
+                F_REPO+=("$repo")
+                F_SHA+=("$sha")
+                F_BYTES+=("${bytes:-0}")
+                F_NAME+=("$name")
+                ;;
+            notice) echo -e "${YELLOW}${ICON_WARNING}${NC} Couldn't get $(mole_terminal_safe_text "$sha") from Hugging Face." ;;
+        esac
+    done
+}
+
+# Download Hugging Face models again at their newest commit, each entry
+# "name<TAB>repo".
+update_from_hf() {
+    local entry name repo j
+    for entry in "$@"; do
+        name="${entry%%$'\t'*}"
+        repo="${entry#*$'\t'}"
+        load_hf_files < <(run_helper hf-files "$repo")
+        if [[ ${#F_REPO[@]} -eq 0 ]]; then
+            record_hf_failure "$name" "couldn't get it from Hugging Face"
+            continue
+        fi
+        for ((j = 0; j < ${#F_REPO[@]}; j++)); do
+            hf_install "${F_REPO[j]}" "${F_SHA[j]}" "$name" "updated"
+        done
+    done
+}
+
 # Update: check every model with its registry, then pull the picked ones.
 run_update() {
     spin "Checking models with Ollama's registry..."
@@ -545,34 +786,48 @@ run_update() {
     fi
     [[ -z "$unchecked_note" ]] || echo -e "$unchecked_note"
 
-    local -a rows=() names=()
+    local -a rows=() names=() repos=()
     local width
     width=$(name_width "${M_NAME[@]}")
     for i in "${updates[@]}"; do
         rows+=("$(model_row_text "$i" "$width")")
         names+=("${M_NAME[i]}")
+        repos+=("${M_REPO[i]:-}")
     done
     if ! pick "Select model updates to install" "${rows[@]}"; then
         moremole_note_cancel
         return 0
     fi
-    local -a chosen=()
+    local -a chosen=() from_hf=()
     for i in "${PICKED[@]}"; do
-        chosen+=("${names[i]}")
+        if [[ -n "${repos[i]}" ]]; then
+            from_hf+=("${names[i]}"$'\t'"${repos[i]}")
+        else
+            chosen+=("${names[i]}")
+        fi
     done
 
     echo -e "${PURPLE_BOLD}Models to update:${NC}"
-    local name
-    for name in "${chosen[@]}"; do
+    local name entry
+    for name in "${chosen[@]+"${chosen[@]}"}"; do
         printf '  %s%s%s %s\n' "$GREEN" "$ICON_SUCCESS" "$NC" "$(mole_terminal_safe_text "$name")"
     done
-    printf '\n%sOllama downloads only the parts that changed.%s\n' "$GRAY" "$NC"
-    if ! confirm "Update ${#chosen[@]} models"; then
+    for entry in "${from_hf[@]+"${from_hf[@]}"}"; do
+        printf '  %s%s%s %s %sfrom Hugging Face%s\n' "$GREEN" "$ICON_SUCCESS" "$NC" "$(mole_terminal_safe_text "${entry%%$'\t'*}")" "$GRAY" "$NC"
+    done
+    printf '\n'
+    [[ ${#chosen[@]} -eq 0 ]] || printf '%sOllama downloads only the parts that changed.%s\n' "$GRAY" "$NC"
+    [[ ${#from_hf[@]} -eq 0 ]] || printf '%sModels from Hugging Face download again in full, and replace the old version only once the new one starts.%s\n' "$GRAY" "$NC"
+    if ! confirm "Update $((${#chosen[@]} + ${#from_hf[@]})) models"; then
         moremole_note_cancel
         return 0
     fi
     log_operation_session_start "$MOLE_CURRENT_COMMAND"
-    pull_models "updated" "${chosen[@]}"
+    [[ ${#chosen[@]} -eq 0 ]] || pull_models "updated" "${chosen[@]}"
+    if [[ ${#from_hf[@]} -gt 0 ]]; then
+        MOREMOLE_RUN_ERRORS=$(create_temp_file)
+        update_from_hf "${from_hf[@]}"
+    fi
     log_operation_session_end "$MOLE_CURRENT_COMMAND" "$total_done" 0
     turn_off_if_started
     show_summary "Models updated" "Updated"
@@ -622,8 +877,11 @@ pick_to_remove() {
 pick_models_to_download() {
     local -a search=()
     local i
+    local words
     for ((i = 0; i < ${#L_NAME[@]}; i++)); do
-        search+=("${L_NAME[i]} ${L_CAPS[i]//,/ } ${L_DESC[i]}")
+        words="${L_NAME[i]} ${L_CAPS[i]//,/ } ${L_DESC[i]}"
+        [[ ! "${L_MLX[i]:-}" =~ ^[1-9][0-9]*$ ]] || words+=" mlx"
+        search+=("$words")
     done
     local MOLE_MENU_META_EPOCHS MOLE_MENU_FILTER_NAMES
     MOLE_MENU_META_EPOCHS=$(
@@ -632,7 +890,34 @@ pick_models_to_download() {
     )
     MOLE_MENU_FILTER_NAMES=$(printf '%s\n' "${search[@]}")
     local MOLE_MENU_SORT_MODE=name MOLE_MENU_SORT_REVERSE=false
-    pick "Select models, then choose their versions" "$@"
+    local title="Select models, then choose their versions"
+    [[ "${MODELS_APPLE_SILICON:-0}" != "1" ]] || title+="; MLX: has versions for Apple silicon"
+    pick "$title" "$@"
+}
+
+# The Hugging Face list opens A-Z; S sorts by size, then by date. Search
+# finds a model by its name, family, quantization, what it reads, or added.
+pick_hf_models() {
+    local -a search=() sizes_kb=()
+    local i words
+    for ((i = 0; i < ${#H_REPO[@]}; i++)); do
+        words="${H_REPO[i]} $(family_text "${H_FAMILY[i]}") ${H_FAMILY[i]} ${H_QUANT[i]} ${H_INPUT[i]//,/}"
+        [[ "${H_INSTALLED[i]}" != "1" ]] || words+=" added"
+        search+=("$words")
+        sizes_kb+=("$((${H_BYTES[i]:-0} / 1024))")
+    done
+    local MOLE_MENU_META_SIZEKB MOLE_MENU_META_EPOCHS MOLE_MENU_FILTER_NAMES
+    MOLE_MENU_META_SIZEKB=$(
+        IFS=','
+        printf '%s' "${sizes_kb[*]}"
+    )
+    MOLE_MENU_META_EPOCHS=$(
+        IFS=','
+        printf '%s' "${H_UPDATED[*]}"
+    )
+    MOLE_MENU_FILTER_NAMES=$(printf '%s\n' "${search[@]}")
+    local MOLE_MENU_SORT_MODE=name MOLE_MENU_SORT_REVERSE=false
+    pick "Select MLX models from Hugging Face: family, bits, size, fit in memory, input" "$@"
 }
 
 # The versions open smallest first; S sorts A-Z. Search finds a version by
@@ -727,6 +1012,7 @@ run_remove() {
             "$OLLAMA_CLI" stop "${M_NAME[i]}" > /dev/null 2>&1 || true
         fi
         if moremole_run_shown "$OLLAMA_CLI" rm "${M_NAME[i]}"; then
+            [[ -z "${M_REPO[i]:-}" ]] || hf_record_remove "${M_NAME[i]}"
             record_result "${M_NAME[i]}" true "REMOVED" "removed with ollama rm"
             [[ "${M_SIZE[i]}" =~ ^[0-9]+$ ]] && freed=$((freed + M_SIZE[i]))
         else
@@ -852,6 +1138,81 @@ run_download() {
     show_summary "Models downloaded" "Downloaded"
 }
 
+# Hugging Face: pick MLX models that Ollama runs, then add them, each
+# checked by starting it once.
+run_huggingface() {
+    if [[ "${MODELS_APPLE_SILICON:-0}" != "1" ]]; then
+        echo -e "${YELLOW}${ICON_WARNING}${NC} MLX models need a Mac with Apple silicon; this Mac has an Intel chip."
+        echo "Choose Download new for models that run here."
+        return 0
+    fi
+    spin "Reading the MLX models on Hugging Face that Ollama runs..."
+    load_hf < <(run_helper hf-list)
+    unspin
+    print_notices
+    if [[ ${#H_REPO[@]} -eq 0 ]]; then
+        has_notice hf-failed && return 1
+        echo "No MLX models on Hugging Face are in a family Ollama's MLX engine runs."
+        return 0
+    fi
+    local i width
+    width=$(MODELS_NAME_MAX=50 name_width "${H_REPO[@]}")
+    if [[ "${MOLE_DRY_RUN:-0}" == "1" ]] || ! interactive; then
+        echo -e "${PURPLE_BOLD}${#H_REPO[@]} MLX models on Hugging Face that Ollama runs${NC}"
+        for ((i = 0; i < ${#H_REPO[@]}; i++)); do
+            printf '  %s\n' "$(hf_row_text "$i" "$width")"
+        done
+        printf '\n%sSizes are estimates until you pick a model.%s\n' "$GRAY" "$NC"
+        [[ "${MOLE_DRY_RUN:-0}" == "1" ]] || printf 'Run moremole models --huggingface in a terminal to choose models.\n'
+        return 0
+    fi
+
+    local -a rows=() repos=()
+    for ((i = 0; i < ${#H_REPO[@]}; i++)); do
+        rows+=("$(hf_row_text "$i" "$width")")
+    done
+    if ! pick_hf_models "${rows[@]}"; then
+        moremole_note_cancel
+        return 0
+    fi
+    for i in "${PICKED[@]}"; do
+        repos+=("${H_REPO[i]}")
+    done
+
+    spin "Getting download sizes from Hugging Face..."
+    load_hf_files < <(run_helper hf-files "${repos[@]}")
+    unspin
+    [[ ${#F_REPO[@]} -gt 0 ]] || return 1
+
+    echo -e "${PURPLE_BOLD}Models to add from Hugging Face:${NC}"
+    local j total=0 fit
+    for ((j = 0; j < ${#F_REPO[@]}; j++)); do
+        fit=$(fit_text "${F_BYTES[j]}")
+        printf '  %s%s%s %s %s%s%s · as %s%s\n' "$GREEN" "$ICON_SUCCESS" "$NC" "$(mole_terminal_safe_text "${F_REPO[j]}")" \
+            "$GRAY" "$(human_size "${F_BYTES[j]}")" "${fit:+ · $fit}" "$(mole_terminal_safe_text "${F_NAME[j]}")" "$NC"
+        [[ "${F_BYTES[j]}" =~ ^[0-9]+$ ]] && total=$((total + F_BYTES[j]))
+    done
+    printf '\n%sDownloads up to %s, each file checked against Hugging Face.%s\n' "$GRAY" "$(bytes_to_human "$total")" "$NC"
+    printf "%sWhile a model is added it needs twice its size free: the download, then Ollama's copy. The download is deleted once Ollama has it.%s\n" "$GRAY" "$NC"
+    printf "%sEach model is started once to check that it works; one that doesn't is removed again.%s\n" "$GRAY" "$NC"
+    if ! confirm "Add ${#F_REPO[@]} models"; then
+        moremole_note_cancel
+        return 0
+    fi
+    log_operation_session_start "$MOLE_CURRENT_COMMAND"
+    MOREMOLE_RUN_ERRORS=$(create_temp_file)
+    for ((j = 0; j < ${#F_REPO[@]}; j++)); do
+        hf_install "${F_REPO[j]}" "${F_SHA[j]}" "${F_NAME[j]}" "added"
+    done
+    log_operation_session_end "$MOLE_CURRENT_COMMAND" "$total_done" 0
+    local dir
+    for dir in "${HF_KEPT[@]+"${HF_KEPT[@]}"}"; do
+        SUMMARY_NOTES+=("The downloaded part is kept in $(mole_terminal_safe_text "$dir"), so trying again continues; delete that folder to free the space instead")
+    done
+    turn_off_if_started
+    show_summary "Models added" "Added"
+}
+
 main() {
     local arg
     for arg in "$@"; do
@@ -864,6 +1225,7 @@ main() {
             "--dry-run" | "-n") export MOLE_DRY_RUN=1 ;;
             "--remove") MODE="remove" ;;
             "--download") MODE="download" ;;
+            "--huggingface") MODE="huggingface" ;;
             *)
                 echo "Unknown option: $arg" >&2
                 echo "Use 'moremole models --help' for supported options." >&2
@@ -892,6 +1254,7 @@ main() {
         update) run_update || rc=$? ;;
         remove) run_remove || rc=$? ;;
         download) run_download || rc=$? ;;
+        huggingface) run_huggingface || rc=$? ;;
     esac
     # Lists and previews end without a summary; say so here.
     if [[ "$SUMMARY_SHOWN" != "true" ]]; then

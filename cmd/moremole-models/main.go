@@ -7,23 +7,35 @@
 //	moremole-models-go library         the models on ollama.com/library
 //	moremole-models-go tags MODEL...   the versions of each model, from its tags page
 //	moremole-models-go size NAME...    download size of each model, from the registry
+//	moremole-models-go hf-list         MLX models on Hugging Face that Ollama's MLX engine runs
+//	moremole-models-go hf-files REPO...  each one's newest commit and download size
+//	moremole-models-go hf-download REPO SHA DIR  download its files, checked, into DIR
+//	moremole-models-go hf-verify NAME  start a model Ollama just added, to show it works
 //
 // status prints key=value lines. The others print one row per item, fields
 // separated by the ASCII unit separator (0x1f) so empty fields survive a
 // shell read:
 //
-//	list:     model  name  size  modified  status  loaded
-//	library:  model  name  capabilities  pulls  updated  installed  sizes  description
+//	list:     model  name  size  modified  status  loaded  hf-repo
+//	library:  model  name  capabilities  pulls  updated  installed  sizes  mlx  description
 //	tags:     tag    name  bytes  size  context  input  mlx  default  installed
 //	size:     size   name  bytes
+//	hf-list:  hf     repo  family  quant  bytes  downloads  updated  installed  input
+//	hf-files: files  repo  sha  bytes  count  ollama-name
+//	hf-verify: verified name
 //	notice:   notice key   text
+//
+// hf-download prints its progress, and on failure exits 1 with an "Error:"
+// line on stderr.
 //
 // status in list is update, current, local (the registry has no such model:
 // made on this Mac or removed upstream) or unknown (could not check); it is
 // empty without --check. loaded is 1 for a model in memory now. Times are
 // Unix seconds; sizes are bytes, 0 when unknown. In library, sizes are the
 // size tags a model comes in (8b,70b) and installed is 1 when any version
-// is installed. In tags, size is as the page shows it ("6.6GB - 7.6GB"),
+// is installed, and on Apple silicon mlx is how many MLX versions it has
+// (empty when unknown). hf-repo is the Hugging Face model a model was added
+// from by MoreMole, whose status then compares it with Hugging Face. In tags, size is as the page shows it ("6.6GB - 7.6GB"),
 // mlx is 1 for a version built for Apple's MLX engine (left out on Intel),
 // and default is 1 for the version the model's name alone downloads. A tags page that can't be read gives the
 // notice tags-failed with the model's name.
@@ -54,7 +66,7 @@ func row(fields ...string) string {
 func notice(key, text string) string { return row("notice", key, text) }
 
 func usage(w io.Writer) {
-	_, _ = fmt.Fprintln(w, "Usage: moremole-models-go status|list [--check]|library|tags MODEL...|size NAME...")
+	_, _ = fmt.Fprintln(w, "Usage: moremole-models-go status|list [--check]|library|tags MODEL...|size NAME...|hf-list|hf-files REPO...|hf-download REPO SHA DIR|hf-verify NAME")
 }
 
 func main() {
@@ -68,13 +80,41 @@ func main() {
 		lines = append(statusLines(findOllama(), newService().running(), memoryBytes()), "mlx="+flag(appleSilicon))
 	case "list":
 		check := len(os.Args) > 2 && os.Args[2] == "--check"
-		lines = listLines(newService(), check, fetchManifest)
+		lines = listLines(newService(), check, fetchManifest, loadHFRecord(), checkHFModel)
 	case "library":
-		lines = libraryLines(fetchLibrary, newService())
+		var mlx *mlxIndex
+		if appleSilicon {
+			mlx = newMLXIndex()
+		}
+		lines = libraryLines(fetchLibrary, newService(), mlx)
 	case "tags":
 		lines = tagsLines(os.Args[2:], fetchTags, newService(), appleSilicon)
 	case "size":
 		lines = sizeLines(os.Args[2:], fetchManifest)
+	case "hf-list":
+		lines = hfListLines(fetchLibrary, newMLXIndex(), newService())
+	case "hf-files":
+		lines = hfFilesLines(os.Args[2:])
+	case "hf-download":
+		if len(os.Args) != 5 {
+			usage(os.Stderr)
+			os.Exit(2)
+		}
+		if err := hfDownload(os.Args[2], os.Args[3], os.Args[4], os.Stdout); err != nil {
+			_, _ = fmt.Fprintln(os.Stderr, "Error: "+err.Error())
+			os.Exit(1)
+		}
+		return
+	case "hf-verify":
+		if len(os.Args) != 3 {
+			usage(os.Stderr)
+			os.Exit(2)
+		}
+		if err := verifyModel(newService(), os.Args[2]); err != nil {
+			lines = []string{notice("verify-failed", err.Error())}
+		} else {
+			lines = []string{row("verified", os.Args[2])}
+		}
 	case "-h", "--help":
 		usage(os.Stdout)
 		return

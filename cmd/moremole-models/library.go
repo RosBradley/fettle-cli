@@ -102,20 +102,44 @@ var fetchLibrary = func() (string, error) {
 
 var errEmptyLibrary = errors.New("no models found on the page")
 
+func unixOrZero(t time.Time) int64 {
+	if t.IsZero() {
+		return 0
+	}
+	return t.Unix()
+}
+
+// readLibrary reads and parses the library page.
+func readLibrary(fetch func() (string, error)) ([]libraryModel, error) {
+	page, err := fetch()
+	if err != nil {
+		return nil, err
+	}
+	models := parseLibrary(page)
+	if len(models) == 0 {
+		return nil, errEmptyLibrary
+	}
+	return models, nil
+}
+
+func libraryFailed(err error) string {
+	return notice("library-failed", "Couldn't read Ollama's model list at ollama.com/library ("+err.Error()+").")
+}
+
 // libraryLines lists one row per model that can be downloaded, with the
 // size tags it comes in (8b,70b), or none for a model with only "latest".
 // Models that only run on Ollama's servers are left out. A model is marked
-// installed when any of its versions is.
-func libraryLines(fetch func() (string, error), s service) []string {
-	page, err := fetch()
-	var models []libraryModel
-	if err == nil {
-		if models = parseLibrary(page); len(models) == 0 {
-			err = errEmptyLibrary
-		}
-	}
+// installed when any of its versions is. With an MLX index (Apple silicon),
+// each row says how many MLX versions the model has; it is empty when its
+// tags page couldn't be read, and on an Intel Mac.
+func libraryLines(fetch func() (string, error), s service, mlx *mlxIndex) []string {
+	models, err := readLibrary(fetch)
 	if err != nil {
-		return []string{notice("library-failed", "Couldn't read Ollama's model list at ollama.com/library ("+err.Error()+").")}
+		return []string{libraryFailed(err)}
+	}
+	if mlx != nil {
+		mlx.refresh(models)
+		mlx.save()
 	}
 	installed := map[string]bool{}
 	if local, err := s.models(); err == nil {
@@ -137,7 +161,13 @@ func libraryLines(fetch func() (string, error), s service) []string {
 		if installed[m.Name] {
 			isInstalled = "1"
 		}
-		lines = append(lines, row("model", m.Name, strings.Join(m.Capabilities, ","), m.Pulls, updated, isInstalled, strings.Join(m.Sizes, ","), m.Description))
+		mlxVersions := ""
+		if mlx != nil {
+			if n := mlx.count(m.Name); n >= 0 {
+				mlxVersions = strconv.Itoa(n)
+			}
+		}
+		lines = append(lines, row("model", m.Name, strings.Join(m.Capabilities, ","), m.Pulls, updated, isInstalled, strings.Join(m.Sizes, ","), mlxVersions, m.Description))
 	}
 	return lines
 }

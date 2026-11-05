@@ -32,6 +32,7 @@ readonly MOREMOLE_BUILTIN_ROWS=(
     "Software updates|mole|moremole-updates|Update apps, tools and macOS;Preview|mole|moremole-updates --dry-run|List available updates, without installing anything"
     "Software removal|mole|uninstall|Remove apps completely;Preview|mole|uninstall --dry-run|Show what Software removal would remove, without removing anything"
     "Ollama models|mole|moremole-models|Check your Ollama models for updates and install them;Preview|mole|moremole-models --dry-run|List your Ollama models and their updates, without changing anything;Download new|mole|moremole-models --download|Choose new models from Ollama's library, then the versions to download"
+    "Hugging Face MLX|mole|moremole-models --huggingface|Add MLX models from Hugging Face to Ollama, each checked to work, for Apple silicon;Preview|mole|moremole-models --huggingface --dry-run|List the MLX models on Hugging Face that Ollama runs, without downloading anything"
     "Ollama model removal|mole|moremole-models --remove|Remove Ollama models;Preview|mole|moremole-models --remove --dry-run|List your Ollama models and their sizes, without removing anything"
     "Update MoreMole|update||Get the newest MoreMole, with Mole's latest changes"
 )

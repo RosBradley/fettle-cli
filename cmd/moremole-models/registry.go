@@ -151,14 +151,19 @@ func checkModel(m localModel, fetch manifestFetcher) string {
 	return "update"
 }
 
-// checkModels checks several models at once, keeping their order.
-func checkModels(models []localModel, fetch manifestFetcher) []string {
+// checkModels checks several models at once, keeping their order. A model
+// MoreMole added from Hugging Face is checked there.
+func checkModels(models []localModel, fetch manifestFetcher, records map[string]hfRecord, checkHF func(hfRecord) string) []string {
 	statuses := make([]string, len(models))
 	jobs := make(chan int)
 	var wg sync.WaitGroup
 	for range registryWorkers {
 		wg.Go(func() {
 			for i := range jobs {
+				if r, ok := records[models[i].Name]; ok && checkHF != nil {
+					statuses[i] = checkHF(r)
+					continue
+				}
 				statuses[i] = checkModel(models[i], fetch)
 			}
 		})

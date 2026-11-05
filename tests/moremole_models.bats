@@ -21,7 +21,7 @@ setup() {
 	fi
 	export TERM="xterm-256color"
 	export MO_DEBUG=0
-	rm -rf "$HOME/Library/Logs/mole" # SAFE: test-owned HOME under tests/tmp-*
+	rm -rf "$HOME/Library/Logs/mole" "$HOME/Library/Caches/moremole" "$HOME/.config/mole/moremole-hf-models" # SAFE: test-owned HOME under tests/tmp-*
 	ROWS_DIR="$BATS_TEST_TMPDIR/rows"
 	CALLS="$BATS_TEST_TMPDIR/calls"
 	KEYS_FILE="$BATS_TEST_TMPDIR/keys"
@@ -54,6 +54,30 @@ case "$1" in
 			awk -F $'\x1f' -v m="$model" '($1 == "tag" && index($2, m ":") == 1) || ($1 == "notice" && $3 == m)' "$ROWS_DIR/tags" 2> /dev/null
 		done
 		;;
+	hf-files)
+		shift
+		for repo in "$@"; do
+			awk -F $'\x1f' -v r="$repo" '$2 == r' "$ROWS_DIR/hf-files" 2> /dev/null
+		done
+		;;
+	hf-download)
+		printf 'hf-download %s\n' "${*:2}" >> "$CALLS"
+		if [[ "$2" == *broken* ]]; then
+			mkdir -p "$4" && printf 'part' > "$4/model.safetensors.part"
+			echo "Error: model.safetensors: HTTP 503" >&2
+			exit 1
+		fi
+		mkdir -p "$4" && printf 'FROM .\n' > "$4/Modelfile"
+		echo "downloaded 5 GB in 3 files"
+		;;
+	hf-verify)
+		printf 'hf-verify %s\n' "$2" >> "$CALLS"
+		if [[ "$2" == *nochat* ]]; then
+			printf 'notice\x1fverify-failed\x1fits family has no chat template in Ollama, so Ollama couldn'"'"'t chat with it\n'
+		else
+			printf 'verified\x1f%s\n' "$2"
+		fi
+		;;
 	*) cat "$ROWS_DIR/$1" 2> /dev/null ;;
 esac
 exit 0
@@ -61,6 +85,7 @@ EOF
 	chmod +x "$BATS_TEST_TMPDIR/helper"
 	printf 'app=/Applications/Ollama.app\ncli=%s\nrunning=1\nmemory=17179869184\n' "$BATS_TEST_TMPDIR/fake-bin/ollama" > "$ROWS_DIR/status"
 	mole_test_fake_command ollama 'printf "ollama %s\n" "$*" >> "$CALLS"
+[[ "$1" != create || -f Modelfile ]] || { echo "Error: no Modelfile in $PWD" >&2; exit 1; }
 [[ "$*" != *broken* ]] || { echo "Error: model is damaged" >&2; exit 1; }'
 	# Opening the app turns the service on.
 	mole_test_fake_command open 'printf "open %s\n" "$*" >> "$CALLS"; sed -i.bak "s/^running=0$/running=1/" "$ROWS_DIR/status"'
@@ -287,8 +312,8 @@ ollama rm llama3.2:latest" ] || { cat "$CALLS"; return 1; }
 }
 
 library_models() {
-	row library model gemma3 "vision" 30.1M 1790000000 1 "1b,4b,27b" "Gemma 3 from Google."
-	row library model llama3.1 "tools" 120.6M 1733006040 0 "8b,70b,405b" "Llama 3.1 from Meta."
+	row library model gemma3 "vision" 30.1M 1790000000 1 "1b,4b,27b" 1 "Gemma 3 from Google."
+	row library model llama3.1 "tools" 120.6M 1733006040 0 "8b,70b,405b" 0 "Llama 3.1 from Meta."
 }
 
 @test "downloading picks models, then their versions, with size, fit, context, input and MLX" {
@@ -309,8 +334,8 @@ library_models() {
 	' bash "$PROJECT_ROOT/bin/moremole-models.sh" "$SCRIPTED"
 	[ "$status" -eq 0 ] || { echo "$output"; return 1; }
 	[ "$(cat "$ROWS_DIR/tags-asked")" = "gemma3 llama3.1" ] || return 1
-	[[ "$output" == *"Select models, then choose their versions"* ]] || return 1
-	[[ "$output" == *"gemma3"*"vision"*"1b–27b"*"30.1M pulls"*"installed"* ]] || return 1
+	[[ "$output" == *"Select models, then choose their versions; MLX: has versions for Apple silicon"* ]] || return 1
+	[[ "$output" == *"gemma3"*"vision"*"1b–27b"*"30.1M pulls"*"MLX"*"installed"* ]] || return 1
 	[[ "$output" == *"Select versions: size, fit in memory, context, input, MLX for Apple silicon"* ]] || return 1
 	[[ "$output" == *"gemma3:4b "*"3.3GB"*"fits"*"128K"*"Text, Image"*"default, installed"* ]] || return 1
 	[[ "$output" == *"gemma3:4b-mlx"*"3.5GB"*"fits"*"MLX"* ]] || return 1
@@ -320,6 +345,21 @@ library_models() {
 	[ "$(cat "$CALLS")" = "ollama pull gemma3:27b
 ollama pull gemma3:4b-mlx
 ollama pull llama3.1:405b" ] || { cat "$CALLS"; return 1; }
+}
+
+@test "/mlx in the library finds only the models with MLX versions" {
+	library_models
+	printf 'mlx=1\n' >> "$ROWS_DIR/status"
+	row tags tag gemma3:4b-mlx 3500000000 3.5GB 128K "Text, Image" 1 0 0
+	printf '%s\n' CHAR:/ CHAR:m CHAR:l CHAR:x ENTER SPACE ENTER QUIT > "$KEYS_FILE"
+	run models_env /bin/bash -c '
+		source "$1"
+		eval "$2"
+		main --download
+	' bash "$PROJECT_ROOT/bin/moremole-models.sh" "$SCRIPTED"
+	[ "$status" -eq 0 ] || { echo "$output"; return 1; }
+	[ "$(cat "$ROWS_DIR/tags-asked")" = "gemma3" ] || { cat "$ROWS_DIR/tags-asked"; return 1; }
+	[ ! -s "$CALLS" ]
 }
 
 @test "an Intel Mac's version list doesn't mention MLX, and cancelling it downloads nothing" {
@@ -376,4 +416,122 @@ ollama pull llama3.1:405b" ] || { cat "$CALLS"; return 1; }
 	' bash "$PROJECT_ROOT/bin/moremole-models.sh" "$SCRIPTED"
 	[[ "$output" == *"gemma9:1b isn't in Ollama's registry"* ]] || return 1
 	[ ! -s "$CALLS" ]
+}
+
+readonly HF_SHA=0123456789abcdef0123456789abcdef01234567
+readonly HF_NEW=fedcba9876543210fedcba9876543210fedcba98
+
+hf_models() {
+	printf 'mlx=1\n' >> "$ROWS_DIR/status"
+	row hf-list hf mlx-community/Qwen3.5-9B-4bit qwen3_5 4-bit 5950000000 719843 1790000000 0 "Text, Image"
+	row hf-list hf someone/Gemma-4-nochat-bf16 gemma4 bf16 2000000000 10 1780000000 0 Text
+	row hf-files files mlx-community/Qwen3.5-9B-4bit "$HF_SHA" 5950062560 10 hf.co/mlx-community/qwen3.5-9b-4bit
+	row hf-files files someone/Gemma-4-nochat-bf16 "$HF_SHA" 2000000000 6 hf.co/someone/gemma-4-nochat-bf16
+}
+
+@test "adding from Hugging Face downloads, adds, starts and only then names each model" {
+	hf_models
+	# A-Z: mlx-community/..., someone/...; pick both, then confirm.
+	printf '%s\n' SPACE DOWN SPACE ENTER > "$KEYS_FILE"
+	run models_env /bin/bash -c '
+		source "$1"
+		eval "$2"
+		printf "\n" | main --huggingface
+	' bash "$PROJECT_ROOT/bin/moremole-models.sh" "$SCRIPTED"
+	[ "$status" -eq 1 ] || { echo "$output"; return 1; }
+	[[ "$output" == *"Select MLX models from Hugging Face: family, bits, size, fit in memory, input"* ]] || return 1
+	[[ "$output" == *"mlx-community/Qwen3.5-9B-4bit"*"Qwen 3.5"*"4-bit"*"~5.95GB"*"fits"*"Text, Image"*"719K downloads"* ]] || return 1
+	[[ "$output" == *"Models to add from Hugging Face:"*"mlx-community/Qwen3.5-9B-4bit "*"5.95GB · fits in 17.18GB memory · as hf.co/mlx-community/qwen3.5-9b-4bit"* ]] || return 1
+	[[ "$output" == *"it needs twice its size free"*"started once to check that it works"* ]] || return 1
+	[[ "$output" == *"Added as hf.co/mlx-community/qwen3.5-9b-4bit:latest, and it works"* ]] || return 1
+	[[ "$output" == *"Some models did not finish"*"Added"*"1"*"Not done: hf.co/someone/gemma-4-nochat-bf16:latest: it was removed again because its family has no chat template in Ollama"* ]] || return 1
+	local staging="$HOME/Library/Caches/moremole/models/hf"
+	[ "$(cat "$CALLS")" = "hf-download mlx-community/Qwen3.5-9B-4bit $HF_SHA $staging/mlx-community--Qwen3.5-9B-4bit
+ollama create hf.co/mlx-community/qwen3.5-9b-4bit-moremole-check
+hf-verify hf.co/mlx-community/qwen3.5-9b-4bit-moremole-check
+ollama cp hf.co/mlx-community/qwen3.5-9b-4bit-moremole-check hf.co/mlx-community/qwen3.5-9b-4bit:latest
+ollama rm hf.co/mlx-community/qwen3.5-9b-4bit-moremole-check
+hf-download someone/Gemma-4-nochat-bf16 $HF_SHA $staging/someone--Gemma-4-nochat-bf16
+ollama create hf.co/someone/gemma-4-nochat-bf16-moremole-check
+hf-verify hf.co/someone/gemma-4-nochat-bf16-moremole-check
+ollama rm hf.co/someone/gemma-4-nochat-bf16-moremole-check" ] || { cat "$CALLS"; return 1; }
+	# The downloads are deleted once Ollama has them; only the working one
+	# is recorded.
+	[ -z "$(ls -A "$staging")" ] || { ls -la "$staging"; return 1; }
+	[ "$(cat "$HOME/.config/mole/moremole-hf-models")" = "hf.co/mlx-community/qwen3.5-9b-4bit:latest"$'\t'"mlx-community/Qwen3.5-9B-4bit"$'\t'"$HF_SHA" ] || return 1
+	local log="$HOME/Library/Logs/mole/operations.log"
+	grep -q "REBUILT hf.co/mlx-community/qwen3.5-9b-4bit:latest (added from Hugging Face mlx-community/Qwen3.5-9B-4bit at 0123456)" "$log" || return 1
+	grep -q "FAILED hf.co/someone/gemma-4-nochat-bf16:latest (it was removed again because its family has no chat template" "$log"
+}
+
+@test "a Hugging Face download that stops keeps its part to continue, and adds nothing" {
+	printf 'mlx=1\n' >> "$ROWS_DIR/status"
+	row hf-list hf me/broken-4bit qwen3_5 4-bit 1000000 5 1780000000 0 Text
+	row hf-files files me/broken-4bit "$HF_SHA" 1000000 3 hf.co/me/broken-4bit
+	printf '%s\n' SPACE ENTER > "$KEYS_FILE"
+	run models_env /bin/bash -c '
+		source "$1"
+		eval "$2"
+		printf "\n" | main --huggingface
+	' bash "$PROJECT_ROOT/bin/moremole-models.sh" "$SCRIPTED"
+	[ "$status" -eq 1 ] || { echo "$output"; return 1; }
+	local part="$HOME/Library/Caches/moremole/models/hf/me--broken-4bit"
+	[[ "$output" == *"Not done: hf.co/me/broken-4bit:latest: model.safetensors: HTTP 503"* ]] || return 1
+	[[ "$output" == *"The downloaded part is kept in $part, so trying again continues"* ]] || return 1
+	[ -f "$part/model.safetensors.part" ] || return 1
+	[[ "$(cat "$CALLS")" != *"ollama create"* ]] || return 1
+	[ ! -e "$HOME/.config/mole/moremole-hf-models" ]
+}
+
+@test "the Hugging Face preview lists without downloading, and an Intel Mac is told MLX needs Apple silicon" {
+	hf_models
+	run models_env /bin/bash -c 'source "$1"; main --huggingface --dry-run' bash "$PROJECT_ROOT/bin/moremole-models.sh" < /dev/null
+	[ "$status" -eq 0 ] || { echo "$output"; return 1; }
+	[[ "$output" == *"2 MLX models on Hugging Face that Ollama runs"*"mlx-community/Qwen3.5-9B-4bit"*"someone/Gemma-4-nochat-bf16"*"Sizes are estimates until you pick a model."* ]] || return 1
+	[ ! -s "$CALLS" ] || return 1
+
+	sed -i.bak '/^mlx=1$/d' "$ROWS_DIR/status"
+	run models_env /bin/bash -c 'source "$1"; main --huggingface' bash "$PROJECT_ROOT/bin/moremole-models.sh" < /dev/null
+	[ "$status" -eq 0 ] || { echo "$output"; return 1; }
+	[[ "$output" == *"MLX models need a Mac with Apple silicon; this Mac has an Intel chip."* ]] || return 1
+	[ ! -s "$CALLS" ]
+}
+
+@test "a model added from Hugging Face updates from there, and removing it drops its record" {
+	mkdir -p "$HOME/.config/mole"
+	printf 'hf.co/me/m-4bit:latest\tme/M-4bit\t%s\nother:latest\tme/Other\t%s\n' "$HF_SHA" "$HF_SHA" > "$HOME/.config/mole/moremole-hf-models"
+	row list-check model gemma3:4b 3300000000 1790848800 update 0 ""
+	row list-check model hf.co/me/m-4bit:latest 5000000000 1790848800 update 0 me/M-4bit
+	row hf-files files me/M-4bit "$HF_NEW" 5100000000 3 hf.co/me/m-4bit
+	printf 'mlx=1\n' >> "$ROWS_DIR/status"
+	printf '%s\n' SPACE DOWN SPACE ENTER > "$KEYS_FILE"
+	run models_env /bin/bash -c '
+		source "$1"
+		eval "$2"
+		printf "\n" | main
+	' bash "$PROJECT_ROOT/bin/moremole-models.sh" "$SCRIPTED"
+	[ "$status" -eq 0 ] || { echo "$output"; return 1; }
+	[[ "$output" == *"hf.co/me/m-4bit:latest"*"update available · from Hugging Face"* ]] || return 1
+	[[ "$output" == *"Models to update:"*"gemma3:4b"*"hf.co/me/m-4bit:latest "*"from Hugging Face"* ]] || return 1
+	[[ "$output" == *"Ollama downloads only the parts that changed."*"Models from Hugging Face download again in full, and replace the old version only once the new one starts."* ]] || return 1
+	[[ "$(cat "$CALLS")" == "ollama pull gemma3:4b
+hf-download me/M-4bit $HF_NEW "*"/me--M-4bit
+ollama create hf.co/me/m-4bit-moremole-check
+hf-verify hf.co/me/m-4bit-moremole-check
+ollama cp hf.co/me/m-4bit-moremole-check hf.co/me/m-4bit:latest
+ollama rm hf.co/me/m-4bit-moremole-check" ]] || { cat "$CALLS"; return 1; }
+	[ "$(cat "$HOME/.config/mole/moremole-hf-models")" = "other:latest"$'\t'"me/Other"$'\t'"$HF_SHA"$'\n'"hf.co/me/m-4bit:latest"$'\t'"me/M-4bit"$'\t'"$HF_NEW" ] || { cat "$HOME/.config/mole/moremole-hf-models"; return 1; }
+
+	: > "$CALLS"
+	: > "$KEY_STATE"
+	printf '%s\n' DOWN SPACE ENTER > "$KEYS_FILE"
+	run models_env /bin/bash -c '
+		source "$1"
+		eval "$2"
+		printf "\n" | main --remove
+	' bash "$PROJECT_ROOT/bin/moremole-models.sh" "$SCRIPTED"
+	[ "$status" -eq 0 ] || { echo "$output"; return 1; }
+	[[ "$output" == *"You can download them again."* ]] || return 1
+	[ "$(cat "$CALLS")" = "ollama rm hf.co/me/m-4bit:latest" ] || { cat "$CALLS"; return 1; }
+	[ "$(cat "$HOME/.config/mole/moremole-hf-models")" = "other:latest"$'\t'"me/Other"$'\t'"$HF_SHA" ]
 }

@@ -1,9 +1,12 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"net/url"
@@ -143,6 +146,39 @@ func (s service) get(path string, v any) error {
 	return json.NewDecoder(resp.Body).Decode(v)
 }
 
+// post sends a request with its own time limit, for a model that takes
+// minutes to load.
+func (s service) post(path string, body, v any, timeout time.Duration) error {
+	data, err := json.Marshal(body)
+	if err != nil {
+		return err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, s.base+path, bytes.NewReader(data))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	client := *s.client
+	client.Timeout = 0
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		var e struct {
+			Error string `json:"error"`
+		}
+		if json.NewDecoder(io.LimitReader(resp.Body, 1<<16)).Decode(&e) == nil && e.Error != "" {
+			return errors.New(e.Error)
+		}
+		return fmt.Errorf("HTTP %d", resp.StatusCode)
+	}
+	return json.NewDecoder(resp.Body).Decode(v)
+}
+
 func (s service) running() bool {
 	var v struct {
 		Version string `json:"version"`
@@ -186,8 +222,9 @@ func (s service) loaded() map[string]bool {
 }
 
 // listLines lists the installed models; with check, it asks the registry
-// whether each has changed.
-func listLines(s service, check bool, fetch manifestFetcher) []string {
+// whether each has changed, or Hugging Face for a model MoreMole added from
+// there, whose row ends with its Hugging Face name.
+func listLines(s service, check bool, fetch manifestFetcher, records map[string]hfRecord, checkHF func(hfRecord) string) []string {
 	models, err := s.models()
 	if err != nil {
 		return []string{notice("service-failed", "Couldn't get the model list from Ollama ("+err.Error()+").")}
@@ -195,7 +232,7 @@ func listLines(s service, check bool, fetch manifestFetcher) []string {
 	loaded := s.loaded()
 	statuses := make([]string, len(models))
 	if check {
-		statuses = checkModels(models, fetch)
+		statuses = checkModels(models, fetch, records, checkHF)
 	}
 	lines := make([]string, 0, len(models))
 	for i, m := range models {
@@ -207,7 +244,7 @@ func listLines(s service, check bool, fetch manifestFetcher) []string {
 		if !m.Modified.IsZero() {
 			modified = strconv.FormatInt(m.Modified.Unix(), 10)
 		}
-		lines = append(lines, row("model", m.Name, strconv.FormatInt(m.Size, 10), modified, statuses[i], isLoaded))
+		lines = append(lines, row("model", m.Name, strconv.FormatInt(m.Size, 10), modified, statuses[i], isLoaded, records[m.Name].Repo))
 	}
 	return lines
 }
