@@ -299,9 +299,10 @@ ollama rm llama3.2:latest" ] || { cat "$CALLS"; return 1; }
 
 @test "Enter shows a model's details, where Space selects it, and status comes first" {
 	installed_models
-	# A-Z: gemma3, llama3.2, my-assistant, qwen3. Open llama3.2's details,
-	# select it there, go back and save.
-	printf '%s\n' DOWN ENTER SPACE QUIT CHAR:d > "$KEYS_FILE"
+	# A-Z: gemma3, llama3.2, my-assistant, qwen3. Open llama3.2's details and
+	# select it there; the arrows go on to qwen3's and back to my-assistant's,
+	# where the list's cursor then is: select it there too and save.
+	printf '%s\n' DOWN ENTER SPACE DOWN DOWN UP QUIT SPACE CHAR:d > "$KEYS_FILE"
 	run models_env /bin/bash -c '
 		source "$1"
 		eval "$2"
@@ -311,8 +312,9 @@ ollama rm llama3.2:latest" ] || { cat "$CALLS"; return 1; }
 	[[ "$output" == *"up to date  llama3.2:latest"*"2.00GB · in use"* ]] || return 1
 	[[ "$output" == *"Enter Details"*"D Save"* ]] || return 1
 	[[ "$output" == *"Not selected"*"llama3.2:latest"*"Status"*"up to date"*"Size on disk"*"2.00GB"*"In use"*"yes, loaded in memory now"*"Page"*"https://ollama.com/library/llama3.2"*"Space Select"*"Enter Back"* ]] || return 1
-	[[ "$output" == *"Selected"*"llama3.2:latest"* ]] || return 1
-	[[ "$output" == *"Models to remove:"*"llama3.2:latest"* ]] || return 1
+	[[ "$output" == *"2 of 4 · ● Selected"*"llama3.2:latest"*"3 of 4"*"my-assistant:latest"*"4 of 4"*"qwen3:8b"*"3 of 4"*"my-assistant:latest"* ]] || return 1
+	[[ "$output" == *"Previous, next"* ]] || return 1
+	[[ "$output" == *"Models to remove:"*"llama3.2:latest"*"my-assistant:latest"* ]] || return 1
 	[ ! -s "$CALLS" ]
 }
 
@@ -325,7 +327,7 @@ ollama rm llama3.2:latest" ] || { cat "$CALLS"; return 1; }
 		main --huggingface
 	' bash "$PROJECT_ROOT/bin/moremole-models.sh" "$SCRIPTED"
 	[ "$status" -eq 0 ] || { echo "$output"; return 1; }
-	[[ "$output" == *"mlx-community/Qwen3.5-9B-4bit"*"Family"*"Qwen 3.5"*"Quantization"*"4-bit"*"Size"*"about 5.95GB; the exact size shows before anything downloads"*"Memory"*"fits in 17.18GB memory"*"Downloads"*"719843 in the last month"*"In Ollama as"*"hf.co/mlx-community/qwen3.5-9b-4bit"*"https://huggingface.co/mlx-community/Qwen3.5-9B-4bit"* ]] || return 1
+	[[ "$output" == *"mlx-community/Qwen3.5-9B-4bit"*"Family"*"Qwen 3.5"*"Quantization"*"4-bit"*"Size"*"5.95GB in 10 files"*"Memory"*"fits in 17.18GB memory"*"Downloads"*"719843 in the last month"*"In Ollama as"*"hf.co/mlx-community/qwen3.5-9b-4bit"*"https://huggingface.co/mlx-community/Qwen3.5-9B-4bit"* ]] || return 1
 	[ ! -s "$CALLS" ]
 }
 
@@ -459,6 +461,36 @@ hf_models() {
 	row hf-list hf someone/Gemma-4-nochat-bf16 gemma4 bf16 2000000000 10 1780000000 0 Text
 	row hf-files files mlx-community/Qwen3.5-9B-4bit "$HF_SHA" 5950062560 10 hf.co/mlx-community/qwen3.5-9b-4bit
 	row hf-files files someone/Gemma-4-nochat-bf16 "$HF_SHA" 2000000000 6 hf.co/someone/gemma-4-nochat-bf16
+}
+
+@test "S sorts Hugging Face models by downloads and the library by pulls" {
+	hf_models
+	# A-Z, then S for size, date and downloads, most first: Qwen (719,843),
+	# then Gemma (10). O flips it, so the first row is Gemma.
+	printf '%s\n' CHAR:s CHAR:s CHAR:s CHAR:o SPACE CHAR:d > "$KEYS_FILE"
+	run models_env /bin/bash -c '
+		source "$1"
+		eval "$2"
+		printf "\033" | main --huggingface
+	' bash "$PROJECT_ROOT/bin/moremole-models.sh" "$SCRIPTED"
+	[ "$status" -eq 0 ] || { echo "$output"; return 1; }
+	[[ "$output" == *"S Downloads"* ]] || return 1
+	[[ "$output" == *"Models to add from Hugging Face:"*"someone/Gemma-4-nochat-bf16"* ]] || return 1
+	[[ "$output" != *"Models to add from Hugging Face:"*"mlx-community/Qwen3.5-9B-4bit "*"· as"* ]] || return 1
+
+	# The library: A-Z, then S for date and pulls, most first: llama3.1
+	# (120.6M) before gemma3 (30.1M).
+	library_models
+	: > "$KEY_STATE"
+	printf '%s\n' CHAR:s CHAR:s SPACE CHAR:d QUIT > "$KEYS_FILE"
+	run models_env /bin/bash -c '
+		source "$1"
+		eval "$2"
+		main --download
+	' bash "$PROJECT_ROOT/bin/moremole-models.sh" "$SCRIPTED"
+	[ "$status" -eq 0 ] || { echo "$output"; return 1; }
+	[[ "$output" == *"S Pulls"* ]] || return 1
+	[ "$(cat "$ROWS_DIR/tags-asked")" = "llama3.1" ] || { cat "$ROWS_DIR/tags-asked"; return 1; }
 }
 
 @test "adding from Hugging Face downloads, adds, starts and only then names each model" {

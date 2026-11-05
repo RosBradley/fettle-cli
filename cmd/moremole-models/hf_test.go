@@ -453,6 +453,20 @@ func TestHFEstimatesAndNames(t *testing.T) {
 	if m.estimatedBytes() != 0 || m.quantText() != "" {
 		t.Error("an empty model has no size or quantization")
 	}
+	// 4 bits plus a 16-bit scale and bias per group: half a bit a weight in
+	// groups of 64 (MLX's default), a quarter in groups of 128.
+	for _, c := range []struct {
+		quant string
+		want  int64
+	}{{`{"bits":4}`, 4500 + 200}, {`{"bits":4,"group_size":128}`, 4250 + 200}, {`{"bits":8,"group_size":32}`, 9000 + 200}} {
+		var q hfModel
+		if err := json.Unmarshal([]byte(`{"config":{"quantization":`+c.quant+`},"safetensors":{"parameters":{"U32":8000,"BF16":100}}}`), &q); err != nil {
+			t.Fatal(err)
+		}
+		if got := q.estimatedBytes(); got != c.want {
+			t.Errorf("%s: %d bytes, want %d", c.quant, got, c.want)
+		}
+	}
 	if got := ollamaNameFor("mlx-community/Qwen3.5-0.8B-4bit"); got != "hf.co/mlx-community/qwen3.5-0.8b-4bit" {
 		t.Errorf("name %q", got)
 	}

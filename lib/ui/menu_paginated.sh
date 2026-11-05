@@ -128,8 +128,13 @@ paginated_multi_select() {
     # epochs[i]   -> last_used_epoch (numeric) for item i
     # sizekb[i]   -> size in KB (numeric) for item i
     # filter_names[i] -> name for filtering (if not set, use items[i])
+    # count_meta[i] -> MoreMole: a count such as downloads, most first, named
+    #                by MOLE_MENU_COUNT_LABEL
     local -a epochs=()
     local -a sizekb=()
+    local -a count_meta=()
+    local has_count_metadata="false"
+    local count_label="${MOLE_MENU_COUNT_LABEL:-Count}"
     local -a filter_names=()
     local has_metadata="false"
     local has_epoch_metadata="false"
@@ -147,7 +152,13 @@ paginated_multi_select() {
             [[ "${v:-0}" =~ ^[0-9]+$ && "${v:-0}" -gt 0 ]] && has_size_metadata="true"
         done < <(_pm_parse_csv_to_array "$MOLE_MENU_META_SIZEKB")
     fi
-    if [[ "$has_epoch_metadata" == "true" || "$has_size_metadata" == "true" ]]; then
+    if [[ -n "${MOLE_MENU_META_COUNTS:-}" ]]; then
+        while IFS= read -r v; do
+            count_meta+=("${v:-0}")
+            [[ "${v:-0}" =~ ^[0-9]+$ && "${v:-0}" -gt 0 ]] && has_count_metadata="true"
+        done < <(_pm_parse_csv_to_array "$MOLE_MENU_META_COUNTS")
+    fi
+    if [[ "$has_epoch_metadata" == "true" || "$has_size_metadata" == "true" || "$has_count_metadata" == "true" ]]; then
         has_metadata="true"
     fi
     if [[ -n "${MOLE_MENU_FILTER_NAMES:-}" ]]; then
@@ -163,6 +174,7 @@ paginated_multi_select() {
         case "$1" in
             date) [[ "$has_epoch_metadata" == "true" ]] ;;
             size) [[ "$has_size_metadata" == "true" ]] ;;
+            count) [[ "$has_count_metadata" == "true" ]] ;;
             name) return 0 ;;
             *) return 1 ;;
         esac
@@ -174,6 +186,8 @@ paginated_multi_select() {
             sort_mode="date"
         elif [[ "$has_size_metadata" == "true" ]]; then
             sort_mode="size"
+        elif [[ "$has_count_metadata" == "true" ]]; then
+            sort_mode="count"
         else
             sort_mode="name"
         fi
@@ -181,11 +195,14 @@ paginated_multi_select() {
 
     cycle_sort_mode() {
         local candidate
+        # Date, count, name, size, and round again; a list without a count
+        # goes date, name, size as before.
         case "$sort_mode" in
-            date) set -- name size date ;;
-            name) set -- size date name ;;
-            size) set -- date name size ;;
-            *) set -- date name size ;;
+            date) set -- count name size date ;;
+            count) set -- name size date count ;;
+            name) set -- size date count name ;;
+            size) set -- date count name size ;;
+            *) set -- date count name size ;;
         esac
 
         for candidate in "$@"; do
@@ -371,7 +388,7 @@ paginated_multi_select() {
     local -a filter_cache_indices=()
 
     ensure_sorted_indices() {
-        local requested_key="${sort_mode}:${sort_reverse}:${has_epoch_metadata}:${has_size_metadata}"
+        local requested_key="${sort_mode}:${sort_reverse}:${has_epoch_metadata}:${has_size_metadata}:${has_count_metadata}"
         if [[ "$requested_key" == "$sort_cache_key" && ${#sorted_indices_cache[@]} -gt 0 ]]; then
             return
         fi
@@ -388,8 +405,8 @@ paginated_multi_select() {
             # Date: ascending by default (oldest first)
             sort_key="-k1,1n"
             [[ "$sort_reverse" == "true" ]] && sort_key="-k1,1nr"
-        elif [[ "$sort_mode" == "size" ]]; then
-            # Size: descending by default (largest first)
+        elif [[ "$sort_mode" == "size" || "$sort_mode" == "count" ]]; then
+            # Size and count: descending by default (largest first)
             sort_key="-k1,1nr"
             [[ "$sort_reverse" == "true" ]] && sort_key="-k1,1n"
         else
@@ -406,6 +423,7 @@ paginated_multi_select() {
                 case "$sort_mode" in
                     date) k="${epochs[id]:-0}" ;;
                     size) k="${sizekb[id]:-0}" ;;
+                    count) k="${count_meta[id]:-0}" ;;
                     name | *)
                         # Full names, not the truncated, padded display row.
                         k="${filter_targets_lower[id]}"
@@ -531,35 +549,55 @@ paginated_multi_select() {
         _pm_row=$(truncate_by_display_width "$_pm_row" "$row_width")
     }
 
-    # The details screen for one row: Space selects it, any other key goes
-    # back to the list.
+    # The details screen for the row under the cursor: the arrow keys show
+    # the next or previous row's, Space selects it, any other key goes back
+    # to the list with the cursor on the row last shown.
     _pm_show_details() {
-        local real="$1" dkey mark cols
+        local pos=$((top_index + cursor_pos)) real dkey mark cols
+        local last=$((${#view_indices[@]} - 1))
         cols=$(_pm_get_terminal_width)
         ((cols > 10)) || cols=80
         while true; do
+            real="${view_indices[pos]}"
             mark="$ICON_EMPTY Not selected"
             [[ ${selected[real]} == true ]] && mark="$ICON_SOLID Selected"
             printf "\033[2J\033[H" >&2
-            printf "${PURPLE_BOLD}%s${NC}  ${GRAY}%s${NC}\n\n" "$title" "$mark" >&2
+            printf "${PURPLE_BOLD}%s${NC}  ${GRAY}%d of %d · %s${NC}\n\n" "$title" "$((pos + 1))" "$((last + 1))" "$mark" >&2
             # The function gets the width to wrap its lines to.
             MOLE_MENU_DETAILS_WIDTH="$cols" "$details_fn" "$real" >&2 || true
-            printf '\n%b\n' "${GRAY}Space Select${NC} ${GRAY}|${NC} ${GRAY}Enter Back${NC} ${GRAY}|${NC} ${GRAY}Esc Back${NC}" >&2
+            printf '\n%b\n' "${GRAY}${ICON_NAV_UP}${ICON_NAV_DOWN} Previous, next${NC} ${GRAY}|${NC} ${GRAY}Space Select${NC} ${GRAY}|${NC} ${GRAY}Enter Back${NC} ${GRAY}|${NC} ${GRAY}Esc Back${NC}" >&2
             while ! dkey=$(read_key 1); do :; done
             drain_pending_input
-            if [[ "$dkey" == "SPACE" ]]; then
-                if [[ ${selected[real]} == true ]]; then
-                    selected[real]=false
-                    ((selected_count--))
-                else
-                    selected[real]=true
-                    selected_count=$((selected_count + 1))
-                fi
-                continue
-            fi
-            printf "\033[2J" >&2
-            return 0
+            case "$dkey" in
+                SPACE)
+                    if [[ ${selected[real]} == true ]]; then
+                        selected[real]=false
+                        ((selected_count--))
+                    else
+                        selected[real]=true
+                        selected_count=$((selected_count + 1))
+                    fi
+                    continue
+                    ;;
+                DOWN)
+                    ((pos >= last)) || pos=$((pos + 1))
+                    continue
+                    ;;
+                UP)
+                    ((pos <= 0)) || pos=$((pos - 1))
+                    continue
+                    ;;
+            esac
+            break
         done
+        if ((pos < top_index)); then
+            top_index=$pos
+        elif ((pos >= top_index + items_per_page)); then
+            top_index=$((pos - items_per_page + 1))
+        fi
+        cursor_pos=$((pos - top_index))
+        printf "\033[2J" >&2
+        return 0
     }
 
     draw_header() {
@@ -620,6 +658,7 @@ paginated_multi_select() {
             date) sort_label="Date" ;;
             name) sort_label="Name" ;;
             size) sort_label="Size" ;;
+            count) sort_label="$count_label" ;;
         esac
         local sort_status="${sort_label}"
 

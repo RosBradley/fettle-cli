@@ -85,7 +85,8 @@ type hfModel struct {
 }
 
 type hfQuant struct {
-	Bits int `json:"bits"`
+	Bits      int `json:"bits"`
+	GroupSize int `json:"group_size"`
 }
 
 type hfFile struct {
@@ -105,15 +106,26 @@ func (m hfModel) open() bool {
 }
 
 func (m hfModel) bits() int {
+	b, _ := m.quant()
+	return b
+}
+
+// quant gives the quantization's bits and group size; a group size the
+// config leaves out is MLX's default, 64. 0 bits means not quantized.
+func (m hfModel) quant() (bits, group int) {
 	if m.Config == nil {
-		return 0
+		return 0, 0
 	}
 	for _, q := range []*hfQuant{m.Config.QuantizationConfig, m.Config.Quantization} {
 		if q != nil && q.Bits > 0 && q.Bits <= 16 {
-			return q.Bits
+			group = q.GroupSize
+			if group <= 0 {
+				group = 64
+			}
+			return q.Bits, group
 		}
 	}
-	return 0
+	return 0, 0
 }
 
 // quantText is how the weights are stored: "4-bit", or "bf16" unquantized.
@@ -141,8 +153,11 @@ func (m hfModel) quantText() string {
 var dtypeBytes = map[string]int64{"BF16": 2, "F16": 2, "F32": 4, "F64": 8, "I64": 8, "I32": 4, "I16": 2, "I8": 1, "U8": 1, "BOOL": 1, "F8_E4M3": 1, "F8_E5M2": 1}
 
 // estimatedBytes guesses the download from the parameter counts Hugging Face
-// lists. Quantized weights count as U32; MLX stores them at their bits plus
-// a 16-bit scale and bias per 64 weights, half a bit each. 0 means unknown.
+// lists. Quantized weights count as U32, one per weight; MLX stores them at
+// their bits plus a 16-bit scale and bias per group of weights (64 unless
+// the config says otherwise). A model quantized with different bits per
+// layer comes out wrong, so the exact size is read before downloading.
+// 0 means unknown.
 func (m hfModel) estimatedBytes() int64 {
 	if m.Safetensors == nil {
 		return 0
@@ -150,11 +165,11 @@ func (m hfModel) estimatedBytes() int64 {
 	var total int64
 	for dtype, n := range m.Safetensors.Parameters {
 		if dtype == "U32" {
-			b := int64(m.bits())
+			b, g := m.quant()
 			if b == 0 {
 				return 0
 			}
-			total += n * (2*b + 1) / 16
+			total += n * (int64(b)*int64(g) + 32) / (8 * int64(g))
 			continue
 		}
 		size, ok := dtypeBytes[dtype]

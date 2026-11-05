@@ -91,6 +91,8 @@ H_DOWNLOADS=()
 H_UPDATED=()
 H_INSTALLED=()
 H_INPUT=()
+# Exact download sizes, read when a model's details are opened.
+H_EXACT=()
 NOTICE_KEYS=()
 NOTICE_TEXTS=()
 
@@ -365,12 +367,33 @@ add_plain_versions() {
     done
 }
 
-human_size() {
-    if [[ "$1" =~ ^[0-9]+$ && "$1" -gt 0 ]]; then
-        bytes_to_human "$1"
+# The lists have hundreds of rows, so building one forks nothing: these
+# helpers set TEXT, and the row builders set ROW, instead of printing for a
+# $(...) to read. (With a fork per cell, 553 Hugging Face rows took 21s.)
+TEXT=""
+ROW=""
+
+# A size as bytes_to_human gives it (3.30GB, 512.0MB, 20KB), or "size unknown".
+size_text() {
+    local bytes="$1" scaled
+    if [[ ! "$bytes" =~ ^[0-9]+$ || "$bytes" -eq 0 ]]; then
+        TEXT="size unknown"
+    elif ((bytes >= 1000000000)); then
+        scaled=$(((bytes * 100 + 500000000) / 1000000000))
+        printf -v TEXT '%d.%02dGB' $((scaled / 100)) $((scaled % 100))
+    elif ((bytes >= 1000000)); then
+        scaled=$(((bytes * 10 + 500000) / 1000000))
+        printf -v TEXT '%d.%01dMB' $((scaled / 10)) $((scaled % 10))
+    elif ((bytes >= 1000)); then
+        TEXT="$(((bytes + 500) / 1000))KB"
     else
-        printf 'size unknown'
+        TEXT="${bytes}B"
     fi
+}
+
+human_size() {
+    size_text "$1"
+    printf '%s' "$TEXT"
 }
 
 # A model needs about its file size in memory, plus room for what it reads.
@@ -388,31 +411,62 @@ fit_text() {
     fi
 }
 
+# One word for whether a download fits this Mac's memory, as fit_text says.
+fit_word() {
+    local bytes="$1" share
+    TEXT=""
+    [[ "$bytes" =~ ^[0-9]+$ && "$bytes" -gt 0 && "$MAC_MEMORY" -gt 0 ]] || return 0
+    share=$((bytes * 100 / MAC_MEMORY))
+    if ((share <= 50)); then
+        TEXT="fits"
+    elif ((share <= 75)); then
+        TEXT="tight"
+    else
+        TEXT="too big"
+    fi
+}
+
 # A model's registry check in words; "short" gives the list's first column.
 status_text() {
     local short="${2:-}"
     case "$1" in
-        update) [[ -n "$short" ]] && printf 'update' || printf 'update available' ;;
-        current) printf 'up to date' ;;
-        local) [[ -n "$short" ]] && printf 'made here' || printf 'made on this Mac' ;;
-        unknown) [[ -n "$short" ]] && printf 'unchecked' || printf "couldn't check" ;;
-        *) printf '%s' "$1" ;;
+        update) TEXT="update available" ;;
+        current) TEXT="up to date" ;;
+        local) TEXT="made on this Mac" ;;
+        unknown) TEXT="couldn't check" ;;
+        *) TEXT="$1" ;;
     esac
+    if [[ -n "$short" ]]; then
+        case "$1" in
+            update) TEXT="update" ;;
+            local) TEXT="made here" ;;
+            unknown) TEXT="unchecked" ;;
+        esac
+    fi
 }
 
-# Pad or cut text to a display width.
-fit_cell() {
-    local text width="$2" shown
-    text=$(mole_terminal_safe_text "$1")
-    shown=$(truncate_by_display_width "$text" "$width")
-    printf '%s%*s' "$shown" "$((width - $(get_display_width "$shown")))" ""
+# Add text to ROW, cut or padded to width, after two spaces unless it's the
+# first cell. Control characters can't reach the terminal. Width counts
+# characters, which is right for every name these lists show.
+cell() {
+    local text="$1" width="$2" chars pad=""
+    text="${text//[$'\t\n\r']/ }"
+    text="${text//[[:cntrl:]]/?}"
+    local LC_ALL=en_US.UTF-8
+    chars=${#text}
+    if ((chars > width)); then
+        text="${text:0:width-3}..."
+        chars=$width
+    fi
+    ((chars >= width)) || printf -v pad '%*s' "$((width - chars))" ""
+    ROW+="${ROW:+  }$text$pad"
 }
 
+# The width of the longest name, at least 12 and at most MODELS_NAME_MAX.
 name_width() {
-    local width=12 name w
+    local width=12 name LC_ALL=en_US.UTF-8
     for name in "$@"; do
-        w=$(get_display_width "$name")
-        ((w <= width)) || width=$w
+        ((${#name} <= width)) || width=${#name}
     done
     ((width <= ${MODELS_NAME_MAX:-36})) || width=${MODELS_NAME_MAX:-36}
     printf '%s' "$width"
@@ -422,106 +476,140 @@ name_width() {
 # use or came from Hugging Face.
 model_row_text() {
     local i="$1" width="$2" extra
-    extra="$(human_size "${M_SIZE[i]}")"
+    size_text "${M_SIZE[i]}"
+    extra="$TEXT"
     [[ "${M_LOADED[i]}" != "1" ]] || extra+=" · in use"
     [[ -z "${M_REPO[i]:-}" ]] || extra+=" · from Hugging Face"
-    printf '%s  %s  %s' "$(fit_cell "$(status_text "${M_STATUS[i]}" short)" 10)" "$(fit_cell "${M_NAME[i]}" "$width")" "$extra"
+    ROW=""
+    status_text "${M_STATUS[i]}" short
+    cell "$TEXT" 10
+    cell "${M_NAME[i]}" "$width"
+    ROW+="  $extra"
 }
 
 # The sizes a model comes in: "8b, 70b", or the smallest to the largest.
 sizes_text() {
     local -a sizes=()
+    TEXT=""
     [[ -n "$1" ]] || return 0
     IFS=',' read -r -a sizes <<< "$1"
     if [[ ${#sizes[@]} -le 2 ]]; then
-        printf '%s' "${1//,/, }"
+        TEXT="${1//,/, }"
     else
-        printf '%s–%s' "${sizes[0]}" "${sizes[${#sizes[@]} - 1]}"
+        TEXT="${sizes[0]}–${sizes[${#sizes[@]} - 1]}"
     fi
 }
 
 # A library model: installed first, and on Apple silicon MLX when it has MLX
 # versions, then name, what it can do, its sizes and pulls.
 library_row_text() {
-    local i="$1" width="$2" text pulls="" mlx="" status=""
-    [[ -z "${L_PULLS[i]}" ]] || pulls="${L_PULLS[i]} pulls"
+    local i="$1" width="$2" mlx="" status=""
     [[ "${L_INSTALLED[i]}" != "1" ]] || status="installed"
-    text="$(fit_cell "$status" 9)  "
+    ROW=""
+    cell "$status" 9
     if [[ "${MODELS_APPLE_SILICON:-0}" == "1" ]]; then
         [[ ! "${L_MLX[i]:-}" =~ ^[1-9][0-9]*$ ]] || mlx="MLX"
-        text+="$(fit_cell "$mlx" 3)  "
+        cell "$mlx" 3
     fi
-    text+="$(fit_cell "${L_NAME[i]}" "$width")  $(fit_cell "${L_CAPS[i]//,/, }" 30)  $(fit_cell "$(sizes_text "${L_SIZES[i]}")" 12)  $pulls"
-    printf '%s' "$text"
+    cell "${L_NAME[i]}" "$width"
+    cell "${L_CAPS[i]//,/, }" 30
+    sizes_text "${L_SIZES[i]}"
+    cell "$TEXT" 12
+    [[ -z "${L_PULLS[i]}" ]] || ROW+="  ${L_PULLS[i]} pulls"
+}
+
+# The library's pull count as a number: 30.1M is 30100000, 2,538 is 2538;
+# 0 when it can't be read.
+pulls_number() {
+    local text="${1//,/}" unit=1 whole frac=""
+    TEXT=0
+    case "$text" in
+        *K) unit=1000 ;;
+        *M) unit=1000000 ;;
+        *B) unit=1000000000 ;;
+    esac
+    ((unit == 1)) || text="${text%?}"
+    [[ "$text" =~ ^([0-9]+)(\.([0-9]))?$ ]] || return 0
+    whole="${BASH_REMATCH[1]}"
+    frac="${BASH_REMATCH[3]:-0}"
+    TEXT=$((10#$whole * unit + 10#$frac * unit / 10))
 }
 
 # A model family as people say it: qwen3_5_moe is Qwen 3.5 MoE.
 family_text() {
     case "$1" in
-        qwen3_5) printf 'Qwen 3.5' ;;
-        qwen3_5_moe) printf 'Qwen 3.5 MoE' ;;
-        qwen3_5_text) printf 'Qwen 3.5 text' ;;
-        qwen4_exp) printf 'Qwen 4 exp' ;;
-        gemma4) printf 'Gemma 4' ;;
-        nemotron_h) printf 'Nemotron H' ;;
-        nemotron_h_omni) printf 'Nemotron H omni' ;;
-        lfm3) printf 'LFM3' ;;
-        lfm3_vl) printf 'LFM3 VL' ;;
-        lfm3_omni) printf 'LFM3 omni' ;;
-        lfm3_audio) printf 'LFM3 audio' ;;
-        laguna) printf 'Laguna' ;;
-        cohere2_moe) printf 'Cohere 2 MoE' ;;
-        muse_glimmer) printf 'Muse Glimmer' ;;
-        *) printf '%s' "$1" ;;
+        qwen3_5) TEXT="Qwen 3.5" ;;
+        qwen3_5_moe) TEXT="Qwen 3.5 MoE" ;;
+        qwen3_5_text) TEXT="Qwen 3.5 text" ;;
+        qwen4_exp) TEXT="Qwen 4 exp" ;;
+        gemma4) TEXT="Gemma 4" ;;
+        nemotron_h) TEXT="Nemotron H" ;;
+        nemotron_h_omni) TEXT="Nemotron H omni" ;;
+        lfm3) TEXT="LFM3" ;;
+        lfm3_vl) TEXT="LFM3 VL" ;;
+        lfm3_omni) TEXT="LFM3 omni" ;;
+        lfm3_audio) TEXT="LFM3 audio" ;;
+        laguna) TEXT="Laguna" ;;
+        cohere2_moe) TEXT="Cohere 2 MoE" ;;
+        muse_glimmer) TEXT="Muse Glimmer" ;;
+        *) TEXT="$1" ;;
     esac
 }
 
 # Download counts the way the library shows pulls: 3.3M, 720K.
 count_text() {
     local n="$1"
+    TEXT=""
     [[ "$n" =~ ^[0-9]+$ ]] || return 0
     if ((n >= 1000000)); then
-        printf '%d.%dM' "$((n / 1000000))" "$((n % 1000000 / 100000))"
+        TEXT="$((n / 1000000)).$((n % 1000000 / 100000))M"
     elif ((n >= 1000)); then
-        printf '%dK' "$((n / 1000))"
+        TEXT="$((n / 1000))K"
     else
-        printf '%d' "$n"
+        TEXT="$n"
     fi
 }
 
 # A Hugging Face model: added and whether it fits first, then name, family,
 # quantization, about how big, what it reads, and downloads.
 hf_row_text() {
-    local i="$1" width="$2" size="?" downloads="" status=""
-    [[ ! "${H_BYTES[i]}" =~ ^[1-9][0-9]*$ ]] || size="~$(bytes_to_human "${H_BYTES[i]}")"
-    downloads="$(count_text "${H_DOWNLOADS[i]}")"
-    [[ -z "$downloads" ]] || downloads+=" downloads"
+    local i="$1" width="$2" status=""
     [[ "${H_INSTALLED[i]}" != "1" ]] || status="added"
-    printf '%s' "$(fit_cell "$status" 5)  $(fit_cell "$(fit_word "${H_BYTES[i]}")" 7)  $(fit_cell "${H_REPO[i]}" "$width")  $(fit_cell "$(family_text "${H_FAMILY[i]}")" 12)  $(fit_cell "${H_QUANT[i]}" 6)  $(fit_cell "$size" 9)  $(fit_cell "${H_INPUT[i]}" 11)  $downloads"
-}
-
-# One word for whether a download fits this Mac's memory, as fit_text says.
-fit_word() {
-    local bytes="$1"
-    [[ "$bytes" =~ ^[0-9]+$ && "$bytes" -gt 0 && "$MAC_MEMORY" -gt 0 ]] || return 0
-    local share=$((bytes * 100 / MAC_MEMORY))
-    if ((share <= 50)); then
-        printf 'fits'
-    elif ((share <= 75)); then
-        printf 'tight'
+    ROW=""
+    cell "$status" 5
+    fit_word "${H_BYTES[i]}"
+    cell "$TEXT" 7
+    cell "${H_REPO[i]}" "$width"
+    family_text "${H_FAMILY[i]}"
+    cell "$TEXT" 12
+    cell "${H_QUANT[i]}" 6
+    if [[ "${H_BYTES[i]}" =~ ^[1-9][0-9]*$ ]]; then
+        size_text "${H_BYTES[i]}"
+        TEXT="~$TEXT"
     else
-        printf 'too big'
+        TEXT="?"
     fi
+    cell "$TEXT" 9
+    cell "${H_INPUT[i]}" 11
+    count_text "${H_DOWNLOADS[i]}"
+    [[ -z "$TEXT" ]] || ROW+="  $TEXT downloads"
 }
 
 # A version: installed or default and its memory fit first, then name, size,
 # context window, input, and MLX.
 tag_row_text() {
-    local i="$1" width="$2" mlx="" status=""
-    [[ "${T_MLX[i]}" != "1" ]] || mlx="MLX"
+    local i="$1" width="$2" status=""
     [[ "${T_DEFAULT[i]}" != "1" ]] || status="default"
     [[ "${T_INSTALLED[i]}" != "1" ]] || status="installed"
-    printf '%s' "$(fit_cell "$status" 9)  $(fit_cell "$(fit_word "${T_BYTES[i]}")" 7)  $(fit_cell "${T_NAME[i]}" "$width")  $(fit_cell "${T_SIZE[i]:-?}" 11)  $(fit_cell "${T_CONTEXT[i]}" 5)  $(fit_cell "${T_INPUT[i]}" 12)  $mlx"
+    ROW=""
+    cell "$status" 9
+    fit_word "${T_BYTES[i]}"
+    cell "$TEXT" 7
+    cell "${T_NAME[i]}" "$width"
+    cell "${T_SIZE[i]:-?}" 11
+    cell "${T_CONTEXT[i]}" 5
+    cell "${T_INPUT[i]}" 12
+    [[ "${T_MLX[i]}" != "1" ]] || ROW+="  MLX"
 }
 
 # The details screen of a pick list's row. DETAILS_KIND says which list it
@@ -578,7 +666,8 @@ installed_details() {
     local i="$1" in_use=""
     [[ "${M_LOADED[i]}" != "1" ]] || in_use="yes, loaded in memory now"
     detail_name "${M_NAME[i]}"
-    detail_line "Status" "$(status_text "${M_STATUS[i]}")"
+    status_text "${M_STATUS[i]}"
+    detail_line "Status" "$TEXT"
     detail_line "Size on disk" "$(human_size "${M_SIZE[i]}")"
     detail_line "Changed" "$(date_text "${M_MODIFIED[i]}")"
     detail_line "In use" "$in_use"
@@ -629,18 +718,35 @@ tag_details() {
     detail_line "Page" "$(model_page "${T_NAME[i]}")"
 }
 
+# The exact download size of Hugging Face model i, asked once.
+hf_exact_size() {
+    local i="$1" kind repo sha bytes count rest
+    [[ -z "${H_EXACT[i]:-}" ]] || return 0
+    H_EXACT[i]="-"
+    while IFS="$MODELS_FIELD_SEP" read -r kind repo sha bytes count rest || [[ -n "${kind:-}" ]]; do
+        [[ "$kind" == "files" && "$bytes" =~ ^[1-9][0-9]*$ ]] && H_EXACT[i]="$bytes $count"
+    done < <(run_helper hf-files "${H_REPO[i]}" 2> /dev/null)
+}
+
 hf_details() {
-    local i="$1" size="" downloads="" added="" name
+    local i="$1"
+    local size="" downloads="" added="" name bytes="${H_BYTES[i]}"
     name="hf.co/$(printf '%s' "${H_REPO[i]}" | LC_ALL=C tr '[:upper:]' '[:lower:]')"
-    [[ ! "${H_BYTES[i]}" =~ ^[1-9][0-9]*$ ]] ||
-        size="about $(bytes_to_human "${H_BYTES[i]}"); the exact size shows before anything downloads"
+    hf_exact_size "$i"
+    if [[ "${H_EXACT[i]}" != "-" ]]; then
+        bytes="${H_EXACT[i]%% *}"
+        size="$(bytes_to_human "$bytes") in ${H_EXACT[i]#* } files"
+    elif [[ "$bytes" =~ ^[1-9][0-9]*$ ]]; then
+        size="about $(bytes_to_human "$bytes"); Hugging Face couldn't give the exact size"
+    fi
     [[ ! "${H_DOWNLOADS[i]}" =~ ^[0-9]+$ ]] || downloads="${H_DOWNLOADS[i]} in the last month"
     [[ "${H_INSTALLED[i]}" != "1" ]] || added="yes"
     detail_name "${H_REPO[i]}"
-    detail_line "Family" "$(family_text "${H_FAMILY[i]}")"
+    family_text "${H_FAMILY[i]}"
+    detail_line "Family" "$TEXT"
     detail_line "Quantization" "${H_QUANT[i]}"
     detail_line "Size" "$size"
-    detail_line "Memory" "$(fit_text "${H_BYTES[i]}")"
+    detail_line "Memory" "$(fit_text "$bytes")"
     detail_line "Input" "${H_INPUT[i]}"
     detail_line "Downloads" "$downloads"
     detail_line "Updated" "$(date_text "${H_UPDATED[i]}")"
@@ -654,7 +760,8 @@ print_model_list() {
     width=$(name_width "${M_NAME[@]}")
     echo -e "${PURPLE_BOLD}${#M_NAME[@]} models${NC}"
     for ((i = 0; i < ${#M_NAME[@]}; i++)); do
-        printf '  %s\n' "$(model_row_text "$i" "$width")"
+        model_row_text "$i" "$width"
+        printf '  %s\n' "$ROW"
         [[ "${M_SIZE[i]}" =~ ^[0-9]+$ ]] && total=$((total + M_SIZE[i]))
     done
     printf '\n%sTogether %s on disk; models share some files, so it may be less.%s\n' "$GRAY" "$(bytes_to_human "$total")" "$NC"
@@ -916,7 +1023,8 @@ run_update() {
     local width
     width=$(name_width "${M_NAME[@]}")
     for i in "${updates[@]}"; do
-        rows+=("$(model_row_text "$i" "$width")")
+        model_row_text "$i" "$width"
+        rows+=("$ROW")
         names+=("${M_NAME[i]}")
         repos+=("${M_REPO[i]:-}")
     done
@@ -1021,6 +1129,16 @@ pick_models_to_download() {
         printf '%s' "${L_UPDATED[*]}"
     )
     MOLE_MENU_FILTER_NAMES=$(printf '%s\n' "${search[@]}")
+    local -a pulls=()
+    for ((i = 0; i < ${#L_NAME[@]}; i++)); do
+        pulls_number "${L_PULLS[i]}"
+        pulls+=("$TEXT")
+    done
+    local MOLE_MENU_META_COUNTS MOLE_MENU_COUNT_LABEL=Pulls
+    MOLE_MENU_META_COUNTS=$(
+        IFS=','
+        printf '%s' "${pulls[*]}"
+    )
     local MOLE_MENU_SORT_MODE=name MOLE_MENU_SORT_REVERSE=false
     local title="Select models, then choose their versions"
     [[ "${MODELS_APPLE_SILICON:-0}" != "1" ]] || title+="; MLX: has versions for Apple silicon"
@@ -1035,7 +1153,8 @@ pick_hf_models() {
     local -a search=() sizes_kb=()
     local i words
     for ((i = 0; i < ${#H_REPO[@]}; i++)); do
-        words="${H_REPO[i]} $(family_text "${H_FAMILY[i]}") ${H_FAMILY[i]} ${H_QUANT[i]} ${H_INPUT[i]//,/}"
+        family_text "${H_FAMILY[i]}"
+        words="${H_REPO[i]} $TEXT ${H_FAMILY[i]} ${H_QUANT[i]} ${H_INPUT[i]//,/}"
         [[ "${H_INSTALLED[i]}" != "1" ]] || words+=" added"
         search+=("$words")
         sizes_kb+=("$((${H_BYTES[i]:-0} / 1024))")
@@ -1050,6 +1169,11 @@ pick_hf_models() {
         printf '%s' "${H_UPDATED[*]}"
     )
     MOLE_MENU_FILTER_NAMES=$(printf '%s\n' "${search[@]}")
+    local MOLE_MENU_META_COUNTS MOLE_MENU_COUNT_LABEL=Downloads
+    MOLE_MENU_META_COUNTS=$(
+        IFS=','
+        printf '%s' "${H_DOWNLOADS[*]}"
+    )
     local MOLE_MENU_SORT_MODE=name MOLE_MENU_SORT_REVERSE=false
     DETAILS_KIND=hf
     DETAILS_MAP=()
@@ -1107,7 +1231,8 @@ run_remove() {
     local i width
     width=$(name_width "${M_NAME[@]}")
     for ((i = 0; i < ${#M_NAME[@]}; i++)); do
-        rows+=("$(model_row_text "$i" "$width")")
+        model_row_text "$i" "$width"
+        rows+=("$ROW")
     done
     if ! pick_to_remove "${rows[@]}"; then
         moremole_note_cancel
@@ -1193,7 +1318,8 @@ run_download() {
         width=$(name_width "${L_NAME[@]}")
         echo -e "${PURPLE_BOLD}${#L_NAME[@]} models in Ollama's library${NC}"
         for ((i = 0; i < ${#L_NAME[@]}; i++)); do
-            printf '  %s\n' "$(library_row_text "$i" "$width")"
+            library_row_text "$i" "$width"
+            printf '  %s\n' "$ROW"
         done
         return 0
     else
@@ -1201,7 +1327,8 @@ run_download() {
         local i width
         width=$(name_width "${L_NAME[@]}")
         for ((i = 0; i < ${#L_NAME[@]}; i++)); do
-            rows+=("$(library_row_text "$i" "$width")")
+            library_row_text "$i" "$width"
+            rows+=("$ROW")
         done
         if ! pick_models_to_download "${rows[@]}"; then
             moremole_note_cancel
@@ -1227,7 +1354,8 @@ run_download() {
         rows=()
         width=$(name_width "${T_NAME[@]}")
         for ((i = 0; i < ${#T_NAME[@]}; i++)); do
-            rows+=("$(tag_row_text "$i" "$width")")
+            tag_row_text "$i" "$width"
+            rows+=("$ROW")
         done
         if ! pick_versions_to_download "${rows[@]}"; then
             moremole_note_cancel
@@ -1298,7 +1426,8 @@ run_huggingface() {
     if [[ "${MOLE_DRY_RUN:-0}" == "1" ]] || ! interactive; then
         echo -e "${PURPLE_BOLD}${#H_REPO[@]} MLX models on Hugging Face that Ollama runs${NC}"
         for ((i = 0; i < ${#H_REPO[@]}; i++)); do
-            printf '  %s\n' "$(hf_row_text "$i" "$width")"
+            hf_row_text "$i" "$width"
+            printf '  %s\n' "$ROW"
         done
         printf '\n%sSizes are estimates until you pick a model.%s\n' "$GRAY" "$NC"
         [[ "${MOLE_DRY_RUN:-0}" == "1" ]] || printf 'Run moremole models --huggingface in a terminal to choose models.\n'
@@ -1307,7 +1436,8 @@ run_huggingface() {
 
     local -a rows=() repos=()
     for ((i = 0; i < ${#H_REPO[@]}; i++)); do
-        rows+=("$(hf_row_text "$i" "$width")")
+        hf_row_text "$i" "$width"
+        rows+=("$ROW")
     done
     if ! pick_hf_models "${rows[@]}"; then
         moremole_note_cancel
