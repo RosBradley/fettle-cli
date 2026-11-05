@@ -5,7 +5,9 @@
 # updates main to match upstream (fast-forward only), merges main into the
 # moremole branch, pushes both to origin, and rebuilds the Go parts when they
 # changed. Stops before changing anything if there are uncommitted changes or
-# if main has commits upstream doesn't.
+# if main has commits upstream doesn't. When it stops on uncommitted changes
+# or because GitHub or Mole can't be reached, it still rebuilds Go parts that
+# are older than the code in this folder, so MoreMole runs that code.
 #
 # Usage: bash scripts/moremole-sync.sh
 
@@ -48,7 +50,7 @@ main() {
 
     # Untracked files don't count; git merge still refuses to overwrite one.
     [[ -z "$(git status --porcelain --untracked-files=no)" ]] ||
-        die "there are uncommitted changes. Commit them first (git status shows them)."
+        stop_after_rebuild "there are uncommitted changes. Commit them first (git status shows them)."
 
     local old_main
 
@@ -56,7 +58,7 @@ main() {
     # the end would be refused.
     printf 'Fetching your GitHub copy...\n'
     git fetch origin "$PERSONAL_BRANCH" ||
-        die "could not reach origin (see the message above). Check your internet connection and try again."
+        stop_after_rebuild "could not reach origin (see the message above). Check your internet connection and try again."
     if ! git merge-base --is-ancestor "origin/$PERSONAL_BRANCH" HEAD; then
         printf 'Bringing down the changes on GitHub first.\n'
         merge_or_stop "origin/$PERSONAL_BRANCH" "your GitHub copy"
@@ -66,7 +68,7 @@ main() {
 
     printf 'Fetching %s...\n' "$UPSTREAM_REMOTE"
     git fetch "$UPSTREAM_REMOTE" "$MIRROR_BRANCH" ||
-        die "could not reach $UPSTREAM_REMOTE (see the message above). Check your internet connection and try again."
+        stop_after_rebuild "could not reach $UPSTREAM_REMOTE (see the message above). Check your internet connection and try again."
 
     # main only ever mirrors upstream, so a commit made on it by mistake stops
     # the sync instead of being merged.
@@ -87,7 +89,8 @@ main() {
         printf '%s new commit(s) from Mole.\n' "$count"
     fi
 
-    git push origin "$MIRROR_BRANCH"
+    git push origin "$MIRROR_BRANCH" ||
+        stop_after_rebuild "could not push '$MIRROR_BRANCH' to origin (see the message above). Check your internet connection and try again."
 
     if git merge-base --is-ancestor "$MIRROR_BRANCH" HEAD; then
         printf '%s already has everything from %s.\n' "$PERSONAL_BRANCH" "$MIRROR_BRANCH"
@@ -95,7 +98,8 @@ main() {
         merge_or_stop "$MIRROR_BRANCH" "Mole"
     fi
 
-    git push origin "$PERSONAL_BRANCH"
+    git push origin "$PERSONAL_BRANCH" ||
+        stop_after_rebuild "could not push '$PERSONAL_BRANCH' to origin (see the message above). Mole's changes are merged here; check your internet connection, then run: git push origin $PERSONAL_BRANCH"
 
     printf '\n%s is up to date with Mole.\n' "$PERSONAL_BRANCH"
 
@@ -105,7 +109,7 @@ main() {
     printf '\nDone.\n'
 }
 
-# What `make build` builds: Analyze, Status, the Software updates and AI
+# What `make build` builds: Analyze, Status, the Software updates and Ollama
 # models helpers and the command screen.
 readonly GO_PARTS=(bin/analyze-go bin/status-go bin/moremole-updates-go bin/moremole-models-go bin/moremole-view-go)
 readonly GO_PARTS_NAMES="Analyze, Status, Software updates, Ollama models and the command screen"
@@ -132,6 +136,23 @@ rebuild_go_parts() {
     printf '\nRebuilding %s...\n' "$GO_PARTS_NAMES"
     make build ||
         die "the rebuild failed (see the message above). The update itself is done; fix the problem, then run: make build"
+}
+
+# Stop for a reason that leaves this folder's code whole (uncommitted
+# changes, GitHub or Mole out of reach), after rebuilding the Go parts if
+# they're older than that code. A conflict stops with merge_or_stop instead,
+# since the code is half merged then.
+stop_after_rebuild() {
+    if go_parts_stale; then
+        if ! command -v go > /dev/null 2>&1; then
+            printf '%s need rebuilding, but Go is not installed. Install it with: brew install go, then run: make build\n' "$GO_PARTS_NAMES" >&2
+        else
+            printf 'Rebuilding %s first, from the code in this folder...\n' "$GO_PARTS_NAMES"
+            make build ||
+                printf 'The rebuild failed too (see the message above). Fix the problem, then run: make build\n' >&2
+        fi
+    fi
+    die "$1"
 }
 
 main "$@"

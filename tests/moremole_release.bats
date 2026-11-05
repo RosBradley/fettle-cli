@@ -397,3 +397,97 @@ EOF
 	[ "$status" -eq 1 ] || return 1
 	[[ "$output" == *"usage: bash scripts/moremole-release-build.sh YYYY.MM.DD[.N] OUT_DIR"* ]]
 }
+
+# A git folder like the user's, for Update MoreMole's sync: origin and an
+# upstream with main, the sync script, Go source and built Go parts, and a
+# make that only notes it ran.
+make_sync_repo() {
+	export GIT_AUTHOR_NAME=Tester GIT_AUTHOR_EMAIL=tester@example.com
+	export GIT_COMMITTER_NAME=Tester GIT_COMMITTER_EMAIL=tester@example.com
+	ORIGIN="$HOME/origin.git"
+	UPSTREAM="$HOME/upstream.git"
+	WORK="$HOME/work"
+	MAKE_LOG="$HOME/make.log"
+	rm -rf "$ORIGIN" "$UPSTREAM" "$WORK" "$MAKE_LOG" # SAFE: test-owned scratch under tests/tmp-*
+	git init -q --bare "$ORIGIN"
+	git init -q --bare "$UPSTREAM"
+	git init -q "$WORK"
+	git -C "$WORK" checkout -q -b main
+	mkdir -p "$WORK/scripts" "$WORK/cmd/status" "$WORK/bin"
+	cp "$PROJECT_ROOT/scripts/moremole-sync.sh" "$WORK/scripts/"
+	printf 'package main\n' > "$WORK/cmd/status/main.go"
+	printf 'bin/*-go\n' > "$WORK/.gitignore"
+	git -C "$WORK" add -A
+	git -C "$WORK" commit -q -m "First"
+	git -C "$WORK" remote add upstream "$UPSTREAM"
+	git -C "$WORK" push -q upstream main
+	git -C "$WORK" checkout -q -b moremole
+	git -C "$WORK" remote add origin "$ORIGIN"
+	git -C "$WORK" push -q origin main moremole
+	local part
+	for part in analyze-go status-go moremole-updates-go moremole-models-go moremole-view-go; do
+		printf '#!/bin/sh\n' > "$WORK/bin/$part"
+		chmod +x "$WORK/bin/$part"
+	done
+	printf '#!/bin/bash\nprintf "make %%s\\n" "$*" >> "%s"\n' "$MAKE_LOG" > "$STUBS/make"
+	printf '#!/bin/bash\nexit 0\n' > "$STUBS/go"
+	chmod +x "$STUBS/make" "$STUBS/go"
+	export ORIGIN UPSTREAM WORK MAKE_LOG
+}
+
+# Make the Go parts older than the Go source, as after a code change.
+age_go_parts() {
+	touch -t 202601010000 "$WORK"/bin/*-go
+}
+
+run_sync() {
+	(cd "$WORK" && PATH="$STUBS:$PATH" /bin/bash scripts/moremole-sync.sh)
+}
+
+@test "Update MoreMole's sync rebuilds old Go parts even when it stops on uncommitted changes or no network" {
+	make_sync_repo
+	age_go_parts
+	printf '// changed\n' >> "$WORK/cmd/status/main.go"
+	run run_sync
+	[ "$status" -eq 1 ] || { echo "$output"; return 1; }
+	[[ "$output" == *"Rebuilding Analyze, Status, Software updates, Ollama models and the command screen first, from the code in this folder..."*"Stopped: there are uncommitted changes. Commit them first"* ]] || return 1
+	[ "$(cat "$MAKE_LOG")" = "make build" ] || return 1
+
+	git -C "$WORK" commit -q -am "Change"
+	git -C "$WORK" remote set-url origin "$HOME/missing.git"
+	rm -f "$MAKE_LOG" # SAFE: test-owned scratch log
+	age_go_parts
+	run run_sync
+	[ "$status" -eq 1 ] || { echo "$output"; return 1; }
+	[[ "$output" == *"Rebuilding"*"Stopped: could not reach origin"* ]] || return 1
+	[ "$(cat "$MAKE_LOG")" = "make build" ]
+}
+
+@test "Update MoreMole's sync builds nothing when it stops and the Go parts are current" {
+	make_sync_repo
+	printf 'changed\n' >> "$WORK/scripts/moremole-sync.sh"
+	run run_sync
+	[ "$status" -eq 1 ] || { echo "$output"; return 1; }
+	[[ "$output" == *"Stopped: there are uncommitted changes."* ]] || return 1
+	[[ "$output" != *"Rebuilding"* ]] || return 1
+	[ ! -e "$MAKE_LOG" ]
+}
+
+@test "Update MoreMole's sync still leaves a conflicted merge unbuilt" {
+	make_sync_repo
+	printf 'package main // moremole\n' > "$WORK/cmd/status/main.go"
+	git -C "$WORK" commit -q -am "MoreMole's change"
+	git -C "$WORK" push -q origin moremole
+	git -C "$WORK" checkout -q main
+	printf 'package main // mole\n' > "$WORK/cmd/status/main.go"
+	git -C "$WORK" commit -q -am "Mole's change"
+	git -C "$WORK" push -q upstream main
+	git -C "$WORK" reset -q --hard HEAD~1
+	git -C "$WORK" checkout -q moremole
+	age_go_parts
+	run run_sync
+	[ "$status" -eq 1 ] || { echo "$output"; return 1; }
+	[[ "$output" == *"The merge stopped on a conflict: Mole changed the same lines"* ]] || return 1
+	[[ "$output" != *"Rebuilding"* ]] || return 1
+	[ ! -e "$MAKE_LOG" ]
+}

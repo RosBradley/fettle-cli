@@ -222,7 +222,7 @@ The menu's update notice works the same way: a copy from the installer is told w
 bash scripts/moremole-sync.sh
 ```
 
-It first brings down any moremole changes already on GitHub, then copies Mole's latest changes into `main`, merges them into the `moremole` branch, and pushes both to GitHub. When one of the Go parts (Analyze, Status, Software updates, Ollama models, the command screen) is older than its code, including after a `git pull`, it rebuilds them (`make build`). It stops and says what to do if you have uncommitted changes, are on another branch, or if Mole changed the same lines as moremole.
+It first brings down any moremole changes already on GitHub, then copies Mole's latest changes into `main`, merges them into the `moremole` branch, and pushes both to GitHub. When one of the Go parts (Analyze, Status, Software updates, Ollama models, the command screen) is older than its code, including after a `git pull`, it rebuilds them (`make build`). It stops and says what to do if you have uncommitted changes, are on another branch, can't reach GitHub or Mole, or if Mole changed the same lines as moremole. When it stops on uncommitted changes or a missing connection, it still rebuilds the Go parts if they're older than the code in your folder, so MoreMole runs that code; after a conflict it doesn't, since the code is half merged.
 
 People who installed MoreMole get these changes with the next release you publish.
 
