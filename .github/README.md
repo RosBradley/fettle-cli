@@ -70,6 +70,8 @@ Software removal, Slim, Installer files, Software updates, Ollama models and Hug
 - **`/` searches** as you type, matching anywhere in the name.
 - **Lists open A–Z.** S sorts by size, then by date (oldest first), and O flips the order.
 - **Nothing is selected for you.** That includes Purge, where Mole selected everything older than 7 days.
+- **Rows never wrap.** A long row is cut at the window's edge, so the list stays in place while you scroll.
+- **Model details.** In Ollama models and Hugging Face MLX, Enter opens everything about a model and D saves. Each row starts with its status and whether it fits in memory.
 
 ### Analyze and Status fill the window
 

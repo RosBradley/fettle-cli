@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -249,7 +250,15 @@ const testSHA = "0123456789abcdef0123456789abcdef01234567"
 // serveRepo puts a model's files on the fake Hugging Face at a commit.
 func (f *fakeHF) serveRepo(repo, sha string, files map[string][]byte, extra ...string) {
 	var siblings []map[string]any
-	for name, content := range files {
+	// In name order, as Hugging Face lists them; a map's order changes
+	// from run to run.
+	names := make([]string, 0, len(files))
+	for name := range files {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		content := files[name]
 		s := map[string]any{"rfilename": name, "size": len(content), "blobId": sum(content)[:40]}
 		if strings.HasSuffix(name, ".safetensors") {
 			s["lfs"] = map[string]any{"sha256": sum(content), "size": len(content)}
@@ -288,6 +297,10 @@ func TestHFDownloadChecksEveryFileFillsTheQuantizationModeAndContinuesAPartialFi
 	if err := os.WriteFile(filepath.Join(dir, "model.safetensors.part"), weights[:2000], 0o600); err != nil {
 		t.Fatal(err)
 	}
+	// Each read comes a second after the last, so every one shows.
+	saved, clock := now, time.Unix(1790000000, 0)
+	now = func() time.Time { clock = clock.Add(time.Second); return clock }
+	t.Cleanup(func() { now = saved })
 	var out bytes.Buffer
 	if err := hfDownload("mlx-community/Old-Llama-4bit", testSHA, dir, &out); err != nil {
 		t.Fatalf("download: %v\n%s", err, out.String())
@@ -313,7 +326,7 @@ func TestHFDownloadChecksEveryFileFillsTheQuantizationModeAndContinuesAPartialFi
 	if mf, _ := os.ReadFile(filepath.Join(dir, "Modelfile")); string(mf) != "FROM .\n" {
 		t.Errorf("Modelfile %q", mf)
 	}
-	if !strings.Contains(out.String(), "downloading model.safetensors  2 KB of 5 KB  39%") || !strings.HasSuffix(out.String(), "\rdownloaded 5 KB in 3 files\033[K\n") {
+	if !strings.Contains(out.String(), "downloading model.safetensors  2 KB of 5 KB  40%") || !strings.HasSuffix(out.String(), "\rdownloaded 5 KB in 3 files\033[K\n") {
 		t.Errorf("progress %q", out.String())
 	}
 

@@ -388,12 +388,14 @@ fit_text() {
     fi
 }
 
+# A model's registry check in words; "short" gives the list's first column.
 status_text() {
+    local short="${2:-}"
     case "$1" in
-        update) printf 'update available' ;;
+        update) [[ -n "$short" ]] && printf 'update' || printf 'update available' ;;
         current) printf 'up to date' ;;
-        local) printf 'made on this Mac' ;;
-        unknown) printf "couldn't check" ;;
+        local) [[ -n "$short" ]] && printf 'made here' || printf 'made on this Mac' ;;
+        unknown) [[ -n "$short" ]] && printf 'unchecked' || printf "couldn't check" ;;
         *) printf '%s' "$1" ;;
     esac
 }
@@ -416,13 +418,14 @@ name_width() {
     printf '%s' "$width"
 }
 
+# An installed model: its status first, then name, size, and whether it's in
+# use or came from Hugging Face.
 model_row_text() {
     local i="$1" width="$2" extra
     extra="$(human_size "${M_SIZE[i]}")"
-    [[ -z "${M_STATUS[i]}" ]] || extra+=" · $(status_text "${M_STATUS[i]}")"
     [[ "${M_LOADED[i]}" != "1" ]] || extra+=" · in use"
     [[ -z "${M_REPO[i]:-}" ]] || extra+=" · from Hugging Face"
-    printf '%s  %s' "$(fit_cell "${M_NAME[i]}" "$width")" "$extra"
+    printf '%s  %s  %s' "$(fit_cell "$(status_text "${M_STATUS[i]}" short)" 10)" "$(fit_cell "${M_NAME[i]}" "$width")" "$extra"
 }
 
 # The sizes a model comes in: "8b, 70b", or the smallest to the largest.
@@ -437,17 +440,18 @@ sizes_text() {
     fi
 }
 
-# A library model: name, what it can do, its sizes, pulls, and on Apple
-# silicon MLX when it has MLX versions.
+# A library model: installed first, and on Apple silicon MLX when it has MLX
+# versions, then name, what it can do, its sizes and pulls.
 library_row_text() {
-    local i="$1" width="$2" text pulls="" mlx=""
+    local i="$1" width="$2" text pulls="" mlx="" status=""
     [[ -z "${L_PULLS[i]}" ]] || pulls="${L_PULLS[i]} pulls"
-    text="$(fit_cell "${L_NAME[i]}" "$width")  $(fit_cell "${L_CAPS[i]//,/, }" 30)  $(fit_cell "$(sizes_text "${L_SIZES[i]}")" 12)  $(fit_cell "$pulls" 12)"
+    [[ "${L_INSTALLED[i]}" != "1" ]] || status="installed"
+    text="$(fit_cell "$status" 9)  "
     if [[ "${MODELS_APPLE_SILICON:-0}" == "1" ]]; then
         [[ ! "${L_MLX[i]:-}" =~ ^[1-9][0-9]*$ ]] || mlx="MLX"
-        text+="  $(fit_cell "$mlx" 3)"
+        text+="$(fit_cell "$mlx" 3)  "
     fi
-    [[ "${L_INSTALLED[i]}" != "1" ]] || text+="  installed"
+    text+="$(fit_cell "${L_NAME[i]}" "$width")  $(fit_cell "${L_CAPS[i]//,/, }" 30)  $(fit_cell "$(sizes_text "${L_SIZES[i]}")" 12)  $pulls"
     printf '%s' "$text"
 }
 
@@ -485,16 +489,15 @@ count_text() {
     fi
 }
 
-# A Hugging Face model: name, family, quantization, about how big, whether
-# it fits, what it reads, downloads, and whether it's added already.
+# A Hugging Face model: added and whether it fits first, then name, family,
+# quantization, about how big, what it reads, and downloads.
 hf_row_text() {
-    local i="$1" width="$2" text size="?" downloads=""
+    local i="$1" width="$2" size="?" downloads="" status=""
     [[ ! "${H_BYTES[i]}" =~ ^[1-9][0-9]*$ ]] || size="~$(bytes_to_human "${H_BYTES[i]}")"
     downloads="$(count_text "${H_DOWNLOADS[i]}")"
     [[ -z "$downloads" ]] || downloads+=" downloads"
-    text="$(fit_cell "${H_REPO[i]}" "$width")  $(fit_cell "$(family_text "${H_FAMILY[i]}")" 15)  $(fit_cell "${H_QUANT[i]}" 6)  $(fit_cell "$size" 9)  $(fit_cell "$(fit_word "${H_BYTES[i]}")" 7)  $(fit_cell "${H_INPUT[i]}" 11)  $(fit_cell "$downloads" 15)"
-    [[ "${H_INSTALLED[i]}" != "1" ]] || text+="  added"
-    printf '%s' "$text"
+    [[ "${H_INSTALLED[i]}" != "1" ]] || status="added"
+    printf '%s' "$(fit_cell "$status" 5)  $(fit_cell "$(fit_word "${H_BYTES[i]}")" 7)  $(fit_cell "${H_REPO[i]}" "$width")  $(fit_cell "$(family_text "${H_FAMILY[i]}")" 12)  $(fit_cell "${H_QUANT[i]}" 6)  $(fit_cell "$size" 9)  $(fit_cell "${H_INPUT[i]}" 11)  $downloads"
 }
 
 # One word for whether a download fits this Mac's memory, as fit_text says.
@@ -511,16 +514,139 @@ fit_word() {
     fi
 }
 
-# A version: name, size, memory fit, context window, input, MLX, and whether
-# it's the model's default or installed already.
+# A version: installed or default and its memory fit first, then name, size,
+# context window, input, and MLX.
 tag_row_text() {
-    local i="$1" width="$2" text mlx="" note=""
+    local i="$1" width="$2" mlx="" status=""
     [[ "${T_MLX[i]}" != "1" ]] || mlx="MLX"
-    [[ "${T_DEFAULT[i]}" != "1" ]] || note="default"
-    [[ "${T_INSTALLED[i]}" != "1" ]] || note="${note:+$note, }installed"
-    text="$(fit_cell "${T_NAME[i]}" "$width")  $(fit_cell "${T_SIZE[i]:-?}" 11)  $(fit_cell "$(fit_word "${T_BYTES[i]}")" 7)  $(fit_cell "${T_CONTEXT[i]}" 5)  $(fit_cell "${T_INPUT[i]}" 12)  $(fit_cell "$mlx" 3)"
-    [[ -z "$note" ]] || text+="  $note"
-    printf '%s' "$text"
+    [[ "${T_DEFAULT[i]}" != "1" ]] || status="default"
+    [[ "${T_INSTALLED[i]}" != "1" ]] || status="installed"
+    printf '%s' "$(fit_cell "$status" 9)  $(fit_cell "$(fit_word "${T_BYTES[i]}")" 7)  $(fit_cell "${T_NAME[i]}" "$width")  $(fit_cell "${T_SIZE[i]:-?}" 11)  $(fit_cell "${T_CONTEXT[i]}" 5)  $(fit_cell "${T_INPUT[i]}" 12)  $mlx"
+}
+
+# The details screen of a pick list's row. DETAILS_KIND says which list it
+# is; DETAILS_MAP turns a row into its model when the list shows only some.
+DETAILS_KIND=""
+DETAILS_MAP=()
+show_model_details() {
+    local i="${DETAILS_MAP[$1]:-$1}"
+    case "$DETAILS_KIND" in
+        installed) installed_details "$i" ;;
+        library) library_details "$i" ;;
+        tag) tag_details "$i" ;;
+        hf) hf_details "$i" ;;
+    esac
+}
+
+detail_name() {
+    printf '%s%s%s\n\n' "$BLUE" "$(mole_terminal_safe_text "$1")" "$NC"
+}
+
+# A label and its value, the value wrapped to the details screen's width
+# and lined up under itself.
+detail_line() {
+    [[ -n "$2" ]] || return 0
+    local width=$((${MOLE_MENU_DETAILS_WIDTH:-80} - 16)) line first=true
+    ((width >= 20)) || width=20
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        if [[ "$first" == true ]]; then
+            printf '%s%-14s%s %s\n' "$GRAY" "$1" "$NC" "$line"
+            first=false
+        else
+            printf '%15s%s\n' "" "$line"
+        fi
+    done < <(mole_terminal_safe_text "$2" | fold -s -w "$width")
+}
+
+date_text() {
+    [[ "$1" =~ ^[0-9]+$ && "$1" -gt 0 ]] || return 0
+    "$_DATE_CMD" -r "$1" '+%-d %B %Y' 2> /dev/null || true
+}
+
+# A model's page: ollama.com for its registry, huggingface.co for a model
+# from there.
+model_page() {
+    local name="${1%:latest}"
+    case "$name" in
+        hf.co/* | */*/*) ;;
+        */*) printf 'https://ollama.com/%s' "$name" ;;
+        *) printf 'https://ollama.com/library/%s' "$name" ;;
+    esac
+}
+
+installed_details() {
+    local i="$1" in_use=""
+    [[ "${M_LOADED[i]}" != "1" ]] || in_use="yes, loaded in memory now"
+    detail_name "${M_NAME[i]}"
+    detail_line "Status" "$(status_text "${M_STATUS[i]}")"
+    detail_line "Size on disk" "$(human_size "${M_SIZE[i]}")"
+    detail_line "Changed" "$(date_text "${M_MODIFIED[i]}")"
+    detail_line "In use" "$in_use"
+    if [[ -n "${M_REPO[i]:-}" ]]; then
+        detail_line "Added from" "Hugging Face, ${M_REPO[i]}"
+        detail_line "Page" "https://huggingface.co/${M_REPO[i]}"
+    else
+        detail_line "Page" "$(model_page "${M_NAME[i]}")"
+    fi
+}
+
+library_details() {
+    local i="$1" mlx="" installed="" pulls=""
+    [[ "${L_INSTALLED[i]}" != "1" ]] || installed="yes"
+    [[ -z "${L_PULLS[i]}" ]] || pulls="${L_PULLS[i]}"
+    if [[ "${MODELS_APPLE_SILICON:-0}" == "1" && "${L_MLX[i]:-}" =~ ^[1-9][0-9]*$ ]]; then
+        mlx="${L_MLX[i]} versions for Apple silicon"
+        [[ "${L_MLX[i]}" != "1" ]] || mlx="1 version for Apple silicon"
+    fi
+    detail_name "${L_NAME[i]}"
+    if [[ -n "${L_DESC[i]}" ]]; then
+        mole_terminal_safe_text "${L_DESC[i]}" | fold -s -w "${MOLE_MENU_DETAILS_WIDTH:-80}"
+        printf '\n\n'
+    fi
+    detail_line "Can do" "${L_CAPS[i]//,/, }"
+    detail_line "Sizes" "${L_SIZES[i]//,/, }"
+    detail_line "Pulls" "$pulls"
+    detail_line "Updated" "$(date_text "${L_UPDATED[i]}")"
+    detail_line "MLX" "$mlx"
+    detail_line "Installed" "$installed"
+    detail_line "Page" "$(model_page "${L_NAME[i]}")"
+    printf '\n%sSelect it, save, then choose which versions to download.%s\n' "$GRAY" "$NC"
+}
+
+tag_details() {
+    local i="$1" mlx="" default="" installed=""
+    [[ "${T_MLX[i]}" != "1" ]] || mlx="yes, runs on Ollama's MLX engine for Apple silicon"
+    [[ "${T_DEFAULT[i]}" != "1" ]] || default="yes, what ollama pull ${T_NAME[i]%%:*} downloads"
+    [[ "${T_INSTALLED[i]}" != "1" ]] || installed="yes"
+    detail_name "${T_NAME[i]}"
+    detail_line "Size" "${T_SIZE[i]:-unknown}"
+    detail_line "Memory" "$(fit_text "${T_BYTES[i]}")"
+    detail_line "Context" "${T_CONTEXT[i]}"
+    detail_line "Input" "${T_INPUT[i]}"
+    detail_line "MLX" "$mlx"
+    detail_line "Default" "$default"
+    detail_line "Installed" "$installed"
+    detail_line "Page" "$(model_page "${T_NAME[i]}")"
+}
+
+hf_details() {
+    local i="$1" size="" downloads="" added="" name
+    name="hf.co/$(printf '%s' "${H_REPO[i]}" | LC_ALL=C tr '[:upper:]' '[:lower:]')"
+    [[ ! "${H_BYTES[i]}" =~ ^[1-9][0-9]*$ ]] ||
+        size="about $(bytes_to_human "${H_BYTES[i]}"); the exact size shows before anything downloads"
+    [[ ! "${H_DOWNLOADS[i]}" =~ ^[0-9]+$ ]] || downloads="${H_DOWNLOADS[i]} in the last month"
+    [[ "${H_INSTALLED[i]}" != "1" ]] || added="yes"
+    detail_name "${H_REPO[i]}"
+    detail_line "Family" "$(family_text "${H_FAMILY[i]}")"
+    detail_line "Quantization" "${H_QUANT[i]}"
+    detail_line "Size" "$size"
+    detail_line "Memory" "$(fit_text "${H_BYTES[i]}")"
+    detail_line "Input" "${H_INPUT[i]}"
+    detail_line "Downloads" "$downloads"
+    detail_line "Updated" "$(date_text "${H_UPDATED[i]}")"
+    detail_line "Added" "$added"
+    detail_line "In Ollama as" "$name"
+    detail_line "Page" "https://huggingface.co/${H_REPO[i]}"
 }
 
 print_model_list() {
@@ -794,6 +920,8 @@ run_update() {
         names+=("${M_NAME[i]}")
         repos+=("${M_REPO[i]:-}")
     done
+    DETAILS_KIND=installed
+    DETAILS_MAP=("${updates[@]}")
     if ! pick "Select model updates to install" "${rows[@]}"; then
         moremole_note_cancel
         return 0
@@ -841,8 +969,10 @@ pick() {
     shift
     MOLE_SELECTION_RESULT=""
     PICKED=()
-    # Enter with nothing picked picks nothing, never the row under the cursor.
-    local rc=0 _MOLE_MENU_KEEP_EMPTY=true
+    # Saving with nothing picked picks nothing, never the row under the cursor.
+    # Enter shows the row's details.
+    local rc=0 _MOLE_MENU_KEEP_EMPTY=true MOLE_MENU_DETAILS_FN=""
+    [[ -z "$DETAILS_KIND" ]] || MOLE_MENU_DETAILS_FN=show_model_details
     hide_cursor
     paginated_multi_select "$title" "$@" || rc=$?
     show_cursor
@@ -869,6 +999,8 @@ pick_to_remove() {
     )
     MOLE_MENU_FILTER_NAMES=$(printf '%s\n' "${M_NAME[@]}")
     local MOLE_MENU_SORT_MODE=name MOLE_MENU_SORT_REVERSE=false _MOLE_MENU_SELECT_ALL=true
+    DETAILS_KIND=installed
+    DETAILS_MAP=()
     pick "Select models to remove" "$@"
 }
 
@@ -892,6 +1024,8 @@ pick_models_to_download() {
     local MOLE_MENU_SORT_MODE=name MOLE_MENU_SORT_REVERSE=false
     local title="Select models, then choose their versions"
     [[ "${MODELS_APPLE_SILICON:-0}" != "1" ]] || title+="; MLX: has versions for Apple silicon"
+    DETAILS_KIND=library
+    DETAILS_MAP=()
     pick "$title" "$@"
 }
 
@@ -917,7 +1051,9 @@ pick_hf_models() {
     )
     MOLE_MENU_FILTER_NAMES=$(printf '%s\n' "${search[@]}")
     local MOLE_MENU_SORT_MODE=name MOLE_MENU_SORT_REVERSE=false
-    pick "Select MLX models from Hugging Face: family, bits, size, fit in memory, input" "$@"
+    DETAILS_KIND=hf
+    DETAILS_MAP=()
+    pick "Select MLX models from Hugging Face" "$@"
 }
 
 # The versions open smallest first; S sorts A-Z. Search finds a version by
@@ -940,8 +1076,10 @@ pick_versions_to_download() {
     )
     MOLE_MENU_FILTER_NAMES=$(printf '%s\n' "${search[@]}")
     local MOLE_MENU_SORT_MODE=size MOLE_MENU_SORT_REVERSE=true
-    local title="Select versions: size, fit in memory, context, input"
+    local title="Select versions: fit in memory, size, context, input"
     [[ "${MODELS_APPLE_SILICON:-0}" != "1" ]] || title+=", MLX for Apple silicon"
+    DETAILS_KIND=tag
+    DETAILS_MAP=()
     pick "$title" "$@"
 }
 
@@ -1156,7 +1294,7 @@ run_huggingface() {
         return 0
     fi
     local i width
-    width=$(MODELS_NAME_MAX=50 name_width "${H_REPO[@]}")
+    width=$(MODELS_NAME_MAX=44 name_width "${H_REPO[@]}")
     if [[ "${MOLE_DRY_RUN:-0}" == "1" ]] || ! interactive; then
         echo -e "${PURPLE_BOLD}${#H_REPO[@]} MLX models on Hugging Face that Ollama runs${NC}"
         for ((i = 0; i < ${#H_REPO[@]}; i++)); do

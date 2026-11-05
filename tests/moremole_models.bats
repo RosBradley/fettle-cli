@@ -207,9 +207,9 @@ osascript -e quit app \"Ollama\"" ] || { cat "$CALLS"; return 1; }
 	run models_env /bin/bash -c 'source "$1"; main --dry-run' bash "$PROJECT_ROOT/bin/moremole-models.sh" < /dev/null
 	[ "$status" -eq 0 ] || { echo "$output"; return 1; }
 	[[ "$output" == *"DRY RUN"*"4 models"* ]] || return 1
-	[[ "$output" == *"gemma3:4b"*"3.30GB · update available"* ]] || return 1
-	[[ "$output" == *"llama3.2:latest"*"up to date · in use"* ]] || return 1
-	[[ "$output" == *"my-assistant:latest"*"made on this Mac"* ]] || return 1
+	[[ "$output" == *"update      gemma3:4b"*"3.30GB"* ]] || return 1
+	[[ "$output" == *"up to date  llama3.2:latest"*"2.00GB · in use"* ]] || return 1
+	[[ "$output" == *"made here   my-assistant:latest"* ]] || return 1
 	[[ "$output" == *"Together"*"on disk"* ]] || return 1
 	[ ! -s "$CALLS" ]
 }
@@ -219,7 +219,7 @@ osascript -e quit app \"Ollama\"" ] || { cat "$CALLS"; return 1; }
 	row list-check model my-assistant:latest 2000000000 1788343200 local 0
 	run models_env /bin/bash -c 'source "$1"; main --dry-run' bash "$PROJECT_ROOT/bin/moremole-models.sh" < /dev/null
 	[ "$status" -eq 0 ] || { echo "$output"; return 1; }
-	[[ "$output" == *"gemma3:4b"*"couldn't check"*"Couldn't check 1 of 2 models with their registry. Check the internet connection"* ]] || return 1
+	[[ "$output" == *"unchecked   gemma3:4b"*"Couldn't check 1 of 2 models with their registry. Check the internet connection"* ]] || return 1
 	[[ "$output" != *"No updates"* ]] || return 1
 
 	# With every model checked, it says there are none.
@@ -234,7 +234,7 @@ osascript -e quit app \"Ollama\"" ] || { cat "$CALLS"; return 1; }
 @test "updating offers only models with an update, nothing selected, and pulls the picked ones" {
 	installed_models
 	# The list holds gemma3 and qwen3; pick the second.
-	printf '%s\n' DOWN SPACE ENTER > "$KEYS_FILE"
+	printf '%s\n' DOWN SPACE CHAR:d > "$KEYS_FILE"
 	run models_env /bin/bash -c '
 		source "$1"
 		eval "$2"
@@ -252,7 +252,7 @@ osascript -e quit app \"Ollama\"" ] || { cat "$CALLS"; return 1; }
 	installed_models
 	# A-Z, as Ollama lists them: broken, gemma3, llama3.2 (in use), qwen3.
 	# Pick broken and llama3.2.
-	printf '%s\n' SPACE DOWN DOWN SPACE ENTER > "$KEYS_FILE"
+	printf '%s\n' SPACE DOWN DOWN SPACE CHAR:d > "$KEYS_FILE"
 	run models_env /bin/bash -c '
 		source "$1"
 		eval "$2"
@@ -272,7 +272,7 @@ ollama rm llama3.2:latest" ] || { cat "$CALLS"; return 1; }
 @test "removing a model made on this Mac warns it may not download again" {
 	installed_models
 	# A-Z: gemma3, llama3.2, my-assistant (made on this Mac), qwen3; pick my-assistant.
-	printf '%s\n' DOWN DOWN SPACE ENTER > "$KEYS_FILE"
+	printf '%s\n' DOWN DOWN SPACE CHAR:d > "$KEYS_FILE"
 	run models_env /bin/bash -c '
 		source "$1"
 		eval "$2"
@@ -284,9 +284,9 @@ ollama rm llama3.2:latest" ] || { cat "$CALLS"; return 1; }
 	[ ! -s "$CALLS" ]
 }
 
-@test "Enter with nothing selected removes no model" {
+@test "saving with nothing selected removes no model" {
 	installed_models
-	printf '%s\n' ENTER ENTER > "$KEYS_FILE"
+	printf '%s\n' CHAR:d > "$KEYS_FILE"
 	run models_env /bin/bash -c '
 		source "$1"
 		eval "$2"
@@ -294,6 +294,38 @@ ollama rm llama3.2:latest" ] || { cat "$CALLS"; return 1; }
 	' bash "$PROJECT_ROOT/bin/moremole-models.sh" "$SCRIPTED"
 	[ "$status" -eq 0 ] || { echo "$output"; return 1; }
 	[[ "$output" != *"Models to remove:"* ]] || return 1
+	[ ! -s "$CALLS" ]
+}
+
+@test "Enter shows a model's details, where Space selects it, and status comes first" {
+	installed_models
+	# A-Z: gemma3, llama3.2, my-assistant, qwen3. Open llama3.2's details,
+	# select it there, go back and save.
+	printf '%s\n' DOWN ENTER SPACE QUIT CHAR:d > "$KEYS_FILE"
+	run models_env /bin/bash -c '
+		source "$1"
+		eval "$2"
+		printf "\033" | main --remove
+	' bash "$PROJECT_ROOT/bin/moremole-models.sh" "$SCRIPTED"
+	[ "$status" -eq 0 ] || { echo "$output"; return 1; }
+	[[ "$output" == *"up to date  llama3.2:latest"*"2.00GB · in use"* ]] || return 1
+	[[ "$output" == *"Enter Details"*"D Save"* ]] || return 1
+	[[ "$output" == *"Not selected"*"llama3.2:latest"*"Status"*"up to date"*"Size on disk"*"2.00GB"*"In use"*"yes, loaded in memory now"*"Page"*"https://ollama.com/library/llama3.2"*"Space Select"*"Enter Back"* ]] || return 1
+	[[ "$output" == *"Selected"*"llama3.2:latest"* ]] || return 1
+	[[ "$output" == *"Models to remove:"*"llama3.2:latest"* ]] || return 1
+	[ ! -s "$CALLS" ]
+}
+
+@test "a Hugging Face model's details say how big it is, whether it fits, and its name in Ollama" {
+	hf_models
+	printf '%s\n' ENTER QUIT QUIT > "$KEYS_FILE"
+	run models_env /bin/bash -c '
+		source "$1"
+		eval "$2"
+		main --huggingface
+	' bash "$PROJECT_ROOT/bin/moremole-models.sh" "$SCRIPTED"
+	[ "$status" -eq 0 ] || { echo "$output"; return 1; }
+	[[ "$output" == *"mlx-community/Qwen3.5-9B-4bit"*"Family"*"Qwen 3.5"*"Quantization"*"4-bit"*"Size"*"about 5.95GB; the exact size shows before anything downloads"*"Memory"*"fits in 17.18GB memory"*"Downloads"*"719843 in the last month"*"In Ollama as"*"hf.co/mlx-community/qwen3.5-9b-4bit"*"https://huggingface.co/mlx-community/Qwen3.5-9B-4bit"* ]] || return 1
 	[ ! -s "$CALLS" ]
 }
 
@@ -326,7 +358,7 @@ library_models() {
 	printf 'gemma3:27b 17000000000\ngemma3:4b-mlx 3500000000\nllama3.1:405b 243000000000\n' > "$ROWS_DIR/sizes"
 	# Models A-Z: gemma3, llama3.1; pick both. Versions smallest first:
 	# gemma3:4b, gemma3:4b-mlx, gemma3:27b, llama3.1:405b; pick the last three.
-	printf '%s\n' SPACE DOWN SPACE ENTER DOWN SPACE DOWN SPACE DOWN SPACE ENTER > "$KEYS_FILE"
+	printf '%s\n' SPACE DOWN SPACE CHAR:d DOWN SPACE DOWN SPACE DOWN SPACE CHAR:d > "$KEYS_FILE"
 	run models_env /bin/bash -c '
 		source "$1"
 		eval "$2"
@@ -335,11 +367,11 @@ library_models() {
 	[ "$status" -eq 0 ] || { echo "$output"; return 1; }
 	[ "$(cat "$ROWS_DIR/tags-asked")" = "gemma3 llama3.1" ] || return 1
 	[[ "$output" == *"Select models, then choose their versions; MLX: has versions for Apple silicon"* ]] || return 1
-	[[ "$output" == *"gemma3"*"vision"*"1b–27b"*"30.1M pulls"*"MLX"*"installed"* ]] || return 1
-	[[ "$output" == *"Select versions: size, fit in memory, context, input, MLX for Apple silicon"* ]] || return 1
-	[[ "$output" == *"gemma3:4b "*"3.3GB"*"fits"*"128K"*"Text, Image"*"default, installed"* ]] || return 1
-	[[ "$output" == *"gemma3:4b-mlx"*"3.5GB"*"fits"*"MLX"* ]] || return 1
-	[[ "$output" == *"llama3.1:405b"*"243GB"*"too big"* ]] || return 1
+	[[ "$output" == *"installed  MLX  gemma3"*"vision"*"1b–27b"*"30.1M pulls"* ]] || return 1
+	[[ "$output" == *"Select versions: fit in memory, size, context, input, MLX for Apple silicon"* ]] || return 1
+	[[ "$output" == *"installed  fits     gemma3:4b "*"3.3GB"*"128K"*"Text, Image"* ]] || return 1
+	[[ "$output" == *"fits     gemma3:4b-mlx"*"3.5GB"*"MLX"* ]] || return 1
+	[[ "$output" == *"too big  llama3.1:405b"*"243GB"* ]] || return 1
 	[[ "$output" == *"Models to download:"*"gemma3:27b"*"17.00GB · too big for 17.18GB memory"*"gemma3:4b-mlx"*"3.50GB · fits"*"llama3.1:405b"*"243.00GB · too big"* ]] || return 1
 	[[ "$output" == *"Downloads up to 263.50GB"*"Models downloaded"*"Downloaded"*"3"* ]] || return 1
 	[ "$(cat "$CALLS")" = "ollama pull gemma3:27b
@@ -351,7 +383,7 @@ ollama pull llama3.1:405b" ] || { cat "$CALLS"; return 1; }
 	library_models
 	printf 'mlx=1\n' >> "$ROWS_DIR/status"
 	row tags tag gemma3:4b-mlx 3500000000 3.5GB 128K "Text, Image" 1 0 0
-	printf '%s\n' CHAR:/ CHAR:m CHAR:l CHAR:x ENTER SPACE ENTER QUIT > "$KEYS_FILE"
+	printf '%s\n' CHAR:/ CHAR:m CHAR:l CHAR:x ENTER SPACE CHAR:d QUIT > "$KEYS_FILE"
 	run models_env /bin/bash -c '
 		source "$1"
 		eval "$2"
@@ -365,14 +397,14 @@ ollama pull llama3.1:405b" ] || { cat "$CALLS"; return 1; }
 @test "an Intel Mac's version list doesn't mention MLX, and cancelling it downloads nothing" {
 	library_models
 	row tags tag gemma3:4b 3300000000 3.3GB 128K "Text, Image" 0 1 0
-	printf '%s\n' SPACE ENTER QUIT > "$KEYS_FILE"
+	printf '%s\n' SPACE CHAR:d QUIT > "$KEYS_FILE"
 	run models_env /bin/bash -c '
 		source "$1"
 		eval "$2"
 		main --download
 	' bash "$PROJECT_ROOT/bin/moremole-models.sh" "$SCRIPTED"
 	[ "$status" -eq 0 ] || { echo "$output"; return 1; }
-	[[ "$output" == *"Select versions: size, fit in memory, context, input"* ]] || return 1
+	[[ "$output" == *"Select versions: fit in memory, size, context, input"* ]] || return 1
 	[[ "$output" != *"MLX"* ]] || return 1
 	[ ! -s "$CALLS" ]
 }
@@ -383,7 +415,7 @@ ollama pull llama3.1:405b" ] || { cat "$CALLS"; return 1; }
 	printf 'llama3.1:70b 43000000000\n' > "$ROWS_DIR/sizes"
 	# Pick llama3.1; its versions are 8b, 70b, 405b with no sizes, A-Z
 	# within equal sizes: pick 70b.
-	printf '%s\n' DOWN SPACE ENTER DOWN SPACE ENTER > "$KEYS_FILE"
+	printf '%s\n' DOWN SPACE CHAR:d DOWN SPACE CHAR:d > "$KEYS_FILE"
 	run models_env /bin/bash -c '
 		source "$1"
 		eval "$2"
@@ -432,15 +464,16 @@ hf_models() {
 @test "adding from Hugging Face downloads, adds, starts and only then names each model" {
 	hf_models
 	# A-Z: mlx-community/..., someone/...; pick both, then confirm.
-	printf '%s\n' SPACE DOWN SPACE ENTER > "$KEYS_FILE"
+	printf '%s\n' SPACE DOWN SPACE CHAR:d > "$KEYS_FILE"
 	run models_env /bin/bash -c '
 		source "$1"
 		eval "$2"
 		printf "\n" | main --huggingface
 	' bash "$PROJECT_ROOT/bin/moremole-models.sh" "$SCRIPTED"
 	[ "$status" -eq 1 ] || { echo "$output"; return 1; }
-	[[ "$output" == *"Select MLX models from Hugging Face: family, bits, size, fit in memory, input"* ]] || return 1
-	[[ "$output" == *"mlx-community/Qwen3.5-9B-4bit"*"Qwen 3.5"*"4-bit"*"~5.95GB"*"fits"*"Text, Image"*"719K downloads"* ]] || return 1
+	[[ "$output" == *"Select MLX models from Hugging Face"* ]] || return 1
+	# Rows are cut to the terminal's 100 columns; the details show the rest.
+	[[ "$output" == *"fits     mlx-community/Qwen3.5-9B-4bit"*"Qwen 3.5"*"4-bit"*"~5.95GB"*"Text, Image"* ]] || return 1
 	[[ "$output" == *"Models to add from Hugging Face:"*"mlx-community/Qwen3.5-9B-4bit "*"5.95GB · fits in 17.18GB memory · as hf.co/mlx-community/qwen3.5-9b-4bit"* ]] || return 1
 	[[ "$output" == *"it needs twice its size free"*"started once to check that it works"* ]] || return 1
 	[[ "$output" == *"Added as hf.co/mlx-community/qwen3.5-9b-4bit:latest, and it works"* ]] || return 1
@@ -468,7 +501,7 @@ ollama rm hf.co/someone/gemma-4-nochat-bf16-moremole-check" ] || { cat "$CALLS";
 	printf 'mlx=1\n' >> "$ROWS_DIR/status"
 	row hf-list hf me/broken-4bit qwen3_5 4-bit 1000000 5 1780000000 0 Text
 	row hf-files files me/broken-4bit "$HF_SHA" 1000000 3 hf.co/me/broken-4bit
-	printf '%s\n' SPACE ENTER > "$KEYS_FILE"
+	printf '%s\n' SPACE CHAR:d > "$KEYS_FILE"
 	run models_env /bin/bash -c '
 		source "$1"
 		eval "$2"
@@ -504,14 +537,14 @@ ollama rm hf.co/someone/gemma-4-nochat-bf16-moremole-check" ] || { cat "$CALLS";
 	row list-check model hf.co/me/m-4bit:latest 5000000000 1790848800 update 0 me/M-4bit
 	row hf-files files me/M-4bit "$HF_NEW" 5100000000 3 hf.co/me/m-4bit
 	printf 'mlx=1\n' >> "$ROWS_DIR/status"
-	printf '%s\n' SPACE DOWN SPACE ENTER > "$KEYS_FILE"
+	printf '%s\n' SPACE DOWN SPACE CHAR:d > "$KEYS_FILE"
 	run models_env /bin/bash -c '
 		source "$1"
 		eval "$2"
 		printf "\n" | main
 	' bash "$PROJECT_ROOT/bin/moremole-models.sh" "$SCRIPTED"
 	[ "$status" -eq 0 ] || { echo "$output"; return 1; }
-	[[ "$output" == *"hf.co/me/m-4bit:latest"*"update available · from Hugging Face"* ]] || return 1
+	[[ "$output" == *"update      hf.co/me/m-4bit:latest"*"from Hugging Face"* ]] || return 1
 	[[ "$output" == *"Models to update:"*"gemma3:4b"*"hf.co/me/m-4bit:latest "*"from Hugging Face"* ]] || return 1
 	[[ "$output" == *"Ollama downloads only the parts that changed."*"Models from Hugging Face download again in full, and replace the old version only once the new one starts."* ]] || return 1
 	[[ "$(cat "$CALLS")" == "ollama pull gemma3:4b
@@ -524,7 +557,7 @@ ollama rm hf.co/me/m-4bit-moremole-check" ]] || { cat "$CALLS"; return 1; }
 
 	: > "$CALLS"
 	: > "$KEY_STATE"
-	printf '%s\n' DOWN SPACE ENTER > "$KEYS_FILE"
+	printf '%s\n' DOWN SPACE CHAR:d > "$KEYS_FILE"
 	run models_env /bin/bash -c '
 		source "$1"
 		eval "$2"

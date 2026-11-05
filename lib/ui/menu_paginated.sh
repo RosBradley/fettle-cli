@@ -37,6 +37,21 @@ _pm_get_terminal_height() {
     echo "$height"
 }
 
+# Terminal width: COLUMNS when set, else the terminal itself. tput inside $()
+# with its errors hidden can't see the terminal and says 80.
+_pm_get_terminal_width() {
+    local width="${COLUMNS:-}"
+    if [[ ! "$width" =~ ^[0-9]+$ || "$width" -le 0 ]]; then
+        width=""
+        if [[ -t 0 ]] || [[ -t 2 ]]; then
+            width=$(stty size < /dev/tty 2> /dev/null | awk '{print $2}')
+        fi
+        [[ "$width" =~ ^[0-9]+$ && "$width" -gt 0 ]] || width=$(tput cols 2> /dev/null || echo 80)
+    fi
+    [[ "$width" =~ ^[0-9]+$ && "$width" -gt 0 ]] || width=80
+    echo "$width"
+}
+
 # Calculate dynamic items per page based on terminal height
 _pm_calculate_items_per_page() {
     local term_height=$(_pm_get_terminal_height)
@@ -99,6 +114,15 @@ paginated_multi_select() {
     # Only callers that opt in get A; selecting every app to remove in one key
     # is not a shortcut the app selector should offer.
     local select_all_enabled="${_MOLE_MENU_SELECT_ALL:-false}"
+    # MoreMole: a caller that names a function printing a row's details gets
+    # Enter for that row's details screen and D to save the selection.
+    local details_fn="${MOLE_MENU_DETAILS_FN:-}"
+    if [[ -n "$details_fn" ]] && ! declare -F "$details_fn" > /dev/null 2>&1; then
+        details_fn=""
+    fi
+    # Rows are cut to the terminal's width, so none wraps onto a second line,
+    # which would push every later row down and break the redraw.
+    local row_width=0
 
     # Metadata (optional)
     # epochs[i]   -> last_used_epoch (numeric) for item i
@@ -316,9 +340,8 @@ paginated_multi_select() {
         shift
         local -a segs=("$@")
 
-        local cols="${COLUMNS:-}"
-        [[ -z "$cols" ]] && cols=$(tput cols 2> /dev/null || echo 80)
-        [[ "$cols" =~ ^[0-9]+$ ]] || cols=80
+        local cols
+        cols=$(_pm_get_terminal_width)
 
         local line="" s candidate
         local clear_line=$'\r\033[2K'
@@ -482,12 +505,61 @@ paginated_multi_select() {
         [[ $real -lt 0 ]] && return
         local checkbox="$ICON_EMPTY"
         [[ ${selected[real]} == true ]] && checkbox="$ICON_SOLID"
+        local _pm_row="${items[real]}"
+        _pm_fit_row
 
         if [[ $is_current == true ]]; then
-            printf "\r\033[2K${CYAN}${ICON_ARROW} %s %s${NC}\n" "$checkbox" "${items[real]}" >&2
+            printf "\r\033[2K${CYAN}${ICON_ARROW} %s %s${NC}\n" "$checkbox" "$_pm_row" >&2
         else
-            printf "\r\033[2K  %s %s\n" "$checkbox" "${items[real]}" >&2
+            printf "\r\033[2K  %s %s\n" "$checkbox" "$_pm_row" >&2
         fi
+    }
+
+    # Cut _pm_row to row_width. A byte count is never less than the display
+    # width, so most rows are measured without a fork. Rows with color codes
+    # are left alone, as their width can't be measured.
+    _pm_row_bytes() {
+        local LC_ALL=C
+        _pm_bytes=${#1}
+    }
+    _pm_fit_row() {
+        ((row_width > 0)) || return 0
+        local _pm_bytes=0
+        _pm_row_bytes "$_pm_row"
+        ((_pm_bytes > row_width)) || return 0
+        [[ "$_pm_row" != *$'\033'* ]] || return 0
+        _pm_row=$(truncate_by_display_width "$_pm_row" "$row_width")
+    }
+
+    # The details screen for one row: Space selects it, any other key goes
+    # back to the list.
+    _pm_show_details() {
+        local real="$1" dkey mark cols
+        cols=$(_pm_get_terminal_width)
+        ((cols > 10)) || cols=80
+        while true; do
+            mark="$ICON_EMPTY Not selected"
+            [[ ${selected[real]} == true ]] && mark="$ICON_SOLID Selected"
+            printf "\033[2J\033[H" >&2
+            printf "${PURPLE_BOLD}%s${NC}  ${GRAY}%s${NC}\n\n" "$title" "$mark" >&2
+            # The function gets the width to wrap its lines to.
+            MOLE_MENU_DETAILS_WIDTH="$cols" "$details_fn" "$real" >&2 || true
+            printf '\n%b\n' "${GRAY}Space Select${NC} ${GRAY}|${NC} ${GRAY}Enter Back${NC} ${GRAY}|${NC} ${GRAY}Esc Back${NC}" >&2
+            while ! dkey=$(read_key 1); do :; done
+            drain_pending_input
+            if [[ "$dkey" == "SPACE" ]]; then
+                if [[ ${selected[real]} == true ]]; then
+                    selected[real]=false
+                    ((selected_count--))
+                else
+                    selected[real]=true
+                    selected_count=$((selected_count + 1))
+                fi
+                continue
+            fi
+            printf "\033[2J" >&2
+            return 0
+        done
     }
 
     draw_header() {
@@ -499,8 +571,8 @@ paginated_multi_select() {
             local marker=""
             [[ -n "${MOLE_READ_KEY_FORCE_CHAR:-}" ]] && marker="_"
             local counts="(${#view_indices[@]}/$total_items; $selected_count selected)"
-            local cols="${COLUMNS:-$(tput cols 2> /dev/null || echo 80)}"
-            [[ "$cols" =~ ^[0-9]+$ ]] || cols=80
+            local cols
+            cols=$(_pm_get_terminal_width)
             local query_width=$((cols - ${#counts} - ${#marker} - 12))
             ((query_width < 1)) && query_width=1
             # Keep the newest characters of a long query visible while typing.
@@ -560,6 +632,7 @@ paginated_multi_select() {
         local space_select="${GRAY}Space Select${NC}"
         local select_all="${GRAY}A All${NC}"
         local enter="${GRAY}Enter Save${NC}"
+        [[ -z "$details_fn" ]] || enter="${GRAY}Enter Details${NC}${sep}${GRAY}D Save${NC}"
         local cancel_label="${GRAY}Q Cancel${NC}"
 
         local reverse_arrow="↑"
@@ -573,9 +646,8 @@ paginated_multi_select() {
         local order_ctrl="${GRAY}O ${reverse_arrow}${NC}"
         local filter_ctrl="${GRAY}/ Search${NC}"
 
-        local term_width="${COLUMNS:-}"
-        [[ -z "$term_width" ]] && term_width=$(tput cols 2> /dev/null || echo 80)
-        [[ "$term_width" =~ ^[0-9]+$ ]] || term_width=80
+        local term_width
+        term_width=$(_pm_get_terminal_width)
         local -a controls=() optional_controls=()
         if [[ -n "${MOLE_READ_KEY_FORCE_CHAR:-}" ]]; then
             local -a _segs_filter=("${GRAY}Enter Apply${NC}" "${GRAY}Backspace${NC}" "${GRAY}Ctrl+U Clear${NC}" "${GRAY}Esc Clear${NC}")
@@ -624,6 +696,12 @@ paginated_multi_select() {
         done <<< "$controls"
         items_per_page=$(_pm_calculate_items_per_page "$control_rows")
         local clear_line=$'\r\033[2K'
+        local cols
+        cols=$(_pm_get_terminal_width)
+        # The arrow, checkbox and spaces before a row, and the last column,
+        # which some terminals wrap at.
+        row_width=$((cols - 5))
+        ((row_width >= 10)) || row_width=10
 
         printf "\033[H" >&2
 
@@ -701,7 +779,21 @@ paginated_multi_select() {
                 ;;
         esac
 
+        if [[ -n "$details_fn" && -z "${MOLE_READ_KEY_FORCE_CHAR:-}" ]]; then
+            case "$key" in
+                ENTER) key="DETAILS" ;;
+                CHAR:d | CHAR:D) key="ENTER" ;;
+            esac
+        fi
+
         case "$key" in
+            "DETAILS")
+                local idx=$((top_index + cursor_pos))
+                if [[ $idx -lt ${#view_indices[@]} ]]; then
+                    _pm_show_details "${view_indices[idx]}"
+                    need_full_redraw=true
+                fi
+                ;;
             "QUIT")
                 if [[ -n "$filter_text" || -n "${MOLE_READ_KEY_FORCE_CHAR:-}" ]]; then
                     filter_text=""

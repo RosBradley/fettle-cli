@@ -237,3 +237,54 @@ print(f'PASS: {cases} browse/search footer layouts under LC_ALL=C')
 PY
     [ "$status" -eq 0 ] || { echo "$output"; return 1; }
 }
+
+@test "menu rows are cut to the terminal width so none wraps, and a details screen opens on Enter" {
+    run env PROJECT_ROOT="$PROJECT_ROOT" python3 <<'PY'
+import os
+import re
+import subprocess
+
+script = r'''
+source "$PROJECT_ROOT/lib/core/common.sh"
+source "$PROJECT_ROOT/lib/ui/menu_paginated.sh"
+enter_alt_screen() { :; }
+leave_alt_screen() { :; }
+stty() { :; }
+drain_pending_input() { :; }
+tput() { if [[ "$1" == cols ]]; then echo "$COLUMNS"; else echo "$LINES"; fi; }
+KEYS=(ENTER SPACE QUIT CHAR:d)
+read_key() {
+    local n
+    n=$(cat "$KEY_STATE" 2> /dev/null || echo 0)
+    echo $((n + 1)) > "$KEY_STATE"
+    echo "${KEYS[n]:-QUIT}"
+}
+show_row() { printf 'Details of row %s\n' "$1"; }
+items=("$(printf 'a%.0s' {1..200})" "short row" "$(printf '中%.0s' {1..80})")
+MOLE_MENU_DETAILS_FN=show_row
+_MOLE_MENU_KEEP_EMPTY=true
+paginated_multi_select Pick "${items[@]}" || echo "rc=$?"
+echo "result=$MOLE_SELECTION_RESULT"
+'''
+ansi = re.compile(r'\x1b\[[0-?]*[ -/]*[@-~]')
+env = dict(os.environ, COLUMNS='60', LINES='12', KEY_STATE=os.path.join(os.environ['BATS_TEST_TMPDIR'], 'keys'))
+result = subprocess.run(['/bin/bash', '--noprofile', '--norc', '-c', script],
+                        env=env, capture_output=True, text=True, check=True)
+screen = ansi.sub('', result.stderr).replace('\r', '\n')
+rows = [line for line in screen.splitlines() if 'aaa' in line or '中' in line]
+assert rows, screen
+for line in rows:
+    # Four columns of arrow, checkbox and spaces, then at most 55.
+    width = sum(2 if ord(ch) > 0x2fff else 1 for ch in line[4:])
+    assert width <= 55 and line.endswith('...'), (width, line)
+assert 'Enter Details' in screen and 'D Save' in screen, screen
+assert 'Details of row 0' in screen and 'Space Select' in screen and 'Enter Back' in screen, screen
+assert 'result=0' in result.stdout, result.stdout
+print('ok')
+PY
+    [ "$status" -eq 0 ] || {
+        echo "$output"
+        return 1
+    }
+    [[ "$output" == *"ok"* ]]
+}
