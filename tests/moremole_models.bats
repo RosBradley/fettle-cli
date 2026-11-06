@@ -72,6 +72,11 @@ case "$1" in
 		;;
 	hf-verify)
 		printf 'hf-verify %s\n' "$2" >> "$CALLS"
+		# Ctrl-C while the model starts.
+		if [[ "$2" == *interrupt* ]]; then
+			kill -INT "$MOREMOLE_TEST_STOP_PID"
+			sleep 2
+		fi
 		if [[ "$2" == *nochat* ]]; then
 			printf 'notice\x1fverify-failed\x1fits family has no chat template in Ollama, so Ollama couldn'"'"'t chat with it\n'
 		else
@@ -618,6 +623,25 @@ ollama rm hf.co/me/m-4bit-moremole-check" ]] || { cat "$CALLS"; return 1; }
 	[[ "$output" == *"You can download them again."* ]] || return 1
 	[ "$(cat "$CALLS")" = "ollama rm hf.co/me/m-4bit:latest" ] || { cat "$CALLS"; return 1; }
 	[ "$(cat "$HOME/.config/mole/moremole-hf-models")" = "other:latest"$'\t'"me/Other"$'\t'"$HF_SHA" ]
+}
+
+@test "a run stopped while a Hugging Face model starts removes its check model from Ollama" {
+	run models_env MOLE_CURRENT_COMMAND=models /bin/bash -c '
+		source "$1"
+		export MOREMOLE_TEST_STOP_PID=$$
+		OLLAMA_CLI="$2"
+		MOREMOLE_RUN_ERRORS=$(create_temp_file)
+		hf_install me/Interrupt-4bit "$3" hf.co/me/interrupt-4bit added
+		echo "NOT STOPPED"
+	' bash "$PROJECT_ROOT/bin/moremole-models.sh" "$BATS_TEST_TMPDIR/fake-bin/ollama" "$HF_SHA"
+	[ "$status" -eq 130 ] || { echo "$output"; return 1; }
+	[[ "$output" != *"NOT STOPPED"* ]] || return 1
+	[ "$(cat "$CALLS")" = "hf-download me/Interrupt-4bit $HF_SHA $HOME/Library/Caches/moremole/models/hf/me--Interrupt-4bit
+ollama create hf.co/me/interrupt-4bit-moremole-check
+hf-verify hf.co/me/interrupt-4bit-moremole-check
+ollama rm hf.co/me/interrupt-4bit-moremole-check" ] || { cat "$CALLS"; return 1; }
+	grep -q "REMOVED hf.co/me/interrupt-4bit-moremole-check (unfinished check, cancelled)" "$HOME/Library/Logs/mole/operations.log" || { cat "$HOME/Library/Logs/mole/operations.log"; return 1; }
+	[ ! -e "$HOME/.config/mole/moremole-hf-models" ]
 }
 
 @test "Software updates' model updates turn Ollama on without asking, update each, and hand back the results" {

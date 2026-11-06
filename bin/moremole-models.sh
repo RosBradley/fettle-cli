@@ -105,8 +105,15 @@ SUMMARY_NOTES=()
 SUMMARY_SHOWN=false
 # Downloads from Hugging Face that stopped partway, kept to continue.
 HF_KEPT=()
+# The check model hf_install has added to Ollama, while it is there; a run
+# stopped then (Ctrl-C while it starts, say) removes it on the way out.
+HF_TRIAL=""
 
 cleanup() {
+    if [[ -n "$HF_TRIAL" && -n "$OLLAMA_CLI" ]] && "$OLLAMA_CLI" rm "$HF_TRIAL" > /dev/null 2>&1; then
+        log_operation "${MOLE_CURRENT_COMMAND:-models}" "REMOVED" "$HF_TRIAL" "unfinished check, cancelled" > /dev/null 2>&1 || true
+    fi
+    HF_TRIAL=""
     turn_off_if_started > /dev/null 2>&1 || true
     show_cursor
     cleanup_temp_files
@@ -987,6 +994,13 @@ hf_record_add() {
     printf '%s\t%s\t%s\n' "$name" "$repo" "$sha" >> "$HF_RECORD"
 }
 
+# Remove hf_install's check model from Ollama.
+hf_drop_trial() {
+    [[ -n "$HF_TRIAL" ]] || return 0
+    "$OLLAMA_CLI" rm "$HF_TRIAL" > /dev/null 2>&1 || true
+    HF_TRIAL=""
+}
+
 # `ollama create` reads the Modelfile in the folder it runs in.
 ollama_create_in() {
     (cd "$1" && "$OLLAMA_CLI" create "$2")
@@ -1012,9 +1026,10 @@ hf_install() {
         record_hf_failure "$name" "${reason:-the download stopped}"
         return 0
     fi
+    HF_TRIAL="$trial"
     if ! moremole_run_shown ollama_create_in "$dir" "$trial"; then
         reason=$(moremole_run_error_line)
-        "$OLLAMA_CLI" rm "$trial" > /dev/null 2>&1 || true
+        hf_drop_trial
         hf_remove_staging "$dir"
         record_hf_failure "$name" "Ollama couldn't add it: ${reason:-ollama create failed}"
         return 0
@@ -1031,16 +1046,16 @@ hf_install() {
     done < <(run_helper hf-verify "$trial")
     unspin
     if [[ "$verified" != "true" ]]; then
-        "$OLLAMA_CLI" rm "$trial" > /dev/null 2>&1 || true
+        hf_drop_trial
         record_hf_failure "$name" "it was removed again because ${reason:-it did not start}"
         return 0
     fi
     if ! "$OLLAMA_CLI" cp "$trial" "$name" > /dev/null 2>&1; then
-        "$OLLAMA_CLI" rm "$trial" > /dev/null 2>&1 || true
+        hf_drop_trial
         record_hf_failure "$name" "Ollama couldn't name it $name"
         return 0
     fi
-    "$OLLAMA_CLI" rm "$trial" > /dev/null 2>&1 || true
+    hf_drop_trial
     hf_record_add "$name" "$repo" "$sha"
     echo -e "${GREEN}${ICON_SUCCESS}${NC} Added as $(mole_terminal_safe_text "$name"), and it works"
     total_done=$((total_done + 1))
