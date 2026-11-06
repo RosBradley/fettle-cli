@@ -2,11 +2,13 @@ package main
 
 import (
 	"bufio"
+	"crypto/sha1" //nolint:gosec // G505: git's blob IDs are SHA-1
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"hash"
 	"io"
 	"net/http"
 	"net/url"
@@ -75,7 +77,7 @@ type hfModel struct {
 	CreatedAt    time.Time `json:"createdAt"`
 	PipelineTag  string    `json:"pipeline_tag"`
 	Config       *struct {
-		ModelType          string    `json:"model_type"`
+		ModelType          string   `json:"model_type"`
 		QuantizationConfig *hfQuant `json:"quantization_config"`
 		Quantization       *hfQuant `json:"quantization"`
 	} `json:"config"`
@@ -521,11 +523,64 @@ func humanBytes(n int64) string {
 	return fmt.Sprintf("%d B", n)
 }
 
+// hfStagingRoot holds one folder per download (HF_STAGING in
+// bin/moremole-models.sh). Tests replace it.
+var hfStagingRoot = func() string {
+	dir, err := os.UserCacheDir()
+	if err != nil || dir == "" {
+		return ""
+	}
+	return filepath.Join(dir, "moremole", "models", "hf")
+}
+
+// checkStagingDir refuses any folder but a download's own one in the
+// staging root, since hfDownload deletes what else that folder holds.
+func checkStagingDir(dir string) error {
+	root := hfStagingRoot()
+	clean := filepath.Clean(dir)
+	if root == "" || filepath.Dir(clean) != filepath.Clean(root) || !hfFileName.MatchString(filepath.Base(clean)) {
+		return fmt.Errorf("%s isn't a download folder in %s", dir, root)
+	}
+	if info, err := os.Lstat(clean); err == nil && !info.IsDir() {
+		return fmt.Errorf("%s isn't a folder", dir)
+	}
+	return nil
+}
+
+// pruneStaging deletes the files in a download folder that aren't this
+// download's, its .part files or the Modelfile. `ollama create` adds every
+// weights and JSON file in the folder, so a part left by an earlier commit,
+// or by weights the index doesn't name, would go into the model.
+func pruneStaging(dir string, files []hfFile) error {
+	keep := map[string]bool{"Modelfile": true}
+	for _, f := range files {
+		keep[f.Name] = true
+		keep[f.Name+".part"] = true
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return err
+	}
+	for _, e := range entries {
+		if keep[e.Name()] || e.IsDir() {
+			continue
+		}
+		if err := os.Remove(filepath.Join(dir, e.Name())); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // hfDownload downloads a model's files at a commit into dir, checks each
-// against its size and SHA-256, and writes the Modelfile `ollama create`
+// against its size and hash, and writes the Modelfile `ollama create`
 // reads. A file already there and whole is kept, and a partial one is
-// continued, so trying again after a failure picks up where it stopped.
+// continued, so trying again after a failure picks up where it stopped;
+// any other file in dir is deleted first.
 func hfDownload(repo, sha, dir string, out io.Writer) error {
+	if err := checkStagingDir(dir); err != nil {
+		return err
+	}
 	m, err := hfInfo(repo, sha)
 	if err != nil {
 		return err
@@ -535,6 +590,9 @@ func hfDownload(repo, sha, dir string, out io.Writer) error {
 		return err
 	}
 	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return err
+	}
+	if err := pruneStaging(dir, files); err != nil {
 		return err
 	}
 	size := totalSize(files)
@@ -617,8 +675,9 @@ func downloadFile(repo, sha, dir string, f hfFile, p *progress) error {
 	return os.Rename(part, final)
 }
 
-// verifyFile checks a download's size, and the SHA-256 Hugging Face lists for
-// its large files.
+// verifyFile checks a download's size, and its hash: the SHA-256 Hugging
+// Face lists for its large (LFS) files, or for the others, the git blob ID
+// it lists, the SHA-1 of "blob <size>\0" and the contents.
 func verifyFile(path string, f hfFile) error {
 	info, err := os.Stat(path)
 	if err != nil {
@@ -627,22 +686,39 @@ func verifyFile(path string, f hfFile) error {
 	if info.Size() != f.Size {
 		return fmt.Errorf("downloaded %s, expected %s", humanBytes(info.Size()), humanBytes(f.Size))
 	}
-	if f.LFS == nil || f.LFS.SHA256 == "" {
-		return nil
-	}
-	file, err := os.Open(path)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = file.Close() }()
-	h := sha256.New()
-	if _, err := io.Copy(h, bufio.NewReaderSize(file, 1<<20)); err != nil {
-		return err
-	}
-	if got := hex.EncodeToString(h.Sum(nil)); got != strings.ToLower(f.LFS.SHA256) {
-		return errors.New("its SHA-256 doesn't match Hugging Face's, so it was deleted")
+	switch {
+	case f.LFS != nil && f.LFS.SHA256 != "":
+		got, err := hashFile(path, sha256.New(), "")
+		if err != nil {
+			return err
+		}
+		if got != strings.ToLower(f.LFS.SHA256) {
+			return errors.New("its SHA-256 doesn't match Hugging Face's, so it was deleted")
+		}
+	case hfSHA.MatchString(f.BlobID):
+		got, err := hashFile(path, sha1.New(), "blob "+strconv.FormatInt(f.Size, 10)+"\x00") //nolint:gosec // G401: git names blobs by SHA-1; this matches Hugging Face's blob ID
+		if err != nil {
+			return err
+		}
+		if got != f.BlobID {
+			return errors.New("its contents don't match Hugging Face's, so it was deleted")
+		}
 	}
 	return nil
+}
+
+// hashFile is the hex hash of prefix and the file's contents.
+func hashFile(path string, h hash.Hash, prefix string) (string, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return "", err
+	}
+	defer func() { _ = file.Close() }()
+	_, _ = io.WriteString(h, prefix)
+	if _, err := io.Copy(h, bufio.NewReaderSize(file, 1<<20)); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(h.Sum(nil)), nil
 }
 
 // fillQuantizationMode names MLX's default quantization, "affine", in a

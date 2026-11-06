@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"crypto/sha1" //nolint:gosec // G505: git's blob IDs are SHA-1
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -149,11 +150,23 @@ type fakeHF struct {
 	files  map[string][]byte // repo/resolve/sha/name -> content
 	ranges []string
 	mu     sync.Mutex
+	root   string // the staging root downloads go in
+}
+
+// staging is a download folder in the fake staging root.
+func (f *fakeHF) staging(name string) string { return filepath.Join(f.root, name) }
+
+// gitBlobID is git's name for a file's contents, as Hugging Face lists it.
+func gitBlobID(b []byte) string {
+	h := sha1.New() //nolint:gosec // G401: git's blob IDs are SHA-1
+	_, _ = fmt.Fprintf(h, "blob %d\x00", len(b))
+	_, _ = h.Write(b)
+	return hex.EncodeToString(h.Sum(nil))
 }
 
 func useFakeHF(t *testing.T) *fakeHF {
 	t.Helper()
-	f := &fakeHF{t: t, api: map[string]string{}, files: map[string][]byte{}}
+	f := &fakeHF{t: t, api: map[string]string{}, files: map[string][]byte{}, root: t.TempDir()}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		f.mu.Lock()
 		defer f.mu.Unlock()
@@ -177,10 +190,11 @@ func useFakeHF(t *testing.T) *fakeHF {
 		_, _ = w.Write(content)
 	}))
 	t.Cleanup(srv.Close)
-	saved, savedGet, savedFree := hfSite, hfGet, freeBytes
+	saved, savedGet, savedFree, savedRoot := hfSite, hfGet, freeBytes, hfStagingRoot
 	hfSite = srv.URL
 	freeBytes = func(string) (int64, error) { return 1 << 40, nil }
-	t.Cleanup(func() { hfSite, hfGet, freeBytes = saved, savedGet, savedFree })
+	hfStagingRoot = func() string { return f.root }
+	t.Cleanup(func() { hfSite, hfGet, freeBytes, hfStagingRoot = saved, savedGet, savedFree, savedRoot })
 	return f
 }
 
@@ -259,7 +273,7 @@ func (f *fakeHF) serveRepo(repo, sha string, files map[string][]byte, extra ...s
 	sort.Strings(names)
 	for _, name := range names {
 		content := files[name]
-		s := map[string]any{"rfilename": name, "size": len(content), "blobId": sum(content)[:40]}
+		s := map[string]any{"rfilename": name, "size": len(content), "blobId": gitBlobID(content)}
 		if strings.HasSuffix(name, ".safetensors") {
 			s["lfs"] = map[string]any{"sha256": sum(content), "size": len(content)}
 		}
@@ -291,13 +305,28 @@ func TestHFDownloadTakesOnlyTheWeightsTheIndexNames(t *testing.T) {
 	if len(lines) != 1 || fields(lines[0])[3] != "332" || fields(lines[0])[4] != "4" {
 		t.Fatalf("files %q", lines)
 	}
-	dir := t.TempDir()
+	dir := f.staging("someone--Two-Sets")
+	// A download that stopped before left a part of the other set, and of
+	// an earlier commit; `ollama create` would add both to the model.
+	if err := os.MkdirAll(filepath.Join(dir, "sub"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	for _, stale := range []string{"model-00001-of-00003.safetensors", "model-00002-of-00003.safetensors.part", "old.json"} {
+		if err := os.WriteFile(filepath.Join(dir, stale), []byte("old"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
 	var out bytes.Buffer
 	if err := hfDownload("someone/Two-Sets", testSHA, dir, &out); err != nil {
 		t.Fatalf("download: %v\n%s", err, out.String())
 	}
-	if _, err := os.Stat(filepath.Join(dir, "model-00001-of-00003.safetensors")); err == nil {
-		t.Error("a part the index doesn't name was downloaded")
+	for _, stale := range []string{"model-00001-of-00003.safetensors", "model-00002-of-00003.safetensors.part", "old.json"} {
+		if _, err := os.Stat(filepath.Join(dir, stale)); err == nil {
+			t.Errorf("%s is still in the download folder", stale)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(dir, "sub")); err != nil {
+		t.Error("a folder in the download folder was deleted")
 	}
 	if _, err := os.Stat(filepath.Join(dir, "model-00002-of-00002.safetensors")); err != nil {
 		t.Error("a part the index names is missing")
@@ -329,7 +358,7 @@ func TestHFDownloadChecksEveryFileFillsTheQuantizationModeAndContinuesAPartialFi
 		t.Errorf("files %q", lines)
 	}
 
-	dir := filepath.Join(t.TempDir(), "staging")
+	dir := f.staging("mlx-community--Old-Llama-4bit")
 	// A download that stopped partway continues where it stopped.
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		t.Fatal(err)
@@ -384,7 +413,7 @@ func TestHFDownloadRefusesABadFileOrTooLittleSpace(t *testing.T) {
 		"config.json":       []byte(`{"model_type":"qwen3_5"}`),
 	})
 	f.files["me/Model-4bit/resolve/"+testSHA+"/model.safetensors"] = []byte("evil weights")
-	dir := t.TempDir()
+	dir := f.staging("me--Model-4bit")
 	var out bytes.Buffer
 	err := hfDownload("me/Model-4bit", testSHA, dir, &out)
 	if err == nil || !strings.Contains(err.Error(), "model.safetensors: its SHA-256 doesn't match Hugging Face's, so it was deleted") {
@@ -397,18 +426,51 @@ func TestHFDownloadRefusesABadFileOrTooLittleSpace(t *testing.T) {
 	}
 
 	freeBytes = func(string) (int64, error) { return 30, nil }
-	err = hfDownload("me/Model-4bit", testSHA, t.TempDir(), &out)
+	err = hfDownload("me/Model-4bit", testSHA, f.staging("me--Model-4bit-2"), &out)
 	if err == nil || !strings.Contains(err.Error(), "not enough free space: it needs 72 B (the download and Ollama's copy of it), and 30 B is free") {
 		t.Errorf("no space: %v", err)
 	}
 
 	// No MLX weights, or a name that isn't a model's.
 	f.serveRepo("me/Readme-only", testSHA, map[string][]byte{"config.json": []byte(`{}`)})
-	if err := hfDownload("me/Readme-only", testSHA, t.TempDir(), &out); err == nil || !strings.Contains(err.Error(), "no MLX safetensors") {
+	if err := hfDownload("me/Readme-only", testSHA, f.staging("me--Readme-only"), &out); err == nil || !strings.Contains(err.Error(), "no MLX safetensors") {
 		t.Errorf("no weights: %v", err)
 	}
-	if err := hfDownload("../etc", testSHA, t.TempDir(), &out); err == nil {
+	if err := hfDownload("../etc", testSHA, f.staging("etc"), &out); err == nil {
 		t.Error("accepted a bad name")
+	}
+
+	// A small file is checked by its git blob ID; one of the same size but
+	// other contents, kept from an earlier commit or sent wrong, is not used.
+	freeBytes = func(string) (int64, error) { return 1 << 40, nil }
+	f.serveRepo("me/Small-4bit", testSHA, map[string][]byte{
+		"model.safetensors": []byte("weights"),
+		"config.json":       []byte(`{"model_type":"qwen3_5"}`),
+	})
+	small := f.staging("me--Small-4bit")
+	if err := os.MkdirAll(small, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(small, "config.json"), []byte(`{"model_type":"qwen3_6"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := hfDownload("me/Small-4bit", testSHA, small, &out); err != nil {
+		t.Fatalf("small: %v", err)
+	}
+	if got, _ := os.ReadFile(filepath.Join(small, "config.json")); string(got) != `{"model_type":"qwen3_5"}` {
+		t.Errorf("kept the old config.json: %s", got)
+	}
+	f.files["me/Small-4bit/resolve/"+testSHA+"/config.json"] = []byte(`{"model_type":"evil3_5"}`)
+	if err := hfDownload("me/Small-4bit", testSHA, f.staging("me--Small-4bit-2"), &out); err == nil || !strings.Contains(err.Error(), "config.json: its contents don't match Hugging Face's, so it was deleted") {
+		t.Errorf("bad small file: %v", err)
+	}
+
+	// Only a download's own folder in the staging root, whose other files
+	// are deleted, is used.
+	for _, dir := range []string{t.TempDir(), f.root, filepath.Join(f.root, "a", "b"), filepath.Join(f.root, "..")} {
+		if err := hfDownload("me/Model-4bit", testSHA, dir, &out); err == nil || !strings.Contains(err.Error(), "isn't a download folder") {
+			t.Errorf("%s: %v", dir, err)
+		}
 	}
 }
 

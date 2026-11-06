@@ -27,7 +27,9 @@
 //	notice:   notice key   text
 //
 // hf-download prints its progress, and on failure exits 1 with an "Error:"
-// line on stderr.
+// line on stderr. DIR must be a folder directly in MoreMole's download cache
+// (~/Library/Caches/moremole/models/hf), since files in it that aren't the
+// model's are deleted.
 //
 // status in list is update, current, local (the registry has no such model:
 // made on this Mac or removed upstream) or unknown (could not check); it is
