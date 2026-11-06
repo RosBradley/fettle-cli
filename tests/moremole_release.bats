@@ -491,3 +491,9 @@ run_sync() {
 	[[ "$output" != *"Rebuilding"* ]] || return 1
 	[ ! -e "$MAKE_LOG" ]
 }
+
+@test "MoreMole's incident ledger names real commits, layers and catchers" {
+	run python3 "$PROJECT_ROOT/scripts/audit_incidents.py" --ledger "$PROJECT_ROOT/docs/moremole-incidents.md"
+	[ "$status" -eq 0 ] || { echo "$output"; return 1; }
+	[[ "$output" == "incidents-audit-ok rows="[1-9]* ]]
+}
