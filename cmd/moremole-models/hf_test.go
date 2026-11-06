@@ -210,7 +210,7 @@ func TestHFListOffersOpenChatModelsOfOllamasMLXFamiliesOnly(t *testing.T) {
 		switch u {
 		case first:
 			return []byte(list(
-				map[string]any{"id": "mlx-community/Qwen3.5-9B-4bit", "pipeline_tag": "image-text-to-text", "downloads": 900, "gated": false, "config": cfg("qwen3_5", 4), "safetensors": params, "lastModified": "2026-10-01T00:00:00.000Z"},
+				map[string]any{"id": "mlx-community/Qwen3.5-9B-4bit", "pipeline_tag": "image-text-to-text", "downloads": 900, "gated": false, "config": cfg("qwen3_5", 4), "safetensors": params, "lastModified": "2026-10-01T00:00:00.000Z", "createdAt": "2026-03-02T00:00:00.000Z"},
 				map[string]any{"id": "mlx-community/Llama-3.2-1B-4bit", "pipeline_tag": "text-generation", "downloads": 800, "gated": false, "config": cfg("llama", 4), "safetensors": params},
 				map[string]any{"id": "google/gated-gemma", "pipeline_tag": "text-generation", "downloads": 700, "gated": "manual", "config": cfg("gemma4", 4), "safetensors": params},
 				map[string]any{"id": "mlx-community/whisper", "pipeline_tag": "automatic-speech-recognition", "downloads": 600, "gated": false, "config": cfg("qwen3_5", 4)},
@@ -232,8 +232,8 @@ func TestHFListOffersOpenChatModelsOfOllamasMLXFamiliesOnly(t *testing.T) {
 	lines := hfListLines(func() (string, error) { return "", errors.New("offline") }, x, s)
 	want := []string{
 		// 8000 4-bit weights at 4.5 bits, plus 100 bf16 values.
-		row("hf", "mlx-community/Qwen3.5-9B-4bit", "qwen3_5", "4-bit", "4700", "900", "1790812800", "1", "Text, Image"),
-		row("hf", "someone/Gemma-4-bf16", "gemma4", "bf16", "2000", "10", "0", "0", "Text"),
+		row("hf", "mlx-community/Qwen3.5-9B-4bit", "qwen3_5", "4-bit", "4700", "900", "1790812800", "1", "Text, Image", "1772409600"),
+		row("hf", "someone/Gemma-4-bf16", "gemma4", "bf16", "2000", "10", "0", "0", "Text", "0"),
 	}
 	if !reflect.DeepEqual(lines, want) {
 		t.Errorf("got %q\nwant %q", lines, want)
@@ -466,6 +466,25 @@ func TestHFEstimatesAndNames(t *testing.T) {
 		if got := q.estimatedBytes(); got != c.want {
 			t.Errorf("%s: %d bytes, want %d", c.quant, got, c.want)
 		}
+	}
+	for d, want := range map[time.Duration]string{40*time.Second + time.Millisecond: "41s", 3*time.Minute + 20*time.Second: "3m", 65 * time.Minute: "1h 5m"} {
+		if got := shortDuration(d); got != want {
+			t.Errorf("%v: %q, want %q", d, got, want)
+		}
+	}
+	// After a few seconds the line gives the speed and the time left;
+	// bytes already on disk count toward the total but not the speed.
+	clock := time.Unix(1790000000, 0)
+	saved := now
+	now = func() time.Time { return clock }
+	t.Cleanup(func() { now = saved })
+	var out bytes.Buffer
+	p := &progress{out: &out, size: 40e6, file: "model.safetensors"}
+	p.skip(10e6)
+	clock = clock.Add(5 * time.Second)
+	p.add(10e6)
+	if !strings.HasSuffix(out.String(), "downloading model.safetensors  20 MB of 40 MB  50%  2 MB/s  10s left\033[K") {
+		t.Errorf("progress %q", out.String())
 	}
 	if got := ollamaNameFor("mlx-community/Qwen3.5-0.8B-4bit"); got != "hf.co/mlx-community/qwen3.5-0.8b-4bit" {
 		t.Errorf("name %q", got)

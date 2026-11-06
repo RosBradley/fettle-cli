@@ -310,7 +310,7 @@ ollama rm llama3.2:latest" ] || { cat "$CALLS"; return 1; }
 	' bash "$PROJECT_ROOT/bin/moremole-models.sh" "$SCRIPTED"
 	[ "$status" -eq 0 ] || { echo "$output"; return 1; }
 	[[ "$output" == *"up to date  llama3.2:latest"*"2.00GB · in use"* ]] || return 1
-	[[ "$output" == *"Enter Details"*"D Save"* ]] || return 1
+	[[ "$output" == *"Enter Details"*"D Remove"* ]] || return 1
 	[[ "$output" == *"Not selected"*"llama3.2:latest"*"Status"*"up to date"*"Size on disk"*"2.00GB"*"In use"*"yes, loaded in memory now"*"Page"*"https://ollama.com/library/llama3.2"*"Space Select"*"Enter Back"* ]] || return 1
 	[[ "$output" == *"2 of 4 · ● Selected"*"llama3.2:latest"*"3 of 4"*"my-assistant:latest"*"4 of 4"*"qwen3:8b"*"3 of 4"*"my-assistant:latest"* ]] || return 1
 	[[ "$output" == *"Previous, next"* ]] || return 1
@@ -327,7 +327,7 @@ ollama rm llama3.2:latest" ] || { cat "$CALLS"; return 1; }
 		main --huggingface
 	' bash "$PROJECT_ROOT/bin/moremole-models.sh" "$SCRIPTED"
 	[ "$status" -eq 0 ] || { echo "$output"; return 1; }
-	[[ "$output" == *"mlx-community/Qwen3.5-9B-4bit"*"Family"*"Qwen 3.5"*"Quantization"*"4-bit"*"Size"*"5.95GB in 10 files"*"Memory"*"fits in 17.18GB memory"*"Downloads"*"719843 in the last month"*"In Ollama as"*"hf.co/mlx-community/qwen3.5-9b-4bit"*"https://huggingface.co/mlx-community/Qwen3.5-9B-4bit"* ]] || return 1
+	[[ "$output" == *"mlx-community/Qwen3.5-9B-4bit"*"Family"*"Qwen 3.5"*"Quantization"*"4-bit"*"Size"*"5.95GB in 10 files"*"Memory"*"fits in 17.18GB memory"*"Downloads"*"719843 in the last month"*"Published"*"2 March 2026"*"Updated"*"In Ollama as"*"hf.co/mlx-community/qwen3.5-9b-4bit"*"https://huggingface.co/mlx-community/Qwen3.5-9B-4bit"* ]] || return 1
 	[ ! -s "$CALLS" ]
 }
 
@@ -369,12 +369,14 @@ library_models() {
 	[ "$status" -eq 0 ] || { echo "$output"; return 1; }
 	[ "$(cat "$ROWS_DIR/tags-asked")" = "gemma3 llama3.1" ] || return 1
 	[[ "$output" == *"Select models, then choose their versions; MLX: has versions for Apple silicon"* ]] || return 1
-	[[ "$output" == *"installed  MLX  gemma3"*"vision"*"1b–27b"*"30.1M pulls"* ]] || return 1
+	[[ "$output" == *"installed  MLX  gemma3"*"vision"*"1b–27b"*"30.1M  2026-09-21"* ]] || return 1
 	[[ "$output" == *"Select versions: fit in memory, size, context, input, MLX for Apple silicon"* ]] || return 1
 	[[ "$output" == *"installed  fits     gemma3:4b "*"3.3GB"*"128K"*"Text, Image"* ]] || return 1
 	[[ "$output" == *"fits     gemma3:4b-mlx"*"3.5GB"*"MLX"* ]] || return 1
 	[[ "$output" == *"too big  llama3.1:405b"*"243GB"* ]] || return 1
 	[[ "$output" == *"Models to download:"*"gemma3:27b"*"17.00GB · too big for 17.18GB memory"*"gemma3:4b-mlx"*"3.50GB · fits"*"llama3.1:405b"*"243.00GB · too big"* ]] || return 1
+	[[ "$output" == *"D Next"*"D Download"* ]] || return 1
+	[[ "$output" == *"gemma3:27b"*"1 of 3"*"gemma3:4b-mlx"*"2 of 3"*"llama3.1:405b"*"3 of 3"* ]] || return 1
 	[[ "$output" == *"Downloads up to 263.50GB"*"Models downloaded"*"Downloaded"*"3"* ]] || return 1
 	[ "$(cat "$CALLS")" = "ollama pull gemma3:27b
 ollama pull gemma3:4b-mlx
@@ -457,7 +459,7 @@ readonly HF_NEW=fedcba9876543210fedcba9876543210fedcba98
 
 hf_models() {
 	printf 'mlx=1\n' >> "$ROWS_DIR/status"
-	row hf-list hf mlx-community/Qwen3.5-9B-4bit qwen3_5 4-bit 5950000000 719843 1790000000 0 "Text, Image"
+	row hf-list hf mlx-community/Qwen3.5-9B-4bit qwen3_5 4-bit 5950000000 719843 1790000000 0 "Text, Image" 1772409600
 	row hf-list hf someone/Gemma-4-nochat-bf16 gemma4 bf16 2000000000 10 1780000000 0 Text
 	row hf-files files mlx-community/Qwen3.5-9B-4bit "$HF_SHA" 5950062560 10 hf.co/mlx-community/qwen3.5-9b-4bit
 	row hf-files files someone/Gemma-4-nochat-bf16 "$HF_SHA" 2000000000 6 hf.co/someone/gemma-4-nochat-bf16
@@ -505,7 +507,7 @@ hf_models() {
 	[ "$status" -eq 1 ] || { echo "$output"; return 1; }
 	[[ "$output" == *"Select MLX models from Hugging Face"* ]] || return 1
 	# Rows are cut to the terminal's 100 columns; the details show the rest.
-	[[ "$output" == *"fits     mlx-community/Qwen3.5-9B-4bit"*"Qwen 3.5"*"4-bit"*"~5.95GB"*"Text, Image"* ]] || return 1
+	[[ "$output" == *"fits     mlx-community/Qwen3.5-9B-4bit"*"4-bit"*"~5.95GB"*"vision"*"719.8K  2026-03-02"* ]] || return 1
 	[[ "$output" == *"Models to add from Hugging Face:"*"mlx-community/Qwen3.5-9B-4bit "*"5.95GB · fits in 17.18GB memory · as hf.co/mlx-community/qwen3.5-9b-4bit"* ]] || return 1
 	[[ "$output" == *"it needs twice its size free"*"started once to check that it works"* ]] || return 1
 	[[ "$output" == *"Added as hf.co/mlx-community/qwen3.5-9b-4bit:latest, and it works"* ]] || return 1

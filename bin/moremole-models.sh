@@ -91,6 +91,7 @@ H_DOWNLOADS=()
 H_UPDATED=()
 H_INSTALLED=()
 H_INPUT=()
+H_CREATED=()
 # Exact download sizes, read when a model's details are opened.
 H_EXACT=()
 NOTICE_KEYS=()
@@ -327,10 +328,10 @@ load_tags() {
 }
 
 # Read the MLX models on Hugging Face ("hf repo family quant bytes downloads
-# updated installed input").
+# updated installed input created").
 load_hf() {
-    local kind repo family quant bytes downloads updated installed input
-    while IFS="$MODELS_FIELD_SEP" read -r kind repo family quant bytes downloads updated installed input || [[ -n "${kind:-}" ]]; do
+    local kind repo family quant bytes downloads updated installed input created
+    while IFS="$MODELS_FIELD_SEP" read -r kind repo family quant bytes downloads updated installed input created || [[ -n "${kind:-}" ]]; do
         case "$kind" in
             notice) add_notice "$repo" "$family" ;;
             hf)
@@ -343,6 +344,7 @@ load_hf() {
                 H_UPDATED+=("${updated:-0}")
                 H_INSTALLED+=("${installed:-0}")
                 H_INPUT+=("$input")
+                H_CREATED+=("${created:-0}")
                 ;;
         esac
     done
@@ -462,6 +464,24 @@ cell() {
     ROW+="${ROW:+  }$text$pad"
 }
 
+# The same, lined up on the right, for numbers.
+rcell() {
+    local text="$1" width="$2" pad=""
+    ((${#text} >= width)) || printf -v pad '%*s' "$((width - ${#text}))" ""
+    ROW+="${ROW:+  }$pad$text"
+}
+
+# The terminal's width: COLUMNS, else the terminal itself, else 100.
+terminal_cols() {
+    local cols="${COLUMNS:-}"
+    if [[ ! "$cols" =~ ^[0-9]+$ ]]; then
+        cols=$(stty size < /dev/tty 2> /dev/null) || cols=""
+        cols="${cols##* }"
+    fi
+    [[ "$cols" =~ ^[0-9]+$ && "$cols" -gt 0 ]] || cols=100
+    printf '%s' "$cols"
+}
+
 # The width of the longest name, at least 12 and at most MODELS_NAME_MAX.
 name_width() {
     local width=12 name LC_ALL=en_US.UTF-8
@@ -501,7 +521,8 @@ sizes_text() {
 }
 
 # A library model: installed first, and on Apple silicon MLX when it has MLX
-# versions, then name, what it can do, its sizes and pulls.
+# versions, then name, what it can do, its sizes, pulls and when Ollama last
+# updated it.
 library_row_text() {
     local i="$1" width="$2" mlx="" status=""
     [[ "${L_INSTALLED[i]}" != "1" ]] || status="installed"
@@ -512,10 +533,16 @@ library_row_text() {
         cell "$mlx" 3
     fi
     cell "${L_NAME[i]}" "$width"
-    cell "${L_CAPS[i]//,/, }" 30
+    caps_text "${L_CAPS[i]}"
+    cell "$TEXT" 18
     sizes_text "${L_SIZES[i]}"
     cell "$TEXT" 12
-    [[ -z "${L_PULLS[i]}" ]] || ROW+="  ${L_PULLS[i]} pulls"
+    pulls_number "${L_PULLS[i]}"
+    count_text "$TEXT"
+    [[ "$TEXT" != "0" ]] || TEXT=""
+    rcell "$TEXT" 6
+    date_cell_text "${L_UPDATED[i]}"
+    cell "$TEXT" 10
 }
 
 # The library's pull count as a number: 30.1M is 30100000, 2,538 is 2538;
@@ -556,32 +583,68 @@ family_text() {
     esac
 }
 
-# Download counts the way the library shows pulls: 3.3M, 720K.
+# A count with one decimal and its unit, so every row reads alike: 3.5K,
+# 719.8K, 30.1M, 1.2B; under a thousand as it is.
 count_text() {
-    local n="$1"
+    local n="$1" unit="" div=1
     TEXT=""
     [[ "$n" =~ ^[0-9]+$ ]] || return 0
-    if ((n >= 1000000)); then
-        TEXT="$((n / 1000000)).$((n % 1000000 / 100000))M"
+    if ((n >= 1000000000)); then
+        unit=B div=1000000000
+    elif ((n >= 1000000)); then
+        unit=M div=1000000
     elif ((n >= 1000)); then
-        TEXT="$((n / 1000))K"
+        unit=K div=1000
     else
         TEXT="$n"
+        return 0
     fi
+    TEXT="$((n / div)).$((n % div * 10 / div))$unit"
 }
 
-# A Hugging Face model: added and whether it fits first, then name, family,
-# quantization, about how big, what it reads, and downloads.
+# A date as 2026-10-14 (UTC), worked out without a fork; empty for none.
+date_cell_text() {
+    local t="$1" z era doe yoe y doy mp d m
+    TEXT=""
+    [[ "$t" =~ ^[0-9]+$ && "$t" -gt 0 ]] || return 0
+    z=$((t / 86400 + 719468))
+    era=$((z / 146097))
+    doe=$((z - era * 146097))
+    yoe=$(((doe - doe / 1460 + doe / 36524 - doe / 146096) / 365))
+    y=$((yoe + era * 400))
+    doy=$((doe - (365 * yoe + yoe / 4 - yoe / 100)))
+    mp=$(((5 * doy + 2) / 153))
+    d=$((doy - (153 * mp + 2) / 5 + 1))
+    if ((mp < 10)); then m=$((mp + 3)); else m=$((mp - 9)); fi
+    ((m > 2)) || y=$((y + 1))
+    printf -v TEXT '%04d-%02d-%02d' "$y" "$m" "$d"
+}
+
+# What a library model can do, in short words: tools vision think.
+caps_text() {
+    local cap
+    TEXT=""
+    for cap in ${1//,/ }; do
+        case "$cap" in
+            thinking) cap=think ;;
+            embedding) cap=embed ;;
+            decision) cap=decide ;;
+        esac
+        TEXT+="${TEXT:+ }$cap"
+    done
+}
+
+# A Hugging Face model: added, or else whether it fits, first, then name,
+# quantization, about how big, vision when it reads images, downloads in
+# the last month and when it was published. The family is on the details
+# screen, and search finds it; most names say it anyway.
 hf_row_text() {
-    local i="$1" width="$2" status=""
-    [[ "${H_INSTALLED[i]}" != "1" ]] || status="added"
+    local i="$1" width="$2"
     ROW=""
-    cell "$status" 5
     fit_word "${H_BYTES[i]}"
+    [[ "${H_INSTALLED[i]}" != "1" ]] || TEXT="added"
     cell "$TEXT" 7
     cell "${H_REPO[i]}" "$width"
-    family_text "${H_FAMILY[i]}"
-    cell "$TEXT" 12
     cell "${H_QUANT[i]}" 6
     if [[ "${H_BYTES[i]}" =~ ^[1-9][0-9]*$ ]]; then
         size_text "${H_BYTES[i]}"
@@ -590,9 +653,24 @@ hf_row_text() {
         TEXT="?"
     fi
     cell "$TEXT" 9
-    cell "${H_INPUT[i]}" 11
+    TEXT=""
+    [[ "${H_INPUT[i]}" != *Image* ]] || TEXT="vision"
+    cell "$TEXT" 6
     count_text "${H_DOWNLOADS[i]}"
-    [[ -z "$TEXT" ]] || ROW+="  $TEXT downloads"
+    rcell "$TEXT" 6
+    date_cell_text "${H_CREATED[i]:-0}"
+    cell "$TEXT" 10
+}
+
+# The width left for Hugging Face names: the row's other columns take 56,
+# and the list's arrow and checkbox 5. At least 20, at most 50.
+hf_name_width() {
+    local room longest
+    room=$(($(terminal_cols) - 61))
+    longest=$(MODELS_NAME_MAX=50 name_width "${H_REPO[@]}")
+    ((room >= 20)) || room=20
+    ((room <= longest)) || room=$longest
+    printf '%s' "$room"
 }
 
 # A version: installed or default and its memory fit first, then name, size,
@@ -616,6 +694,8 @@ tag_row_text() {
 # is; DETAILS_MAP turns a row into its model when the list shows only some.
 DETAILS_KIND=""
 DETAILS_MAP=()
+# What D does in the pick list, shown in its keys.
+DONE_LABEL=""
 show_model_details() {
     local i="${DETAILS_MAP[$1]:-$1}"
     case "$DETAILS_KIND" in
@@ -648,7 +728,7 @@ detail_line() {
 
 date_text() {
     [[ "$1" =~ ^[0-9]+$ && "$1" -gt 0 ]] || return 0
-    "$_DATE_CMD" -r "$1" '+%-d %B %Y' 2> /dev/null || true
+    "$_DATE_CMD" -u -r "$1" '+%-d %B %Y' 2> /dev/null || true
 }
 
 # A model's page: ollama.com for its registry, huggingface.co for a model
@@ -749,6 +829,7 @@ hf_details() {
     detail_line "Memory" "$(fit_text "$bytes")"
     detail_line "Input" "${H_INPUT[i]}"
     detail_line "Downloads" "$downloads"
+    detail_line "Published" "$(date_text "${H_CREATED[i]:-0}")"
     detail_line "Updated" "$(date_text "${H_UPDATED[i]}")"
     detail_line "Added" "$added"
     detail_line "In Ollama as" "$name"
@@ -801,13 +882,24 @@ record_result() {
 }
 
 # Pull each model, with Ollama's own progress on screen.
+# Each model's heading while it downloads, with how far along the run is
+# (2 of 3) when there are several. Callers set PROGRESS_TOTAL first.
+PROGRESS_N=0
+PROGRESS_TOTAL=0
+model_heading() {
+    local count=""
+    PROGRESS_N=$((PROGRESS_N + 1))
+    ((PROGRESS_TOTAL <= 1)) || count="  ${GRAY}${PROGRESS_N} of ${PROGRESS_TOTAL}${NC}"
+    echo -e "${BLUE}${ICON_ARROW} $(mole_terminal_safe_text "$1")${NC}${count}"
+}
+
 pull_models() {
     local action_detail="$1"
     shift
     local name
     MOREMOLE_RUN_ERRORS=$(create_temp_file)
     for name in "$@"; do
-        echo -e "${BLUE}${ICON_ARROW} $(mole_terminal_safe_text "$name")${NC}"
+        model_heading "$name"
         if moremole_run_shown "$OLLAMA_CLI" pull "$name"; then
             record_result "$name" true "REBUILT" "$action_detail"
         else
@@ -878,7 +970,7 @@ hf_install() {
     }
     dir=$(hf_staging_dir "$repo")
     trial="${name%:latest}-moremole-check"
-    echo -e "${BLUE}${ICON_ARROW} $(mole_terminal_safe_text "$repo")${NC}"
+    model_heading "$repo"
     if ! moremole_run_shown "$MODELS_HELPER" hf-download "$repo" "$sha" "$dir"; then
         reason=$(moremole_run_error_line)
         HF_KEPT+=("$dir")
@@ -1030,6 +1122,7 @@ run_update() {
     done
     DETAILS_KIND=installed
     DETAILS_MAP=("${updates[@]}")
+    DONE_LABEL=Update
     if ! pick "Select model updates to install" "${rows[@]}"; then
         moremole_note_cancel
         return 0
@@ -1059,6 +1152,7 @@ run_update() {
         return 0
     fi
     log_operation_session_start "$MOLE_CURRENT_COMMAND"
+    PROGRESS_TOTAL=$((${#chosen[@]} + ${#from_hf[@]}))
     [[ ${#chosen[@]} -eq 0 ]] || pull_models "updated" "${chosen[@]}"
     if [[ ${#from_hf[@]} -gt 0 ]]; then
         MOREMOLE_RUN_ERRORS=$(create_temp_file)
@@ -1079,7 +1173,7 @@ pick() {
     PICKED=()
     # Saving with nothing picked picks nothing, never the row under the cursor.
     # Enter shows the row's details.
-    local rc=0 _MOLE_MENU_KEEP_EMPTY=true MOLE_MENU_DETAILS_FN=""
+    local rc=0 _MOLE_MENU_KEEP_EMPTY=true MOLE_MENU_DETAILS_FN="" MOLE_MENU_DONE_LABEL="${DONE_LABEL:-Save}"
     [[ -z "$DETAILS_KIND" ]] || MOLE_MENU_DETAILS_FN=show_model_details
     hide_cursor
     paginated_multi_select "$title" "$@" || rc=$?
@@ -1109,6 +1203,7 @@ pick_to_remove() {
     local MOLE_MENU_SORT_MODE=name MOLE_MENU_SORT_REVERSE=false _MOLE_MENU_SELECT_ALL=true
     DETAILS_KIND=installed
     DETAILS_MAP=()
+    DONE_LABEL=Remove
     pick "Select models to remove" "$@"
 }
 
@@ -1144,20 +1239,28 @@ pick_models_to_download() {
     [[ "${MODELS_APPLE_SILICON:-0}" != "1" ]] || title+="; MLX: has versions for Apple silicon"
     DETAILS_KIND=library
     DETAILS_MAP=()
+    DONE_LABEL=Next
     pick "$title" "$@"
 }
 
-# The Hugging Face list opens A-Z; S sorts by size, then by date. Search
-# finds a model by its name, family, quantization, what it reads, or added.
+# The Hugging Face list opens A-Z; S sorts by size, then by when it was
+# published, then by downloads. Search finds a model by its name, family,
+# quantization, what it reads, vision, or added.
 pick_hf_models() {
-    local -a search=() sizes_kb=()
+    local -a search=() sizes_kb=() published=()
     local i words
     for ((i = 0; i < ${#H_REPO[@]}; i++)); do
         family_text "${H_FAMILY[i]}"
         words="${H_REPO[i]} $TEXT ${H_FAMILY[i]} ${H_QUANT[i]} ${H_INPUT[i]//,/}"
         [[ "${H_INSTALLED[i]}" != "1" ]] || words+=" added"
+        [[ "${H_INPUT[i]}" != *Image* ]] || words+=" vision"
         search+=("$words")
         sizes_kb+=("$((${H_BYTES[i]:-0} / 1024))")
+        if [[ "${H_CREATED[i]:-0}" =~ ^[1-9][0-9]*$ ]]; then
+            published+=("${H_CREATED[i]}")
+        else
+            published+=("${H_UPDATED[i]:-0}")
+        fi
     done
     local MOLE_MENU_META_SIZEKB MOLE_MENU_META_EPOCHS MOLE_MENU_FILTER_NAMES
     MOLE_MENU_META_SIZEKB=$(
@@ -1166,7 +1269,7 @@ pick_hf_models() {
     )
     MOLE_MENU_META_EPOCHS=$(
         IFS=','
-        printf '%s' "${H_UPDATED[*]}"
+        printf '%s' "${published[*]}"
     )
     MOLE_MENU_FILTER_NAMES=$(printf '%s\n' "${search[@]}")
     local MOLE_MENU_META_COUNTS MOLE_MENU_COUNT_LABEL=Downloads
@@ -1177,6 +1280,7 @@ pick_hf_models() {
     local MOLE_MENU_SORT_MODE=name MOLE_MENU_SORT_REVERSE=false
     DETAILS_KIND=hf
     DETAILS_MAP=()
+    DONE_LABEL=Add
     pick "Select MLX models from Hugging Face" "$@"
 }
 
@@ -1204,6 +1308,7 @@ pick_versions_to_download() {
     [[ "${MODELS_APPLE_SILICON:-0}" != "1" ]] || title+=", MLX for Apple silicon"
     DETAILS_KIND=tag
     DETAILS_MAP=()
+    DONE_LABEL=Download
     pick "$title" "$@"
 }
 
@@ -1398,6 +1503,7 @@ run_download() {
         return 0
     fi
     log_operation_session_start "$MOLE_CURRENT_COMMAND"
+    PROGRESS_TOTAL=${#found[@]}
     pull_models "downloaded" "${found[@]}"
     log_operation_session_end "$MOLE_CURRENT_COMMAND" "$total_done" 0
     turn_off_if_started
@@ -1422,7 +1528,7 @@ run_huggingface() {
         return 0
     fi
     local i width
-    width=$(MODELS_NAME_MAX=44 name_width "${H_REPO[@]}")
+    width=$(hf_name_width)
     if [[ "${MOLE_DRY_RUN:-0}" == "1" ]] || ! interactive; then
         echo -e "${PURPLE_BOLD}${#H_REPO[@]} MLX models on Hugging Face that Ollama runs${NC}"
         for ((i = 0; i < ${#H_REPO[@]}; i++)); do
@@ -1469,6 +1575,7 @@ run_huggingface() {
     fi
     log_operation_session_start "$MOLE_CURRENT_COMMAND"
     MOREMOLE_RUN_ERRORS=$(create_temp_file)
+    PROGRESS_TOTAL=${#F_REPO[@]}
     for ((j = 0; j < ${#F_REPO[@]}; j++)); do
         hf_install "${F_REPO[j]}" "${F_SHA[j]}" "${F_NAME[j]}" "added"
     done

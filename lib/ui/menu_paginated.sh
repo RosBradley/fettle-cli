@@ -671,7 +671,8 @@ paginated_multi_select() {
         local space_select="${GRAY}Space Select${NC}"
         local select_all="${GRAY}A All${NC}"
         local enter="${GRAY}Enter Save${NC}"
-        [[ -z "$details_fn" ]] || enter="${GRAY}Enter Details${NC}${sep}${GRAY}D Save${NC}"
+        # MoreMole: the caller names what D does, such as Download.
+        [[ -z "$details_fn" ]] || enter="${GRAY}Enter Details${NC}${sep}${GRAY}D ${MOLE_MENU_DONE_LABEL:-Save}${NC}"
         local cancel_label="${GRAY}Q Cancel${NC}"
 
         local reverse_arrow="↑"

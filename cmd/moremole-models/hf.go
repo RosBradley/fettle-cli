@@ -72,6 +72,7 @@ type hfModel struct {
 	Gated        any       `json:"gated"` // false, or "auto" / "manual"
 	Downloads    int64     `json:"downloads"`
 	LastModified time.Time `json:"lastModified"`
+	CreatedAt    time.Time `json:"createdAt"`
 	PipelineTag  string    `json:"pipeline_tag"`
 	Config       *struct {
 		ModelType          string    `json:"model_type"`
@@ -217,7 +218,7 @@ func hfListURL() string {
 	q.Set("sort", "downloads")
 	q.Set("direction", "-1")
 	q.Set("limit", "1000")
-	for _, e := range []string{"config", "downloads", "lastModified", "safetensors", "pipeline_tag", "gated", "sha"} {
+	for _, e := range []string{"config", "downloads", "lastModified", "createdAt", "safetensors", "pipeline_tag", "gated", "sha"} {
 		q.Add("expand[]", e)
 	}
 	return hfAPI() + "?" + q.Encode()
@@ -226,7 +227,7 @@ func hfListURL() string {
 // hfListLines lists the most downloaded MLX models on Hugging Face that
 // Ollama's MLX engine runs, most downloaded first:
 //
-//	hf  repo  family  quant  bytes  downloads  updated  installed  input
+//	hf  repo  family  quant  bytes  downloads  updated  installed  input  created
 //
 // bytes is an estimate, 0 when unknown.
 func hfListLines(libFetch func() (string, error), x *mlxIndex, s service) []string {
@@ -278,7 +279,8 @@ func hfListLines(libFetch func() (string, error), x *mlxIndex, s service) []stri
 		}
 		lines = append(lines, row("hf", m.ID, m.Config.ModelType, m.quantText(),
 			strconv.FormatInt(m.estimatedBytes(), 10), strconv.FormatInt(m.Downloads, 10),
-			strconv.FormatInt(unixOrZero(m.LastModified), 10), isInstalled, input))
+			strconv.FormatInt(unixOrZero(m.LastModified), 10), isInstalled, input,
+			strconv.FormatInt(unixOrZero(m.CreatedAt), 10)))
 	}
 	return lines
 }
@@ -393,19 +395,35 @@ var hfDownloadClient = &http.Client{Transport: &http.Transport{
 	TLSHandshakeTimeout:   30 * time.Second,
 }}
 
-// progress prints one updating line for the whole download.
+// progress prints one updating line for the whole download: the file, how
+// much of the model is here, and once it has run a few seconds, the speed
+// and the time left. Parts already on disk don't count toward the speed.
 type progress struct {
-	out        io.Writer
-	done, size int64
-	file       string
-	last       time.Time
+	out         io.Writer
+	done, size  int64
+	file        string
+	last        time.Time
+	start       time.Time
+	startDone   int64
+	startedOnce bool
 }
 
 func (p *progress) add(n int64) {
+	if !p.startedOnce {
+		p.startedOnce = true
+		p.start = now()
+	}
 	p.done += n
 	if now().Sub(p.last) >= 250*time.Millisecond || p.done == p.size {
 		p.print()
 	}
+}
+
+// skip counts bytes that were already downloaded, so they show in the
+// total but not in the speed.
+func (p *progress) skip(n int64) {
+	p.add(n)
+	p.startDone += n
 }
 
 func (p *progress) print() {
@@ -414,7 +432,27 @@ func (p *progress) print() {
 	if p.size > 0 {
 		pct = p.done * 100 / p.size
 	}
-	_, _ = fmt.Fprintf(p.out, "\rdownloading %s  %s of %s  %d%%\033[K", p.file, humanBytes(p.done), humanBytes(p.size), pct)
+	line := fmt.Sprintf("\rdownloading %s  %s of %s  %d%%", p.file, humanBytes(p.done), humanBytes(p.size), pct)
+	if elapsed := p.last.Sub(p.start); elapsed >= 2*time.Second && p.done > p.startDone {
+		rate := float64(p.done-p.startDone) / elapsed.Seconds()
+		line += "  " + humanBytes(int64(rate)) + "/s"
+		if left := p.size - p.done; left > 0 {
+			line += "  " + shortDuration(time.Duration(float64(left)/rate*float64(time.Second))) + " left"
+		}
+	}
+	_, _ = fmt.Fprint(p.out, line+"\033[K")
+}
+
+// shortDuration is a time left as people say it: 45s, 3m, 1h 5m.
+func shortDuration(d time.Duration) string {
+	switch {
+	case d < time.Minute:
+		return strconv.Itoa(int((d+time.Second-1)/time.Second)) + "s"
+	case d < time.Hour:
+		return strconv.Itoa(int(d.Minutes()+0.5)) + "m"
+	}
+	h := int(d.Hours())
+	return fmt.Sprintf("%dh %dm", h, int(d.Minutes())-h*60)
 }
 
 func (p *progress) Write(b []byte) (int, error) {
@@ -481,7 +519,7 @@ func hfDownload(repo, sha, dir string, out io.Writer) error {
 func downloadFile(repo, sha, dir string, f hfFile, p *progress) error {
 	final := filepath.Join(dir, f.Name)
 	if info, err := os.Stat(final); err == nil && info.Size() == f.Size && verifyFile(final, f) == nil {
-		p.add(f.Size)
+		p.skip(f.Size)
 		return nil
 	}
 	part := final + ".part"
@@ -506,7 +544,7 @@ func downloadFile(repo, sha, dir string, f hfFile, p *progress) error {
 	switch {
 	case resp.StatusCode == http.StatusPartialContent && start > 0:
 		flags = os.O_WRONLY | os.O_APPEND
-		p.add(start)
+		p.skip(start)
 	case resp.StatusCode == http.StatusOK:
 	default:
 		return fmt.Errorf("HTTP %d", resp.StatusCode)
