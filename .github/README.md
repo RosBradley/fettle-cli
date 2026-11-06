@@ -77,7 +77,7 @@ Software removal, Slim, Installer files, Software updates and the Ollama model i
 ### Analyze and Status fill the window
 
 - **Analyze** lists as many rows as the window holds, instead of stopping at 30, with its keys on the bottom row. In a wide window its bars and names get longer.
-- **Status** bars stretch to the width of the window.
+- **Status** bars stretch to the width of the window, and its keys sit on the bottom row.
 - A GPU card shows GPU use, the chip and its GPU core count.
 - **R** changes how often Status refreshes: from every 0.5 seconds to every 10.
 

@@ -15,6 +15,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/charmbracelet/lipgloss"
 )
 
 const (
@@ -201,6 +203,22 @@ func saveRefreshInterval(d time.Duration) {
 func nextRefreshInterval(current time.Duration) time.Duration {
 	i := slices.Index(refreshIntervals, current)
 	return refreshIntervals[(i+1)%len(refreshIntervals)]
+}
+
+// pinFooterToBottom puts the frame's last line, the keys, on the window's
+// last row, where Analyze and the command screen keep theirs; the blank lines
+// go between the cards and the keys instead of under the keys. A frame as tall
+// as the window is left as it is.
+func pinFooterToBottom(view string, height int) string {
+	lines := lipgloss.Height(view)
+	if height <= 0 || lines >= height {
+		return view
+	}
+	last := strings.LastIndex(view, "\n")
+	if last < 0 {
+		return padViewToHeight(view, height)
+	}
+	return view[:last] + strings.Repeat("\n", height-lines+1) + view[last+1:]
 }
 
 // renderStatusFooter lists the keys, with the current time between refreshes.

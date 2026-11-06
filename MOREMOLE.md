@@ -6,7 +6,7 @@ moremole is a personal fork of [Mole](https://github.com/tw93/Mole) by tw93, mod
 - **The main menu lists every command** from Mole's More screen (M), not just the first five. Each command has its own row, with its preview (dry-run) and other variants beside it, and a bar at the bottom of the window describes the highlighted item and lists the keys.
 - **You can add your own commands to the menu,** and edit or remove them, right in the menu. They get a section of their own.
 - **Commands run inside a MoreMole screen:** the title and the command's summary stay at the top and a bar at the bottom says it's running, while its output scrolls between them, like the menu. When it finishes, the bar says so and shows the keys; you scroll back through everything it printed, search it with /, and open Clean's file list with F. A cancelled command returns to the menu straight away.
-- **Analyze and Status fill the window.** Analyze lists as many rows as fit instead of 30, keeps its keys on the bottom row, and widens its bars and names in a wide window. Status's bars stretch with the window, it has a GPU card, and R changes how often it refreshes.
+- **Analyze and Status fill the window.** Analyze lists as many rows as fit instead of 30, keeps its keys on the bottom row, and widens its bars and names in a wide window. Status's bars stretch with the window, its keys sit on the bottom row, it has a GPU card, and R changes how often it refreshes.
 - **Software updates** finds updates for Homebrew apps and tools, App Store apps, macOS, apps with their own updater and your Ollama models, and installs the ones you pick. `u` runs it from any terminal.
 - **Ollama models** (AI models in earlier versions) checks your Ollama models for updates (**Ollama model updates**), downloads new ones from Ollama's library in two steps (models, then their versions, with MLX versions flagged), adds MLX models from Hugging Face (**Add Hugging Face MLX**), and removes the ones you pick (**Ollama model removal**). If Ollama is off, it offers to turn it on, and turns it off again when done.
 - **Pick lists have a search line and open A–Z:** type to narrow the list, and sort by name, size or date. Installer files uses the same list, so it gains both.
@@ -111,7 +111,7 @@ Every command works from the command line and in scripts as in Mole: same comman
 - History from the menu shows the last 200 entries (`moremole history` alone shows 20).
 - After Clean's Preview, **F** shows the list of files Clean would remove (`~/.config/mole/clean-list.txt`, which stays where Mole puts it), long paths wrapped in full; the summary's "Detailed file list" line says "(F to view)". Q goes back to the results.
 - The results keep the colors and drop what was only on screen for a moment: progress spinners, pick lists, and screens a command cleared.
-- Analyze and Status are full-screen already and run on their own; they come back as soon as you quit them. Both fill the window: Analyze lists as many rows as fit, with its keys on the bottom row.
+- Analyze and Status are full-screen already and run on their own; they come back as soon as you quit them. Both fill the window: Analyze lists as many rows as fit, and both keep their keys on the bottom row.
 - If the command screen is not built yet, commands run on a clear screen and the menu asks for Enter afterwards, as before.
 - If you cancel instead (Q or ESC in a pick list, or at the final "Enter confirm, ESC cancel" step), the menu comes back straight away, with nothing to dismiss. This covers Clean's password step, Software removal, Purge, Installer files, Slim, Touch ID, Shell completion, Software updates, Ollama models and the Protected caches and Protected items lists.
 - Update MoreMole is the exception: it ends the menu, because it may have changed moremole's files. Type `mm` to start the new version. How it updates depends on how MoreMole was installed (see Updating).
@@ -147,7 +147,7 @@ They're saved in `~/.config/mole/my_commands`, one per line as name, a Tab, then
 ## Status
 
 - The bars stretch to fill the window; make the window wider for longer bars.
-- **R** changes how often Status refreshes: 0.5, 1, 2, 5 or 10 seconds, starting at 1. It remembers your choice. A line at the bottom shows the current setting and the keys.
+- **R** changes how often Status refreshes: 0.5, 1, 2, 5 or 10 seconds, starting at 1. It remembers your choice. The window's bottom row shows the current setting and the keys.
 - **C** (Mole's own key) cycles through 2, 4, 8 and all CPU cores and remembers your choice; a window too short for all of them shows fewer.
 - The GPU card shows total GPU use, updated with every refresh like CPU use, plus the chip and its GPU core count. macOS reports GPU use for the GPU as a whole, not for each GPU core.
 

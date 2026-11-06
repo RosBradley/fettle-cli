@@ -272,3 +272,27 @@ func TestFastRefreshesSampleProcessesSoTheyNeverShowStale(t *testing.T) {
 		t.Errorf("first refresh: mode %v, want fast", got)
 	}
 }
+
+func TestKeysSitOnTheWindowsLastRow(t *testing.T) {
+	withCardWidth(t, 0)
+	for _, size := range []struct{ width, height int }{{120, 80}, {60, 90}, {200, 60}} {
+		m := model{width: size.width, height: size.height, schedule: collectionSchedule{hasSnapshot: true}}
+		view := m.View()
+		lines := strings.Split(view, "\n")
+		if len(lines) != size.height {
+			t.Errorf("%dx%d: %d rows, want %d", size.width, size.height, len(lines), size.height)
+			continue
+		}
+		if last := stripANSI(lines[len(lines)-1]); !strings.HasPrefix(last, "R refresh") {
+			t.Errorf("%dx%d: last row %q, want the keys", size.width, size.height, last)
+		}
+		if strings.Count(stripANSI(view), "R refresh") != 1 {
+			t.Errorf("%dx%d: the keys show more than once", size.width, size.height)
+		}
+	}
+	// A window too short for the cards shows its message, with no keys.
+	short := model{width: 120, height: 5, schedule: collectionSchedule{hasSnapshot: true}}
+	if lipgloss.Height(short.View()) != 5 {
+		t.Error("a short window's frame isn't the window's height")
+	}
+}

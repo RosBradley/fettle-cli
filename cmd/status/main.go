@@ -239,8 +239,9 @@ func (m model) View() string {
 	}
 	if m.height > 0 && lipgloss.Height(output) > m.height {
 		output = renderTerminalTooSmall(termWidth, m.height)
+		return padViewToHeight(output, m.height) // moremole
 	}
-	return padViewToHeight(output, m.height)
+	return pinFooterToBottom(output, m.height) // moremole: the keys on the window's last row
 }
 
 func (m model) collectCmd(mode collectionMode) tea.Cmd {
