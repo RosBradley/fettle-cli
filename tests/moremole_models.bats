@@ -368,9 +368,11 @@ library_models() {
 	' bash "$PROJECT_ROOT/bin/moremole-models.sh" "$SCRIPTED"
 	[ "$status" -eq 0 ] || { echo "$output"; return 1; }
 	[ "$(cat "$ROWS_DIR/tags-asked")" = "gemma3 llama3.1" ] || return 1
-	[[ "$output" == *"Select models, then choose their versions; MLX: has versions for Apple silicon"* ]] || return 1
+	[[ "$output" == *"Select models, then choose their versions; MLX: it has versions for Apple silicon"* ]] || return 1
+	[[ "$output" == *"Status     MLX  Name"*"Can do"*"Sizes"*"Pulls  Updated"* ]] || return 1
 	[[ "$output" == *"installed  MLX  gemma3"*"vision"*"1b–27b"*"30.1M  2026-09-21"* ]] || return 1
-	[[ "$output" == *"Select versions: fit in memory, size, context, input, MLX for Apple silicon"* ]] || return 1
+	[[ "$output" == *"Status     Memory   Version"*"Size"*"Context"*"Input"*"MLX"* ]] || return 1
+	[[ "$output" == *"Select versions to download; MLX: runs on Apple silicon"* ]] || return 1
 	[[ "$output" == *"installed  fits     gemma3:4b "*"3.3GB"*"128K"*"Text, Image"* ]] || return 1
 	[[ "$output" == *"fits     gemma3:4b-mlx"*"3.5GB"*"MLX"* ]] || return 1
 	[[ "$output" == *"too big  llama3.1:405b"*"243GB"* ]] || return 1
@@ -408,7 +410,7 @@ ollama pull llama3.1:405b" ] || { cat "$CALLS"; return 1; }
 		main --download
 	' bash "$PROJECT_ROOT/bin/moremole-models.sh" "$SCRIPTED"
 	[ "$status" -eq 0 ] || { echo "$output"; return 1; }
-	[[ "$output" == *"Select versions: fit in memory, size, context, input"* ]] || return 1
+	[[ "$output" == *"Select versions to download"* ]] || return 1
 	[[ "$output" != *"MLX"* ]] || return 1
 	[ ! -s "$CALLS" ]
 }
@@ -507,6 +509,7 @@ hf_models() {
 	[ "$status" -eq 1 ] || { echo "$output"; return 1; }
 	[[ "$output" == *"Select MLX models from Hugging Face"* ]] || return 1
 	# Rows are cut to the terminal's 100 columns; the details show the rest.
+	[[ "$output" == *"Status   Name"*"Bits"*"Size"*"Can do"*"Downloads  Published"* ]] || return 1
 	[[ "$output" == *"fits     mlx-community/Qwen3.5-9B-4bit"*"4-bit"*"~5.95GB"*"vision"*"719.8K  2026-03-02"* ]] || return 1
 	[[ "$output" == *"Models to add from Hugging Face:"*"mlx-community/Qwen3.5-9B-4bit "*"5.95GB · fits in 17.18GB memory · as hf.co/mlx-community/qwen3.5-9b-4bit"* ]] || return 1
 	[[ "$output" == *"it needs twice its size free"*"started once to check that it works"* ]] || return 1

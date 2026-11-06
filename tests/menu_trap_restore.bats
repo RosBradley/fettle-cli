@@ -288,3 +288,46 @@ PY
     }
     [[ "$output" == *"ok"* ]]
 }
+
+@test "a column heading sits under the search line and the list starts a row lower" {
+    run env PROJECT_ROOT="$PROJECT_ROOT" python3 <<'PY'
+import os
+import re
+import subprocess
+
+script = r'''
+source "$PROJECT_ROOT/lib/core/common.sh"
+source "$PROJECT_ROOT/lib/ui/menu_paginated.sh"
+enter_alt_screen() { :; }
+leave_alt_screen() { :; }
+stty() { :; }
+drain_pending_input() { :; }
+tput() { if [[ "$1" == cols ]]; then echo "$COLUMNS"; else echo "$LINES"; fi; }
+KEYS=(DOWN SPACE QUIT)
+read_key() {
+    local n
+    n=$(cat "$KEY_STATE" 2> /dev/null || echo 0)
+    echo $((n + 1)) > "$KEY_STATE"
+    echo "${KEYS[n]:-QUIT}"
+}
+MOLE_MENU_COLUMNS_HEADER="Name   Size"
+paginated_multi_select Pick "first" "second" "third" || echo "rc=$?"
+'''
+env = dict(os.environ, COLUMNS='60', LINES='12', KEY_STATE=os.path.join(os.environ['BATS_TEST_TMPDIR'], 'keys'))
+result = subprocess.run(['/bin/bash', '--noprofile', '--norc', '-c', script],
+                        env=env, capture_output=True, text=True, check=True)
+out = result.stderr
+plain = re.sub(r'\x1b\[[0-?]*[ -/]*[@-~]', '', out).replace('\r', '')
+lines = [l for l in plain.split('\n') if l.strip()]
+# Title, search line, heading, then the rows.
+assert lines[1].startswith('Search') and lines[2] == '    Name   Size' and 'first' in lines[3], lines[:5]
+# DOWN redraws rows 4 and 5 (the first and second item), not 3 and 4.
+assert '\x1b[4;1H' in out and '\x1b[5;1H' in out, out
+print('ok')
+PY
+    [ "$status" -eq 0 ] || {
+        echo "$output"
+        return 1
+    }
+    [[ "$output" == *"ok"* ]]
+}

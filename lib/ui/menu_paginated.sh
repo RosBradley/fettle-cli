@@ -123,6 +123,11 @@ paginated_multi_select() {
     # Rows are cut to the terminal's width, so none wraps onto a second line,
     # which would push every later row down and break the redraw.
     local row_width=0
+    # MoreMole: a caller can name the columns in a heading line under the
+    # search line; the list then starts a row lower.
+    local column_header="${MOLE_MENU_COLUMNS_HEADER:-}"
+    local list_top=3
+    [[ -z "$column_header" ]] || list_top=4
 
     # Metadata (optional)
     # epochs[i]   -> last_used_epoch (numeric) for item i
@@ -629,6 +634,11 @@ paginated_multi_select() {
         else
             printf '%b' "\r\033[2K${GRAY}Search: press / and type${NC}\n" >&2
         fi
+        if [[ -n "$column_header" ]]; then
+            local _pm_row="$column_header"
+            _pm_fit_row
+            printf "\r\033[2K    ${GRAY}%s${NC}\n" "$_pm_row" >&2
+        fi
     }
 
     # Handle filter character input (reduces code duplication)
@@ -734,7 +744,7 @@ paginated_multi_select() {
         while IFS= read -r control_line; do
             control_rows=$((control_rows + 1))
         done <<< "$controls"
-        items_per_page=$(_pm_calculate_items_per_page "$control_rows")
+        items_per_page=$(_pm_calculate_items_per_page "$((control_rows + list_top - 3))")
         local clear_line=$'\r\033[2K'
         local cols
         cols=$(_pm_get_terminal_width)
@@ -861,15 +871,15 @@ paginated_multi_select() {
                         draw_header
                     fi
 
-                    local old_row=$((old_cursor + 3))
-                    local new_row=$((new_cursor + 3))
+                    local old_row=$((old_cursor + list_top))
+                    local new_row=$((new_cursor + list_top))
 
                     printf "\033[%d;1H" "$old_row" >&2
                     render_item "$old_cursor" false
                     printf "\033[%d;1H" "$new_row" >&2
                     render_item "$new_cursor" true
 
-                    printf "\033[%d;1H" "$((items_per_page + 4))" >&2
+                    printf "\033[%d;1H" "$((items_per_page + list_top + 1))" >&2
 
                     continue
                 elif [[ $top_index -gt 0 ]]; then
@@ -885,14 +895,14 @@ paginated_multi_select() {
                     [[ $end_idx -ge $visible_total ]] && end_idx=$((visible_total - 1))
 
                     for ((i = start_idx; i <= end_idx; i++)); do
-                        local row=$((i - start_idx + 3))
+                        local row=$((i - start_idx + list_top))
                         printf "\033[%d;1H" "$row" >&2
                         local is_current=false
                         [[ $((i - start_idx)) -eq $cursor_pos ]] && is_current=true
                         render_item $((i - start_idx)) $is_current
                     done
 
-                    printf "\033[%d;1H" "$((items_per_page + 4))" >&2
+                    printf "\033[%d;1H" "$((items_per_page + list_top + 1))" >&2
 
                     continue
                 fi
@@ -916,15 +926,15 @@ paginated_multi_select() {
                                 draw_header
                             fi
 
-                            local old_row=$((old_cursor + 3))
-                            local new_row=$((new_cursor + 3))
+                            local old_row=$((old_cursor + list_top))
+                            local new_row=$((new_cursor + list_top))
 
                             printf "\033[%d;1H" "$old_row" >&2
                             render_item "$old_cursor" false
                             printf "\033[%d;1H" "$new_row" >&2
                             render_item "$new_cursor" true
 
-                            printf "\033[%d;1H" "$((items_per_page + 4))" >&2
+                            printf "\033[%d;1H" "$((items_per_page + list_top + 1))" >&2
 
                             continue
                         elif [[ $((top_index + visible_count)) -lt ${#view_indices[@]} ]]; then
@@ -945,14 +955,14 @@ paginated_multi_select() {
                             [[ $end_idx -ge $visible_total ]] && end_idx=$((visible_total - 1))
 
                             for ((i = start_idx; i <= end_idx; i++)); do
-                                local row=$((i - start_idx + 3))
+                                local row=$((i - start_idx + list_top))
                                 printf "\033[%d;1H" "$row" >&2
                                 local is_current=false
                                 [[ $((i - start_idx)) -eq $cursor_pos ]] && is_current=true
                                 render_item $((i - start_idx)) $is_current
                             done
 
-                            printf "\033[%d;1H" "$((items_per_page + 4))" >&2
+                            printf "\033[%d;1H" "$((items_per_page + list_top + 1))" >&2
 
                             continue
                         fi
@@ -1024,12 +1034,12 @@ paginated_multi_select() {
                     draw_header
 
                     # Redraw current item row (+3: row 1=header, row 2=blank, row 3=first item)
-                    local item_row=$((cursor_pos + 3))
+                    local item_row=$((cursor_pos + list_top))
                     printf "\033[%d;1H" "$item_row" >&2
                     render_item "$cursor_pos" true
 
                     # Move cursor to footer to avoid visual artifacts (items + header + 2 blanks)
-                    printf "\033[%d;1H" "$((items_per_page + 4))" >&2
+                    printf "\033[%d;1H" "$((items_per_page + list_top + 1))" >&2
 
                     continue # Skip full redraw
                 fi

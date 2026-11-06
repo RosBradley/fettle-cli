@@ -452,12 +452,13 @@ status_text() {
 # characters, which is right for every name these lists show.
 cell() {
     local text="$1" width="$2" chars pad=""
+    [[ "$width" =~ ^[0-9]+$ ]] || width=0
     text="${text//[$'\t\n\r']/ }"
     text="${text//[[:cntrl:]]/?}"
     local LC_ALL=en_US.UTF-8
     chars=${#text}
     if ((chars > width)); then
-        text="${text:0:width-3}..."
+        if ((width > 3)); then text="${text:0:width-3}..."; else text="${text:0:width}"; fi
         chars=$width
     fi
     ((chars >= width)) || printf -v pad '%*s' "$((width - chars))" ""
@@ -505,6 +506,53 @@ model_row_text() {
     cell "$TEXT" 10
     cell "${M_NAME[i]}" "$width"
     ROW+="  $extra"
+}
+
+# Each list's column headings, built with its rows' cells so they line up;
+# they set COLUMNS_HEADER, which pick shows under the search line.
+COLUMNS_HEADER=""
+model_header() {
+    ROW=""
+    cell "Status" 10
+    cell "Name" "$1"
+    ROW+="  Size"
+    COLUMNS_HEADER="$ROW"
+}
+
+library_header() {
+    ROW=""
+    cell "Status" 9
+    [[ "${MODELS_APPLE_SILICON:-0}" != "1" ]] || cell "MLX" 3
+    cell "Name" "$1"
+    cell "Can do" 18
+    cell "Sizes" 12
+    rcell "Pulls" 6
+    cell "Updated" 10
+    COLUMNS_HEADER="$ROW"
+}
+
+tag_header() {
+    ROW=""
+    cell "Status" 9
+    cell "Memory" 7
+    cell "Version" "$1"
+    cell "Size" 11
+    cell "Context" 7
+    cell "Input" 12
+    [[ "${MODELS_APPLE_SILICON:-0}" != "1" ]] || ROW+="  MLX"
+    COLUMNS_HEADER="$ROW"
+}
+
+hf_header() {
+    ROW=""
+    cell "Status" 7
+    cell "Name" "$1"
+    cell "Bits" 6
+    cell "Size" 9
+    cell "Can do" 6
+    rcell "Downloads" 9
+    cell "Published" 10
+    COLUMNS_HEADER="$ROW"
 }
 
 # The sizes a model comes in: "8b, 70b", or the smallest to the largest.
@@ -657,16 +705,16 @@ hf_row_text() {
     [[ "${H_INPUT[i]}" != *Image* ]] || TEXT="vision"
     cell "$TEXT" 6
     count_text "${H_DOWNLOADS[i]}"
-    rcell "$TEXT" 6
+    rcell "$TEXT" 9
     date_cell_text "${H_CREATED[i]:-0}"
     cell "$TEXT" 10
 }
 
-# The width left for Hugging Face names: the row's other columns take 56,
+# The width left for Hugging Face names: the row's other columns take 59,
 # and the list's arrow and checkbox 5. At least 20, at most 50.
 hf_name_width() {
     local room longest
-    room=$(($(terminal_cols) - 61))
+    room=$(($(terminal_cols) - 64))
     longest=$(MODELS_NAME_MAX=50 name_width "${H_REPO[@]}")
     ((room >= 20)) || room=20
     ((room <= longest)) || room=$longest
@@ -685,7 +733,7 @@ tag_row_text() {
     cell "$TEXT" 7
     cell "${T_NAME[i]}" "$width"
     cell "${T_SIZE[i]:-?}" 11
-    cell "${T_CONTEXT[i]}" 5
+    cell "${T_CONTEXT[i]}" 7
     cell "${T_INPUT[i]}" 12
     [[ "${T_MLX[i]}" != "1" ]] || ROW+="  MLX"
 }
@@ -839,7 +887,9 @@ hf_details() {
 print_model_list() {
     local width i total=0
     width=$(name_width "${M_NAME[@]}")
+    model_header "$width"
     echo -e "${PURPLE_BOLD}${#M_NAME[@]} models${NC}"
+    printf '  %s%s%s\n' "$GRAY" "$COLUMNS_HEADER" "$NC"
     for ((i = 0; i < ${#M_NAME[@]}; i++)); do
         model_row_text "$i" "$width"
         printf '  %s\n' "$ROW"
@@ -1114,6 +1164,7 @@ run_update() {
     local -a rows=() names=() repos=()
     local width
     width=$(name_width "${M_NAME[@]}")
+    model_header "$width"
     for i in "${updates[@]}"; do
         model_row_text "$i" "$width"
         rows+=("$ROW")
@@ -1174,6 +1225,7 @@ pick() {
     # Saving with nothing picked picks nothing, never the row under the cursor.
     # Enter shows the row's details.
     local rc=0 _MOLE_MENU_KEEP_EMPTY=true MOLE_MENU_DETAILS_FN="" MOLE_MENU_DONE_LABEL="${DONE_LABEL:-Save}"
+    local MOLE_MENU_COLUMNS_HEADER="$COLUMNS_HEADER"
     [[ -z "$DETAILS_KIND" ]] || MOLE_MENU_DETAILS_FN=show_model_details
     hide_cursor
     paginated_multi_select "$title" "$@" || rc=$?
@@ -1236,7 +1288,7 @@ pick_models_to_download() {
     )
     local MOLE_MENU_SORT_MODE=name MOLE_MENU_SORT_REVERSE=false
     local title="Select models, then choose their versions"
-    [[ "${MODELS_APPLE_SILICON:-0}" != "1" ]] || title+="; MLX: has versions for Apple silicon"
+    [[ "${MODELS_APPLE_SILICON:-0}" != "1" ]] || title+="; MLX: it has versions for Apple silicon"
     DETAILS_KIND=library
     DETAILS_MAP=()
     DONE_LABEL=Next
@@ -1304,8 +1356,8 @@ pick_versions_to_download() {
     )
     MOLE_MENU_FILTER_NAMES=$(printf '%s\n' "${search[@]}")
     local MOLE_MENU_SORT_MODE=size MOLE_MENU_SORT_REVERSE=true
-    local title="Select versions: fit in memory, size, context, input"
-    [[ "${MODELS_APPLE_SILICON:-0}" != "1" ]] || title+=", MLX for Apple silicon"
+    local title="Select versions to download"
+    [[ "${MODELS_APPLE_SILICON:-0}" != "1" ]] || title+="; MLX: runs on Apple silicon"
     DETAILS_KIND=tag
     DETAILS_MAP=()
     DONE_LABEL=Download
@@ -1335,6 +1387,7 @@ run_remove() {
     local -a rows=()
     local i width
     width=$(name_width "${M_NAME[@]}")
+    model_header "$width"
     for ((i = 0; i < ${#M_NAME[@]}; i++)); do
         model_row_text "$i" "$width"
         rows+=("$ROW")
@@ -1421,7 +1474,9 @@ run_download() {
     elif [[ "${MOLE_DRY_RUN:-0}" == "1" ]] || ! interactive; then
         local i width
         width=$(name_width "${L_NAME[@]}")
+        library_header "$width"
         echo -e "${PURPLE_BOLD}${#L_NAME[@]} models in Ollama's library${NC}"
+        printf '  %s%s%s\n' "$GRAY" "$COLUMNS_HEADER" "$NC"
         for ((i = 0; i < ${#L_NAME[@]}; i++)); do
             library_row_text "$i" "$width"
             printf '  %s\n' "$ROW"
@@ -1431,6 +1486,7 @@ run_download() {
         local -a rows=() models=()
         local i width
         width=$(name_width "${L_NAME[@]}")
+        library_header "$width"
         for ((i = 0; i < ${#L_NAME[@]}; i++)); do
             library_row_text "$i" "$width"
             rows+=("$ROW")
@@ -1457,7 +1513,8 @@ run_download() {
             done
         done
         rows=()
-        width=$(name_width "${T_NAME[@]}")
+        width=$(name_width "${T_NAME[@]+"${T_NAME[@]}"}")
+        tag_header "$width"
         for ((i = 0; i < ${#T_NAME[@]}; i++)); do
             tag_row_text "$i" "$width"
             rows+=("$ROW")
@@ -1529,8 +1586,10 @@ run_huggingface() {
     fi
     local i width
     width=$(hf_name_width)
+    hf_header "$width"
     if [[ "${MOLE_DRY_RUN:-0}" == "1" ]] || ! interactive; then
         echo -e "${PURPLE_BOLD}${#H_REPO[@]} MLX models on Hugging Face that Ollama runs${NC}"
+        printf '  %s%s%s\n' "$GRAY" "$COLUMNS_HEADER" "$NC"
         for ((i = 0; i < ${#H_REPO[@]}; i++)); do
             hf_row_text "$i" "$width"
             printf '  %s\n' "$ROW"
