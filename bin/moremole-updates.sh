@@ -683,36 +683,42 @@ install_update() {
 
 # Update the picked Ollama models with moremole-models.sh, which pulls each
 # one or downloads it again from Hugging Face, turning Ollama on and off as
-# needed, and logs each one in this session; then count its results here.
+# needed, logs each one in this session, and adds each one's result to a
+# file as it finishes; then count those results here. A model with no
+# result is one that run stopped before reaching.
 install_model_updates() {
     [[ ${#MODEL_INDICES[@]} -gt 0 ]] || return 0
-    local -a model_names=()
-    local idx results kind text done_count=0 rc=0
+    local -a model_names=() reached=()
+    local idx results kind name reason name_done seen
     for idx in "${MODEL_INDICES[@]}"; do
         model_names+=("${U_ID[idx]}")
     done
     results=$(create_temp_file)
-    MOREMOLE_MODELS_RESULTS="$results" "$MODELS_SCRIPT" --install-updates "${model_names[@]}" || rc=$?
-    if [[ ! -s "$results" ]]; then
-        # It stopped before saying how each went.
-        for idx in "${MODEL_INDICES[@]}"; do
-            total_failed=$((total_failed + 1))
-            UPDATE_FAILURES+=("${U_NAME[idx]}: the model update stopped (exit $rc)")
-            log_operation "$MOLE_CURRENT_COMMAND" "FAILED" "${U_NAME[idx]}" "the model update stopped (exit $rc)"
-        done
-        return 0
-    fi
-    while IFS=$'\t' read -r kind text || [[ -n "${kind:-}" ]]; do
+    MOREMOLE_MODELS_RESULTS="$results" "$MODELS_SCRIPT" --install-updates "${model_names[@]}" || true
+    while IFS=$'\t' read -r kind name reason || [[ -n "${kind:-}" ]]; do
         case "$kind" in
-            done) [[ "$text" =~ ^[0-9]+$ ]] && done_count=$text ;;
+            done)
+                total_updated=$((total_updated + 1))
+                reached+=("$name")
+                ;;
             failed)
                 total_failed=$((total_failed + 1))
-                UPDATE_FAILURES+=("$text")
+                UPDATE_FAILURES+=("$name: $reason")
+                reached+=("$name")
                 ;;
-            note) MODEL_NOTES+=("$text") ;;
+            note) MODEL_NOTES+=("$name") ;;
         esac
     done < "$results"
-    total_updated=$((total_updated + done_count))
+    for idx in "${MODEL_INDICES[@]}"; do
+        seen=false
+        for name_done in "${reached[@]+"${reached[@]}"}"; do
+            [[ "$name_done" != "${U_ID[idx]}" ]] || seen=true
+        done
+        [[ "$seen" == "false" ]] || continue
+        total_failed=$((total_failed + 1))
+        UPDATE_FAILURES+=("${U_NAME[idx]}: the model update stopped before reaching it")
+        log_operation "$MOLE_CURRENT_COMMAND" "FAILED" "${U_NAME[idx]}" "the model update stopped before reaching it"
+    done
 }
 
 # Why the last update failed: the tool's own error line, else which tool.

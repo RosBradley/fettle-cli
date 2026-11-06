@@ -666,8 +666,9 @@ hf-download me/M-4bit $HF_NEW "*"
 ollama cp hf.co/me/m-4bit-moremole-check hf.co/me/m-4bit:latest
 ollama rm hf.co/me/m-4bit-moremole-check
 osascript -e quit app \"Ollama\"" ]] || { cat "$CALLS"; return 1; }
-	[ "$(cat "$results")" = "done	2
-failed	broken:latest: model is damaged
+	[ "$(cat "$results")" = "done	gemma3:4b
+failed	broken:latest	model is damaged
+done	hf.co/me/m-4bit:latest
 note	Ollama was off, so it is off again" ] || { cat "$results"; return 1; }
 	local log="$HOME/Library/Logs/mole/operations.log"
 	grep -q "\[updates\] REBUILT gemma3:4b (updated)" "$log" || { cat "$log"; return 1; }

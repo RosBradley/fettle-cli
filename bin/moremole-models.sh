@@ -913,6 +913,7 @@ record_result() {
     if [[ "$ok" == "true" ]]; then
         total_done=$((total_done + 1))
         log_operation "$MOLE_CURRENT_COMMAND" "$action" "$name" "$detail"
+        install_result "done" "$name"
     else
         local reason
         reason=$(moremole_run_error_line)
@@ -920,7 +921,18 @@ record_result() {
         total_failed=$((total_failed + 1))
         FAILURES+=("$name: $reason")
         log_operation "$MOLE_CURRENT_COMMAND" "FAILED" "$name" "$reason"
+        install_result failed "$name" "$reason"
     fi
+}
+
+# For Software updates: add one model's result to the file it named, as
+# each model finishes, so a run that stops partway still says how the
+# finished ones went. Lines are "done<TAB>name", "failed<TAB>name<TAB>reason"
+# or, from write_install_results, "note<TAB>text".
+install_result() {
+    [[ "$MODE" == "install-updates" && -n "${MOREMOLE_MODELS_RESULTS:-}" ]] || return 0
+    local IFS=$'\t'
+    printf '%s\n' "$*" >> "$MOREMOLE_MODELS_RESULTS"
 }
 
 # Pull each model, with Ollama's own progress on screen.
@@ -1060,6 +1072,7 @@ hf_install() {
     echo -e "${GREEN}${ICON_SUCCESS}${NC} Added as $(mole_terminal_safe_text "$name"), and it works"
     total_done=$((total_done + 1))
     log_operation "$MOLE_CURRENT_COMMAND" "REBUILT" "$name" "$detail from Hugging Face $repo at ${sha:0:7}"
+    install_result "done" "$name"
     printf '\n'
 }
 
@@ -1068,6 +1081,7 @@ record_hf_failure() {
     total_failed=$((total_failed + 1))
     FAILURES+=("$name: $reason")
     log_operation "$MOLE_CURRENT_COMMAND" "FAILED" "$name" "$reason"
+    install_result failed "$name" "$reason"
     echo -e "${YELLOW}${ICON_WARNING}${NC} $(mole_terminal_safe_text "$name"): $(mole_terminal_safe_text "$reason")"
     printf '\n'
 }
@@ -1229,9 +1243,8 @@ hf_record_repo() {
 
 # For Software updates (bin/moremole-updates.sh), which already listed and
 # confirmed these models: update each, as Ollama model updates would. Its
-# session holds the log rows; the results go to the file it names in
-# MOREMOLE_MODELS_RESULTS for its summary, one line each: "done<TAB>count",
-# "failed<TAB>name: reason" or "note<TAB>text".
+# session holds the log rows; each model's result goes to the file it names
+# in MOREMOLE_MODELS_RESULTS as the model finishes (install_result).
 run_install_updates() {
     local -a chosen=() from_hf=()
     local name repo
@@ -1256,19 +1269,13 @@ run_install_updates() {
     done
 }
 
-# Hand the results of run_install_updates to Software updates.
+# Hand the notes of run_install_updates to Software updates, after the
+# models' own results.
 write_install_results() {
-    local file="${MOREMOLE_MODELS_RESULTS:-}" item
-    [[ -n "$file" ]] || return 0
-    {
-        printf 'done\t%s\n' "$total_done"
-        for item in "${FAILURES[@]+"${FAILURES[@]}"}"; do
-            printf 'failed\t%s\n' "$item"
-        done
-        for item in "${SUMMARY_NOTES[@]+"${SUMMARY_NOTES[@]}"}"; do
-            printf 'note\t%s\n' "$item"
-        done
-    } > "$file"
+    local item
+    for item in "${SUMMARY_NOTES[@]+"${SUMMARY_NOTES[@]}"}"; do
+        install_result note "$item"
+    done
 }
 
 # Show a pick list; PICKED holds the picked indices. Callers set the list's
@@ -1752,6 +1759,7 @@ main() {
             for arg in "${install_names[@]}"; do
                 FAILURES+=("$arg: Ollama didn't start")
                 log_operation "$MOLE_CURRENT_COMMAND" "FAILED" "$arg" "Ollama didn't start"
+                install_result failed "$arg" "Ollama didn't start"
             done
             total_failed=${#install_names[@]}
         fi
