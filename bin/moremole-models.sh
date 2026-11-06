@@ -26,6 +26,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/../lib/core/common.sh"
 source "$SCRIPT_DIR/../lib/ui/menu_paginated.sh"
 source "$SCRIPT_DIR/../lib/moremole/runs.sh"
+source "$SCRIPT_DIR/../lib/moremole/details.sh"
 
 MODELS_HELPER="$SCRIPT_DIR/moremole-models-go"
 MODELS_OPEN=/usr/bin/open
@@ -752,26 +753,6 @@ show_model_details() {
         tag) tag_details "$i" ;;
         hf) hf_details "$i" ;;
     esac
-}
-
-detail_name() {
-    printf '%s%s%s\n\n' "$BLUE" "$(mole_terminal_safe_text "$1")" "$NC"
-}
-
-# A label and its value, the value wrapped to the details screen's width
-# and lined up under itself.
-detail_line() {
-    [[ -n "$2" ]] || return 0
-    local width=$((${MOLE_MENU_DETAILS_WIDTH:-80} - 16)) line first=true
-    ((width >= 20)) || width=20
-    while IFS= read -r line || [[ -n "$line" ]]; do
-        if [[ "$first" == true ]]; then
-            printf '%s%-14s%s %s\n' "$GRAY" "$1" "$NC" "$line"
-            first=false
-        else
-            printf '%15s%s\n' "" "$line"
-        fi
-    done < <(mole_terminal_safe_text "$2" | fold -s -w "$width")
 }
 
 date_text() {

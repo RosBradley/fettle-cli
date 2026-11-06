@@ -26,6 +26,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/../lib/core/common.sh"
 source "$SCRIPT_DIR/../lib/ui/menu_paginated.sh"
 source "$SCRIPT_DIR/../lib/moremole/runs.sh"
+source "$SCRIPT_DIR/../lib/moremole/details.sh"
 
 UPDATES_HELPER="$SCRIPT_DIR/moremole-updates-go"
 UPDATES_OPEN=/usr/bin/open
@@ -265,6 +266,15 @@ kind_label() {
     esac
 }
 
+# The source in the list's first column, in at most 11 cells.
+kind_short() {
+    case "$1" in
+        takeover) printf 'To Homebrew' ;;
+        tool) printf 'CLI tool' ;;
+        *) kind_label "$1" ;;
+    esac
+}
+
 version_text() {
     local from="${U_FROM[$1]}" to="${U_TO[$1]}"
     if [[ -n "$from" && -n "$to" ]]; then
@@ -326,8 +336,8 @@ measure_columns() {
     done
     ((UPDATES_NAME_W <= 32)) || UPDATES_NAME_W=32
     ((UPDATES_VER_W <= 26)) || UPDATES_VER_W=26
-    # Leave room for the source column on narrow terminals.
-    local room=$((UPDATES_ROW_W - 14))
+    # Leave room for the source column, which comes first.
+    local room=$((UPDATES_ROW_W - 15))
     ((UPDATES_NAME_W + UPDATES_VER_W <= room)) || UPDATES_NAME_W=$((room - UPDATES_VER_W))
     if ((UPDATES_NAME_W < 8)); then
         UPDATES_NAME_W=8
@@ -336,20 +346,64 @@ measure_columns() {
     fi
 }
 
-# One display row per update: name, versions, then where it comes from and
-# any note, cut to the terminal width. Sources and notes are plain ASCII.
+# One display row per update: where it comes from first, then name,
+# versions and any note, cut to the terminal width. Sources and notes are
+# plain ASCII.
 update_row_text() {
-    local i="$1" tag room note="${U_NOTE[$1]}"
-    tag=$(kind_label "${U_KIND[i]}")
+    local i="$1" room note="${U_NOTE[$1]}"
     if is_host_update "$i"; then
         note="runs MoreMole${note:+, $note}"
     fi
-    [[ -z "$note" ]] || tag+=" ($note)"
-    tag=$(mole_terminal_safe_text "$tag")
-    room=$((UPDATES_ROW_W - UPDATES_NAME_W - UPDATES_VER_W - 4))
-    ((${#tag} <= room)) || tag="${tag:0:$((room - 3))}..."
-    printf '%s  %s  %s' "$(fit_width "$(mole_terminal_safe_text "${U_NAME[i]}")" "$UPDATES_NAME_W")" \
-        "$(fit_width "$(version_text "$i")" "$UPDATES_VER_W")" "$tag"
+    note=$(mole_terminal_safe_text "$note")
+    room=$((UPDATES_ROW_W - 13 - UPDATES_NAME_W - UPDATES_VER_W - 4))
+    ((room > 3)) || room=3
+    ((${#note} <= room)) || note="${note:0:$((room - 3))}..."
+    printf '%s  %s  %s  %s' "$(fit_width "$(kind_short "${U_KIND[i]}")" 11)" \
+        "$(fit_width "$(mole_terminal_safe_text "${U_NAME[i]}")" "$UPDATES_NAME_W")" \
+        "$(fit_width "$(version_text "$i")" "$UPDATES_VER_W")" "$note"
+}
+
+# The list's column headings, lined up with its rows.
+update_header_text() {
+    printf '%s  %s  %s  %s' "$(fit_width "Source" 11)" "$(fit_width "Name" "$UPDATES_NAME_W")" \
+        "$(fit_width "Version" "$UPDATES_VER_W")" "Note"
+}
+
+# What updating does, for the details screen.
+update_action_text() {
+    local i="$1" id
+    id=$(mole_terminal_safe_text "${U_ID[$1]}")
+    case "${U_KIND[i]}" in
+        app) printf 'Homebrew updates it (brew upgrade --cask --greedy %s). The app may quit; save your work in it first.' "$id" ;;
+        takeover) printf "Homebrew installs its own copy over this one (brew install --cask --force %s), so Homebrew updates it from then on. The app's settings stay." "$id" ;;
+        tool) printf 'Homebrew updates it (brew upgrade --formula %s).' "$id" ;;
+        store) printf 'The App Store updates it (mas upgrade %s). It may ask for your password.' "$id" ;;
+        feed) printf "MoreMole opens the app, and the app's own updater installs the update after checking its signature." ;;
+        macos) printf 'macOS installs it (softwareupdate --install). It asks for your password.' ;;
+        macos-settings) printf 'It restarts the Mac, so MoreMole opens Software Update in System Settings instead of installing it.' ;;
+    esac
+}
+
+# The details screen of update $1.
+update_details() {
+    local i="$1" advice=""
+    if is_host_update "$i"; then
+        advice="$(host_advice "$i")"
+        [[ -z "$(host_command "$i")" ]] || advice+=" $(host_command "$i")"
+    fi
+    detail_name "${U_NAME[i]}"
+    detail_line "Source" "$(kind_label "${U_KIND[i]}")"
+    detail_line "Version" "$(version_text "$i")"
+    detail_line "Note" "${U_NOTE[i]}"
+    case "${U_KIND[i]}" in
+        feed) detail_line "App" "${U_ID[i]}" ;;
+        macos | macos-settings) detail_line "Label" "${U_ID[i]}" ;;
+        store) detail_line "App Store ID" "${U_ID[i]}" ;;
+        *) detail_line "Homebrew name" "${U_ID[i]}" ;;
+    esac
+    detail_line "Bundle ID" "${U_BUNDLE[i]}"
+    detail_line "Updating" "$(update_action_text "$i")"
+    detail_line "Left out" "$advice"
 }
 
 # Without a terminal, or with --dry-run, list the updates and stop.
@@ -357,6 +411,7 @@ print_update_list() {
     measure_columns
     local i
     echo -e "${PURPLE_BOLD}${#U_KIND[@]} updates available${NC}"
+    printf '  %s%s%s\n' "$GRAY" "$(update_header_text)" "$NC"
     for ((i = 0; i < ${#U_KIND[@]}; i++)); do
         printf '  %s\n' "$(update_row_text "$i")"
     done
@@ -370,8 +425,11 @@ select_updates() {
         rows+=("$(update_row_text "$i")")
     done
     export _MOLE_MENU_SELECT_ALL=true
-    # Enter with nothing picked installs nothing, never the row under the cursor.
-    local _MOLE_MENU_KEEP_EMPTY=true
+    # D with nothing picked installs nothing, never the row under the cursor;
+    # Enter shows the row's details.
+    local _MOLE_MENU_KEEP_EMPTY=true MOLE_MENU_DETAILS_FN=update_details MOLE_MENU_DONE_LABEL=Update
+    local MOLE_MENU_COLUMNS_HEADER
+    MOLE_MENU_COLUMNS_HEADER=$(update_header_text)
 
     MOLE_SELECTION_RESULT=""
     local rc=0

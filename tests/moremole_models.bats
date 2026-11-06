@@ -467,6 +467,20 @@ hf_models() {
 	row hf-files files someone/Gemma-4-nochat-bf16 "$HF_SHA" 2000000000 6 hf.co/someone/gemma-4-nochat-bf16
 }
 
+@test "a search can hold a slash, as in owner/model" {
+	hf_models
+	# Typing someone/ narrows the list to someone's model; Enter finishes.
+	printf '%s\n' CHAR:/ CHAR:s CHAR:o CHAR:m CHAR:e CHAR:o CHAR:n CHAR:e CHAR:/ CHAR:g ENTER SPACE CHAR:d > "$KEYS_FILE"
+	run models_env /bin/bash -c '
+		source "$1"
+		eval "$2"
+		printf "\033" | main --huggingface
+	' bash "$PROJECT_ROOT/bin/moremole-models.sh" "$SCRIPTED"
+	[ "$status" -eq 0 ] || { echo "$output"; return 1; }
+	[[ "$output" == *"Search: someone/g"*"(1/2"* ]] || return 1
+	[[ "$output" == *"Models to add from Hugging Face:"*"someone/Gemma-4-nochat-bf16"* ]] || return 1
+}
+
 @test "S sorts Hugging Face models by downloads and the library by pulls" {
 	hf_models
 	# A-Z, then S for size, date and downloads, most first: Qwen (719,843),

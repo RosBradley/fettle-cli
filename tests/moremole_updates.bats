@@ -72,13 +72,15 @@ full_scan_rows() {
 	[[ "$output" == *"DRY RUN"*"Couldn't refresh Homebrew's version list."*"8 updates available"* ]] || return 1
 	# One A-Z list, upper and lower case together, whatever the source.
 	[[ "$output" == *"Firefox"*"git"*"Google Chrome"*"macOS Sequoia"*"Postico 2"*"Safari"*"Visual Studio Code"*"Xcode"* ]] || return 1
-	[[ "$output" == *$'\n  Visual Studio Code'*"1.88.0 → 1.89.0"*"Homebrew"* ]] || return 1
-	[[ "$output" == *"Google Chrome"*"Homebrew (updates itself)"* ]] || return 1
-	[[ "$output" == *"Firefox"*"Move to Homebrew (replaces your copy)"* ]] || return 1
-	[[ "$output" == *"Postico 2"*"2.1 → 2.2"*"Own updater (opens the app)"* ]] || return 1
-	[[ "$output" == *"Xcode"*"App Store"* ]] || return 1
-	[[ "$output" == *"git"*"Command-line tool"* ]] || return 1
-	[[ "$output" == *"macOS Sequoia 15.1"*"macOS (needs a restart, opens Settings)"* ]] || return 1
+	# The source comes first, under a heading line.
+	[[ "$output" == *"Source       Name"*"Version"*"Note"* ]] || return 1
+	[[ "$output" == *$'\n  Homebrew     Visual Studio Code'*"1.88.0 → 1.89.0"* ]] || return 1
+	[[ "$output" == *"Homebrew     Google Chrome"*"updates itself"* ]] || return 1
+	[[ "$output" == *"To Homebrew  Firefox"*"replaces your copy"* ]] || return 1
+	[[ "$output" == *"Own updater  Postico 2"*"2.1 → 2.2"*"opens the app"* ]] || return 1
+	[[ "$output" == *"App Store    Xcode"* ]] || return 1
+	[[ "$output" == *"CLI tool     git"* ]] || return 1
+	[[ "$output" == *"macOS        macOS Sequoia 15.1"*"needs a restart"* ]] || return 1
 	# The DRY RUN banner's own icon is a ○, so only the list after it is checked.
 	local list="${output#*DRY RUN MODE}"
 	[[ "$list" != *"●"* && "$list" != *"○"* ]] || return 1
@@ -124,9 +126,9 @@ full_scan_rows() {
 	[[ "$output" == *"version=18.1"* ]]
 }
 
-@test "Enter with nothing selected installs nothing" {
+@test "D with nothing selected installs nothing" {
 	full_scan_rows
-	printf '%s\n' ENTER ENTER > "$BATS_TEST_TMPDIR/keys"
+	printf '%s\n' CHAR:d > "$BATS_TEST_TMPDIR/keys"
 	run updates_env KEYS_FILE="$BATS_TEST_TMPDIR/keys" KEY_STATE="$BATS_TEST_TMPDIR/key-state" /bin/bash -c '
 		source "$1"
 		enter_alt_screen() { :; }
@@ -156,7 +158,7 @@ full_scan_rows() {
 
 @test "the pick list starts with nothing selected, in A-Z order" {
 	full_scan_rows
-	printf '%s\n' SPACE DOWN DOWN SPACE ENTER > "$BATS_TEST_TMPDIR/keys"
+	printf '%s\n' SPACE DOWN DOWN SPACE CHAR:d > "$BATS_TEST_TMPDIR/keys"
 	run updates_env COLUMNS=60 KEYS_FILE="$BATS_TEST_TMPDIR/keys" KEY_STATE="$BATS_TEST_TMPDIR/key-state" /bin/bash -c '
 		source "$1"
 		enter_alt_screen() { :; }
@@ -189,6 +191,40 @@ full_scan_rows() {
 	# Only the rows picked with Space: Firefox (0) and Google Chrome (2).
 	[[ "$output" == *"RESULT=0,2"* ]] || return 1
 	[[ "$output" == *"first=Firefox last=Xcode"* ]]
+}
+
+@test "Enter shows an update's details: its source, versions and what updating does" {
+	full_scan_rows
+	# A-Z: Firefox first. Its details, then the next (git), then back.
+	printf '%s\n' ENTER DOWN QUIT QUIT > "$BATS_TEST_TMPDIR/keys"
+	run updates_env COLUMNS=100 KEYS_FILE="$BATS_TEST_TMPDIR/keys" KEY_STATE="$BATS_TEST_TMPDIR/key-state" /bin/bash -c '
+		source "$1"
+		enter_alt_screen() { :; }
+		leave_alt_screen() { :; }
+		stty() { :; }
+		tput() { if [[ "$1" == cols ]]; then echo 100; else echo 30; fi; }
+		drain_pending_input() { :; }
+		read_key() {
+			local index key
+			index=$(cat "$KEY_STATE" 2>/dev/null || echo 0)
+			index=$((index + 1))
+			printf "%s\n" "$index" > "$KEY_STATE"
+			key=$(sed -n "${index}p" "$KEYS_FILE")
+			printf "%s\n" "${key:-QUIT}"
+		}
+		for source in brew store apps macos; do
+			load_update_rows < "$ROWS_DIR/$source"
+		done
+		order_update_rows
+		select_updates || echo NOTHING
+	' bash "$PROJECT_ROOT/bin/moremole-updates.sh"
+	[ "$status" -eq 0 ] || { echo "$output"; return 1; }
+	[[ "$output" == *"Source"*"Name"*"Version"*"Note"* ]] || return 1
+	[[ "$output" == *"Enter Details"*"D Update"* ]] || return 1
+	[[ "$output" == *"1 of 8"*"Firefox"*"Source"*"Move to Homebrew"*"Version"*"129.0 → 130.0"*"Homebrew name"*"firefox"*"Updating"*"brew install --cask --force firefox"* ]] || return 1
+	[[ "$output" == *"2 of 8"*"git"*"Command-line tool"*"brew upgrade --formula git"* ]] || return 1
+	[[ "$output" == *"NOTHING"* ]] || return 1
+	[ ! -s "$CALLS" ]
 }
 
 @test "the confirm screen warns about what each kind of update does" {
@@ -305,7 +341,7 @@ open $BATS_TEST_TMPDIR/Apps/Other.app" ] || { echo "$calls"; return 1; }
 	row brew app visual-studio-code "Visual Studio Code" 1.88.0 1.89.0 "" com.microsoft.VSCode
 	run updates_env COLUMNS=120 /bin/bash -c 'source "$1"; main --dry-run' bash "$PROJECT_ROOT/bin/moremole-updates.sh"
 	[ "$status" -eq 0 ] || { echo "$output"; return 1; }
-	[[ "$output" == *"iTerm2"*"Homebrew (runs MoreMole, updates itself)"* ]] || return 1
+	[[ "$output" == *"Homebrew     iTerm2"*"runs MoreMole, updates itself"* ]] || return 1
 	[[ "$output" != *"Visual Studio Code"*"runs MoreMole"* ]] || return 1
 
 	run updates_env /bin/bash -c '

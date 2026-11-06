@@ -22,6 +22,7 @@ The moremole changes live in their own files, so Mole's updates merge cleanly:
 | `cmd/analyze/moremole.go` | Analyze: the list fills the window, with longer bars and names in a wide one |
 | `bin/moremole-updates.sh`, `cmd/moremole-updates/` | Software updates: the screen, and the Go helper that finds updates |
 | `bin/moremole-models.sh`, `cmd/moremole-models/` | Ollama models: the screens, and the Go helper that asks Ollama, its registry, its library and Hugging Face, and downloads from Hugging Face |
+| `lib/moremole/details.sh` | Shared by Software updates and Ollama models: the lines of a details screen |
 | `lib/moremole/runs.sh` | Shared by Software updates and Ollama models: runs a tool with its output on screen and keeps its error line |
 | `lib/moremole/commands.sh` | Adds `updates` and `models` to help and Tab completion |
 | `lib/moremole/cancel.sh` | Lets a cancelled command tell the menu to come straight back |
@@ -123,9 +124,9 @@ The lists you choose items from (Software removal, Slim Intel code, Installer fi
 - The arrow keys take you from the search line into the narrowed list, so Space selects and Enter saves. Enter on the search line just finishes the search.
 - **Esc** or **Q** clears an applied search; Q again goes back. Selections stay when the search changes, and Enter never saves a selection the search is hiding: it clears the search first, so you see everything you picked.
 - Lists open A–Z. Where the list knows sizes or dates, **S** switches to largest first, then oldest first, then back to A–Z, and **O** flips the order. Installer files sorts by file name, size and date modified; Software removal by name, size and last used; Ollama model removal by name, size and date downloaded; Add Ollama models by name, when Ollama last updated the model, and pulls (most first), and its versions smallest first, then A–Z.
-- Ollama models' lists have a heading line under the search line that names each column, lined up with the rows.
+- Software updates' and Ollama models' lists have a heading line under the search line that names each column, lined up with the rows.
 - A row too long for the window is cut at its edge with "...", so no row wraps onto a second line (which pushed the rows below it down and scrambled the list while scrolling).
-- Ollama models' lists (updates, Add Ollama models and its versions, Add Hugging Face MLX, removal) have a details screen: **Enter** opens everything about the row under the cursor, such as its description, every size, what it reads, downloads, dates and its web page; the up and down arrows show the next or previous row's, **Space** selects it there too, and Enter or ESC goes back to the list, at the row last shown. In those lists **D** goes on instead of Enter, and its key says what it does: Next, Download, Add, Update or Remove. Each row starts with its status (update, up to date, installed, added) and whether it fits in memory, so the part that matters stays in view when a row is cut.
+- Software updates' list and Ollama models' lists (updates, Add Ollama models and its versions, Add Hugging Face MLX, removal) have a details screen: **Enter** opens everything about the row under the cursor, such as its description, every size, what it reads, downloads, dates and its web page; the up and down arrows show the next or previous row's, **Space** selects it there too, and Enter or ESC goes back to the list, at the row last shown. In those lists **D** goes on instead of Enter, and its key says what it does: Next, Download, Add, Update or Remove. Each row starts with its status (update, up to date, installed, added) and whether it fits in memory, so the part that matters stays in view when a row is cut.
 - Nothing starts selected: you pick, or press **A** to select everything. Mole's Purge selected the artifacts older than 7 days for you; in moremole its list starts empty too, and the age column still shows which are old. Two lists keep their ticks, because they show what is already protected rather than a suggestion: Clean's Protected caches and Optimize's Protected items. Software removal ticks personal data only when you ask for it with `--with-data`.
 - Purge keeps its own list, grouped by project with the biggest first. **/** asks for a project or folder name; type it and press Enter to jump to the first match, then **n** for the next one.
 
@@ -155,7 +156,7 @@ If you pull changes with `git pull`, the next update rebuilds the Go parts if ne
 
 Choose **Software updates** in the menu, or run `moremole updates`. **Preview** (`moremole updates --dry-run`) only lists what's available.
 
-It checks Homebrew, the App Store, macOS and your other apps, then shows one A–Z list with each row's source. Nothing starts selected: pick with the arrow keys and Space (A selects all, / searches), Enter to continue.
+It checks Homebrew, the App Store, macOS and your other apps, then shows one A–Z list, each row starting with its source, under a heading line. Nothing starts selected: pick with the arrow keys and Space (A selects all, / searches), and press D to update the ones you picked. Enter shows an update's details: its source, versions, its Homebrew name, App Store ID or app, and what updating it does (the command it runs, whether the app quits or asks for a password).
 
 | Source (as the list shows it) | Installs with |
 |---|---|

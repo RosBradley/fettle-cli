@@ -1129,12 +1129,14 @@ paginated_multi_select() {
                 fi
                 ;;
             "CHAR:/")
+                # MoreMole: while typing, / is part of the search, as in
+                # owner/model; Enter or an arrow key finishes typing.
                 if [[ -n "${MOLE_READ_KEY_FORCE_CHAR:-}" ]]; then
-                    unset MOLE_READ_KEY_FORCE_CHAR
+                    handle_filter_char "/"
                 else
                     export MOLE_READ_KEY_FORCE_CHAR=1
+                    need_full_redraw=true
                 fi
-                need_full_redraw=true
                 ;;
             "DELETE")
                 if [[ -n "$filter_text" ]]; then
