@@ -19,10 +19,10 @@ MOREMOLE_MY_COMMANDS_FILE="$HOME/.config/mole/my_commands"
 # by ";" and hold label|kind|args|description. "mole" runs bin/<first
 # word>.sh with the remaining words; "update" runs update_mole.
 readonly MOREMOLE_BUILTIN_ROWS=(
+    "Status|mole|status|Monitor system health"
     "Clean|mole|clean|Free up disk space;Preview|mole|clean --dry-run|Show what Clean would remove, without removing anything;Protected caches|mole|clean --whitelist|Choose caches that Clean must never remove"
     "Optimize|mole|optimize|Refresh caches and services;Preview|mole|optimize --dry-run|Show what Optimize would do, without changing anything;Protected items|mole|optimize --whitelist|Choose items that Optimize must leave alone"
     "Analyze|mole|analyze|Explore disk usage;External drives|mole|analyze /Volumes|Explore disk usage on external drives only"
-    "Status|mole|status|Monitor system health"
     "History|mole|history --limit 200|Review cleanup activity, the last 200 entries;Export|mole|history --json|Print cleanup history as JSON"
     "Purge|mole|purge|Remove old project build files;Preview|mole|purge --dry-run|Show what Purge would remove, without removing anything;Choose folders|mole|purge --paths|Choose the folders Purge scans for projects"
     "Installer files|mole|installer|Find and remove installer files;Preview|mole|installer --dry-run|Show what would be removed, without removing anything"

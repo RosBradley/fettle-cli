@@ -3,10 +3,10 @@
 MoreMole is a macOS cleanup and maintenance tool for the terminal, built on [Mole](https://github.com/tw93/Mole) by tw93. It does everything Mole does, from one menu, and adds software updates and Ollama model management.
 
 ```
-➤ Clean                   Preview            Protected caches
+➤ Status
+  Clean                   Preview            Protected caches
   Optimize                Preview            Protected items
   Analyze                 External drives
-  Status
   History                 Export
   Purge                   Preview            Choose folders
   Installer files         Preview
@@ -28,7 +28,7 @@ MoreMole is a macOS cleanup and maintenance tool for the terminal, built on [Mol
 
 ### One menu for everything
 
-Mole's menu shows five commands and keeps the rest behind a help screen. MoreMole's menu lists every one: Clean, Optimize, Analyze, Status, History, Purge, Installer files, Slim, Touch ID and Shell completion, plus MoreMole's own Software updates and Ollama models.
+Mole's menu shows five commands and keeps the rest behind a help screen. MoreMole's menu lists every one, Status first, then Clean, Optimize, Analyze, History, Purge, Installer files, Slim, Touch ID and Shell completion, plus MoreMole's own Software updates and Ollama models.
 
 - **Each row has its variants beside it.** Preview shows what a command would do without doing anything. Other variants include Analyze's External drives, History's Export and Purge's Choose folders.
 - **A bar at the bottom** describes the highlighted row and lists the keys.

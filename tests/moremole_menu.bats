@@ -51,13 +51,15 @@ printf "count=%s\n" "${#MOREMOLE_MY_NAMES[@]}"
 	printf 'Say hi\techo hi\n' > "$HOME/.config/mole/my_commands"
 	run /bin/bash --noprofile --norc -c "$(prelude)"'
 moremole_load_menu_items
-moremole_show_menu_items 2 | tail -n 1
+moremole_show_menu_items 1 | tail -n 1
+moremole_show_menu_items 3 | tail -n 1
 moremole_show_menu_items 37 | tail -n 1
 moremole_show_menu_items 38 | tail -n 1
 moremole_show_menu_items 40 | tail -n 1
 '
 	[ "$status" -eq 0 ] || { echo "$output"; return 1; }
-	[[ "$output" == *"Show what Clean would remove, without removing anything"* ]] || return 1
+	# Status is the first row.
+	[[ "$output" == *"Monitor system health"*"Show what Clean would remove, without removing anything"* ]] || return 1
 	[[ "$output" == *"Add your own command to this menu"* ]] || return 1
 	[[ "$output" == *"Runs: echo hi"* ]] || return 1
 	[[ "$output" == *'Remove "Say hi" from the menu'* ]]
@@ -66,16 +68,16 @@ moremole_show_menu_items 40 | tail -n 1
 @test "arrow keys keep the column when the next row has one" {
 	run /bin/bash --noprofile --norc -c "$(prelude)"'
 moremole_load_menu_items
-c=1
+c=2
 for key in RIGHT RIGHT RIGHT DOWN DOWN RIGHT DOWN LEFT LEFT UP TOP UP BOTTOM DOWN UP DOWN; do
     c=$(moremole_menu_move "$c" "$key")
     printf "%s " "$c"
 done
 '
 	[ "$status" -eq 0 ] || { echo "$output"; return 1; }
-	# Row 1 holds items 1-3, Optimize 4-6, Analyze 7-8, Status 9;
-	# Update is 35, the section heading 36 is skipped, Add is 37.
-	[ "$output" = "2 3 3 6 8 8 9 9 9 7 1 1 37 37 35 37 " ]
+	# Status is item 1, Clean 2-4, Optimize 5-7, Analyze 8-9, History
+	# 10-11; Update is 35, the section heading 36 is skipped, Add is 37.
+	[ "$output" = "3 4 4 7 9 9 11 10 10 8 1 1 37 37 35 37 " ]
 }
 
 @test "a long list scrolls to keep the selection visible" {
@@ -192,8 +194,8 @@ drain_pending_input() { :; }
 run_mole_command() { printf "RUN"; printf " [%s]" "$@"; printf "\n"; }
 SHELL=/bin/sh
 moremole_load_menu_items
-moremole_menu_activate 1
 moremole_menu_activate 2
+moremole_menu_activate 3
 moremole_menu_activate 20
 moremole_menu_activate 23
 moremole_menu_activate 24
@@ -238,7 +240,7 @@ hide_cursor() { :; }
 show_cursor() { :; }
 clear() { :; }
 drain_pending_input() { :; }
-keys=(ENTER DOWN DOWN DOWN ENTER QUIT)
+keys=(DOWN ENTER UP ENTER QUIT)
 read_key() {
     local n=0
     [[ -f "$HOME/key-count" ]] && n=$(cat "$HOME/key-count")
@@ -280,7 +282,7 @@ drain_pending_input() { :; }
 SHELL=/bin/sh
 moremole_load_menu_items
 echo "== preview"
-moremole_menu_activate 2 < /dev/null
+moremole_menu_activate 3 < /dev/null
 echo "== analyze"
 moremole_run_and_return "$SCRIPT_DIR/bin/analyze.sh" < /dev/null
 echo "== mine"

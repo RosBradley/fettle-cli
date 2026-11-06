@@ -72,10 +72,10 @@ Every command works from the command line and in scripts as in Mole: same comman
 ## The menu
 
 ```
-➤ Clean                   Preview            Protected caches
+➤ Status
+  Clean                   Preview            Protected caches
   Optimize                Preview            Protected items
   Analyze                 External drives
-  Status
   History                 Export
   Purge                   Preview            Choose folders
   Installer files         Preview
@@ -93,9 +93,10 @@ Every command works from the command line and in scripts as in Mole: same comman
   Add a command
   Flush DNS              Edit               Remove
 
-  Free up disk space
+  Monitor system health
 ```
 
+- Status is the first row, so the menu opens on it.
 - Move with the arrow keys and press Enter. Preview shows what a command would do without doing it.
 - A bar at the bottom of the window, under a divider, describes the highlighted item and lists the keys, as on the command screen.
 - The menu has a screen of its own, the terminal's alternate screen, as full-screen apps such as `vim` and `htop` do. Q returns you to the terminal as it was before `mm`, history included, and terminal marks such as iTerm2's prompt marks don't show on the menu. Commands return to the menu's screen when they end. Update MoreMole and T (Touch ID) leave it first, so what they print stays on the terminal.

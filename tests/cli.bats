@@ -398,13 +398,13 @@ tagline="${GREEN}${MOREMOLE_TAGLINE[1]}${NC}"$'\n'
 # The real banner is used: command substitution strips its trailing blank line,
 # so the separator has to come from the notice itself.
 out="$(render 'Update 9.8.7 available, run mo update')"
-[[ "$out" == *"${tagline}${line}"$'\n'"${line}Update 9.8.7 available, run ${GREEN}mo update${NC}"$'\n'"${line}"$'\n'"${line}${CYAN}${ICON_ARROW} Clean"* ]] || { printf '%q\n' "$out"; exit 1; }
+[[ "$out" == *"${tagline}${line}"$'\n'"${line}Update 9.8.7 available, run ${GREEN}mo update${NC}"$'\n'"${line}"$'\n'"${line}${CYAN}${ICON_ARROW} Status"* ]] || { printf '%q\n' "$out"; exit 1; }
 out="$(render 'New nightly commit abc1234 available, run mo update --nightly')"
-[[ "$out" == *"${tagline}${line}"$'\n'"${line}New nightly commit abc1234 available, run ${GREEN}mo update --nightly${NC}"$'\n'"${line}"$'\n'"${line}${CYAN}${ICON_ARROW} Clean"* ]] || { printf '%q\n' "$out"; exit 1; }
+[[ "$out" == *"${tagline}${line}"$'\n'"${line}New nightly commit abc1234 available, run ${GREEN}mo update --nightly${NC}"$'\n'"${line}"$'\n'"${line}${CYAN}${ICON_ARROW} Status"* ]] || { printf '%q\n' "$out"; exit 1; }
 
 # Control: without a notice no extra rows appear between banner and options.
 out="$(render '')"
-[[ "$out" == *"${tagline}${line}"$'\n'"${line}${CYAN}${ICON_ARROW} Clean"* ]] || { printf '%q\n' "$out"; exit 1; }
+[[ "$out" == *"${tagline}${line}"$'\n'"${line}${CYAN}${ICON_ARROW} Status"* ]] || { printf '%q\n' "$out"; exit 1; }
 
 # Rendering must not rewrite the stored text: the idle refresh compares it
 # against the plain cache contents on every tick.
