@@ -34,6 +34,15 @@ setup() {
 exit 0
 EOF
 	chmod +x "$BATS_TEST_TMPDIR/helper"
+	# The models script records its arguments and hands back the results it
+	# is given, or stops without any.
+	cat > "$BATS_TEST_TMPDIR/models-script" << 'EOF2'
+#!/bin/bash
+printf 'models %s\n' "$*" >> "$CALLS"
+[[ -f "$BATS_TEST_TMPDIR/model-results" ]] || exit 3
+cat "$BATS_TEST_TMPDIR/model-results" > "$MOREMOLE_MODELS_RESULTS"
+EOF2
+	chmod +x "$BATS_TEST_TMPDIR/models-script"
 	mole_test_fake_command brew 'printf "brew %s\n" "$*" >> "$CALLS"; [[ "$*" != *broken* ]]'
 	mole_test_fake_command mas 'printf "mas %s\n" "$*" >> "$CALLS"'
 	mole_test_fake_command open 'printf "open %s\n" "$*" >> "$CALLS"'
@@ -50,6 +59,9 @@ row() {
 updates_env() {
 	env HOME="$HOME" PATH="$PATH" MOLE_TEST_MODE=1 \
 		MOREMOLE_TEST_UPDATES_HELPER="$BATS_TEST_TMPDIR/helper" \
+		MOREMOLE_TEST_MODELS_HELPER="$BATS_TEST_TMPDIR/helper" \
+		MOREMOLE_TEST_MODELS_SCRIPT="$BATS_TEST_TMPDIR/models-script" \
+		BATS_TEST_TMPDIR="$BATS_TEST_TMPDIR" \
 		MOREMOLE_TEST_OPEN="$BATS_TEST_TMPDIR/fake-bin/open" "$@"
 }
 
@@ -475,9 +487,55 @@ brew --caskroom" ] || { echo "$calls"; return 1; }
 
 	run /bin/bash -c 'source "$1/lib/core/commands.sh"; printf "%s\n" "${MOLE_COMMANDS[@]}"' bash "$PROJECT_ROOT"
 	[ "$status" -eq 0 ] || { echo "$output"; return 1; }
-	[[ "$output" == *$'slim:Remove Intel code from universal apps\nupdates:Update apps, tools and macOS\n'* ]] || return 1
+	[[ "$output" == *$'slim:Remove Intel code from universal apps\nupdates:Update apps, tools, macOS and Ollama models\n'* ]] || return 1
 
 	run "$PROJECT_ROOT/mole" --help
 	[ "$status" -eq 0 ] || { echo "$output"; return 1; }
-	[[ "$output" == *"slim"*"updates"*"Update apps, tools and macOS"* ]]
+	[[ "$output" == *"slim"*"updates"*"Update apps, tools, macOS and Ollama models"* ]]
+}
+
+@test "Ollama models with an update join the list, and the picked ones update after the rest in one run" {
+	row brew app visual-studio-code "Visual Studio Code" 1.88.0 1.89.0 ""
+	row updates model llama3.2:latest llama3.2:latest "" "" "newer download on Ollama"
+	row updates model-hf hf.co/me/m-4bit:latest hf.co/me/m-4bit:latest "" "" "newer files on Hugging Face"
+	row updates notice models-unchecked "" "" "" "Couldn't check 1 of 3 Ollama models for updates."
+	run updates_env COLUMNS=120 /bin/bash -c 'source "$1"; main --dry-run' bash "$PROJECT_ROOT/bin/moremole-updates.sh"
+	[ "$status" -eq 0 ] || { echo "$output"; return 1; }
+	[[ "$output" == *"Couldn't check 1 of 3 Ollama models"*"3 updates available"* ]] || return 1
+	[[ "$output" == *"Ollama       hf.co/me/m-4bit:latest"*"newer files on Hugging Face"*"Ollama       llama3.2:latest"*"newer download on Ollama"*"Homebrew     Visual Studio Code"* ]] || return 1
+	[ ! -s "$CALLS" ] || return 1
+
+	# Installing: Homebrew first, then one models run with every picked model.
+	printf 'done\t1\nfailed\thf.co/me/m-4bit:latest: couldn'"'"'t get it from Hugging Face\nnote\tOllama was off, so it is off again\n' > "$BATS_TEST_TMPDIR/model-results"
+	run updates_env /bin/bash -c '
+		source "$1"
+		for source in brew updates; do
+			load_update_rows < "$ROWS_DIR/$source"
+		done
+		order_update_rows
+		printf "\n" | confirm_updates 0 1 2 && echo CONFIRMED
+		install_updates 0 1 2
+		show_updates_summary
+		printf "updated=%s failed=%s\n" "$total_updated" "$total_failed"
+	' bash "$PROJECT_ROOT/bin/moremole-updates.sh"
+	[ "$status" -eq 0 ] || { echo "$output"; return 1; }
+	[[ "$output" == *"Ollama models download only the parts that changed."*"Models from Hugging Face download again in full"*"If Ollama is off, it is turned on for the models and off again after."*"Install 3 updates"*"CONFIRMED"* ]] || return 1
+	[[ "$output" == *"updated=2 failed=1"* ]] || return 1
+	[[ "$output" == *"Not updated: hf.co/me/m-4bit:latest: couldn't get it from Hugging Face"*"Ollama was off, so it is off again"* ]] || return 1
+	[ "$(cat "$CALLS")" = "brew upgrade --cask --greedy visual-studio-code
+models --install-updates hf.co/me/m-4bit:latest llama3.2:latest" ] || { cat "$CALLS"; return 1; }
+
+	# A models run that stops before saying how it went fails each model.
+	rm -f "$BATS_TEST_TMPDIR/model-results"
+	: > "$CALLS"
+	run updates_env /bin/bash -c '
+		source "$1"
+		load_update_rows < "$ROWS_DIR/updates"
+		install_updates 0 1
+		show_updates_summary
+		printf "updated=%s failed=%s\n" "$total_updated" "$total_failed"
+	' bash "$PROJECT_ROOT/bin/moremole-updates.sh"
+	[ "$status" -eq 0 ] || { echo "$output"; return 1; }
+	[[ "$output" == *"Not updated: llama3.2:latest: the model update stopped (exit 3)"*"updated=0 failed=2"* ]] || { echo "$output"; return 1; }
+	grep -q "FAILED hf.co/me/m-4bit:latest (the model update stopped (exit 3))" "$HOME/Library/Logs/mole/operations.log"
 }

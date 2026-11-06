@@ -4,6 +4,7 @@
 //
 //	moremole-models-go status          Ollama's app, command, service, the Mac's memory, and mlx=1 on Apple silicon
 //	moremole-models-go list [--check]  installed models; --check asks the registry about each
+//	moremole-models-go updates         installed models with an update, for the Software updates screen (updates.go)
 //	moremole-models-go library         the models on ollama.com/library
 //	moremole-models-go tags MODEL...   the versions of each model, from its tags page
 //	moremole-models-go size NAME...    download size of each model, from the registry
@@ -66,7 +67,7 @@ func row(fields ...string) string {
 func notice(key, text string) string { return row("notice", key, text) }
 
 func usage(w io.Writer) {
-	_, _ = fmt.Fprintln(w, "Usage: moremole-models-go status|list [--check]|library|tags MODEL...|size NAME...|hf-list|hf-files REPO...|hf-download REPO SHA DIR|hf-verify NAME")
+	_, _ = fmt.Fprintln(w, "Usage: moremole-models-go status|list [--check]|updates|library|tags MODEL...|size NAME...|hf-list|hf-files REPO...|hf-download REPO SHA DIR|hf-verify NAME")
 }
 
 func main() {
@@ -81,6 +82,8 @@ func main() {
 	case "list":
 		check := len(os.Args) > 2 && os.Args[2] == "--check"
 		lines = listLines(newService(), check, fetchManifest, loadHFRecord(), checkHFModel)
+	case "updates":
+		lines = updatesLines(findOllama(), newService(), fetchManifest, loadHFRecord(), checkHFModel)
 	case "library":
 		var mlx *mlxIndex
 		if appleSilicon {

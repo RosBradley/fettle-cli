@@ -29,7 +29,7 @@ readonly MOREMOLE_BUILTIN_ROWS=(
     "Slim Intel code|mole|slim|Remove Intel code from universal apps;Preview|mole|slim --dry-run|Show what Slim would remove, without removing anything"
     "Touch ID|mole|touchid|Use Touch ID for sudo;Preview|mole|touchid enable --dry-run|Show what Touch ID setup would change, without changing it"
     "Shell completion|mole|completion|Set up Tab completion for moremole and mm;Preview|mole|completion --dry-run|Show the shell setup edits, without making them"
-    "Software updates|mole|moremole-updates|Update apps, tools and macOS;Preview|mole|moremole-updates --dry-run|List available updates, without installing anything"
+    "Software updates|mole|moremole-updates|Update apps, tools, macOS and Ollama models;Preview|mole|moremole-updates --dry-run|List available updates, without installing anything"
     "Software removal|mole|uninstall|Remove apps completely;Preview|mole|uninstall --dry-run|Show what Software removal would remove, without removing anything"
     "Ollama model updates|mole|moremole-models|Check your Ollama models, including those added from Hugging Face, for updates and install them;Preview|mole|moremole-models --dry-run|List your Ollama models and their updates, without changing anything"
     "Add Ollama models|mole|moremole-models --download|Choose new models from Ollama's library, then the versions to download;Preview|mole|moremole-models --download --dry-run|List the models in Ollama's library, without downloading anything"

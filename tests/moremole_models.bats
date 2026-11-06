@@ -143,7 +143,7 @@ installed_models() {
 	[[ "$output" == *"Usage: moremole models"*"--download"*"--remove"*"--dry-run"* ]] || return 1
 
 	run /bin/bash -c 'source "$1/lib/core/commands.sh"; printf "%s\n" "${MOLE_COMMANDS[@]}"' bash "$PROJECT_ROOT"
-	[[ "$output" == *$'updates:Update apps, tools and macOS\nmodels:Update, download and remove Ollama models\n'* ]]
+	[[ "$output" == *$'updates:Update apps, tools, macOS and Ollama models\nmodels:Update, download and remove Ollama models\n'* ]]
 }
 
 @test "without Ollama it says how to get it, and runs nothing" {
@@ -618,4 +618,35 @@ ollama rm hf.co/me/m-4bit-moremole-check" ]] || { cat "$CALLS"; return 1; }
 	[[ "$output" == *"You can download them again."* ]] || return 1
 	[ "$(cat "$CALLS")" = "ollama rm hf.co/me/m-4bit:latest" ] || { cat "$CALLS"; return 1; }
 	[ "$(cat "$HOME/.config/mole/moremole-hf-models")" = "other:latest"$'\t'"me/Other"$'\t'"$HF_SHA" ]
+}
+
+@test "Software updates' model updates turn Ollama on without asking, update each, and hand back the results" {
+	sed -i.bak 's/^running=1$/running=0/' "$ROWS_DIR/status"
+	mkdir -p "$HOME/.config/mole"
+	printf 'hf.co/me/m-4bit:latest\tme/M-4bit\t%s\n' "$HF_SHA" > "$HOME/.config/mole/moremole-hf-models"
+	row hf-files files me/M-4bit "$HF_NEW" 5100000000 3 hf.co/me/m-4bit
+	local results="$BATS_TEST_TMPDIR/results"
+	# Nothing to read: it never asks.
+	run models_env MOREMOLE_MODELS_RESULTS="$results" MOLE_CURRENT_COMMAND=updates /bin/bash -c '
+		source "$1"
+		main --install-updates gemma3:4b broken:latest hf.co/me/m-4bit:latest < /dev/null
+	' bash "$PROJECT_ROOT/bin/moremole-models.sh"
+	[ "$status" -eq 1 ] || { echo "$output"; return 1; }
+	[[ "$output" != *"Turn Ollama on?"* ]] || return 1
+	[[ "$output" == *"turning it on for the model updates"* ]] || return 1
+	[[ "$output" == *"gemma3:4b"*"1 of 3"* ]] || return 1
+	[[ "$(cat "$CALLS")" == "open -g -a /Applications/Ollama.app
+ollama pull gemma3:4b
+ollama pull broken:latest
+hf-download me/M-4bit $HF_NEW "*"
+ollama cp hf.co/me/m-4bit-moremole-check hf.co/me/m-4bit:latest
+ollama rm hf.co/me/m-4bit-moremole-check
+osascript -e quit app \"Ollama\"" ]] || { cat "$CALLS"; return 1; }
+	[ "$(cat "$results")" = "done	2
+failed	broken:latest: model is damaged
+note	Ollama was off, so it is off again" ] || { cat "$results"; return 1; }
+	local log="$HOME/Library/Logs/mole/operations.log"
+	grep -q "\[updates\] REBUILT gemma3:4b (updated)" "$log" || { cat "$log"; return 1; }
+	grep -q "\[updates\] FAILED broken:latest" "$log" || return 1
+	grep -q "\[updates\] REBUILT hf.co/me/m-4bit:latest (updated from Hugging Face me/M-4bit" "$log"
 }

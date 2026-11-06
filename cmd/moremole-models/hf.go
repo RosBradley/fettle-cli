@@ -344,6 +344,55 @@ func modelFiles(m hfModel) ([]hfFile, error) {
 	return files, nil
 }
 
+const (
+	hfIndexName = "model.safetensors.index.json"
+	hfIndexMax  = 32 << 20
+)
+
+// downloadFiles is modelFiles, minus weights the model's index doesn't use.
+// Some models hold two whole sets of weights (one of 18 parts and one of 28,
+// say); the index names the set the model loads, and downloading both
+// doubled the download and gave Ollama every tensor twice.
+func downloadFiles(m hfModel) ([]hfFile, error) {
+	files, err := modelFiles(m)
+	if err != nil {
+		return nil, err
+	}
+	hasIndex := false
+	for _, f := range files {
+		hasIndex = hasIndex || f.Name == hfIndexName
+	}
+	if !hasIndex {
+		return files, nil
+	}
+	body, _, err := hfGet(hfFileURL(m.ID, m.SHA, hfIndexName), hfIndexMax)
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", hfIndexName, err)
+	}
+	var index struct {
+		WeightMap map[string]string `json:"weight_map"`
+	}
+	if json.Unmarshal(body, &index) != nil || len(index.WeightMap) == 0 {
+		return nil, errors.New(hfIndexName + " names no weights")
+	}
+	used := map[string]bool{}
+	for _, shard := range index.WeightMap {
+		used[shard] = true
+	}
+	var kept []hfFile
+	for _, f := range files {
+		if strings.HasSuffix(strings.ToLower(f.Name), ".safetensors") && !used[f.Name] {
+			continue
+		}
+		delete(used, f.Name)
+		kept = append(kept, f)
+	}
+	for shard := range used {
+		return nil, fmt.Errorf("%s names %s, which the model doesn't have", hfIndexName, shard)
+	}
+	return kept, nil
+}
+
 func totalSize(files []hfFile) int64 {
 	var n int64
 	for _, f := range files {
@@ -361,7 +410,7 @@ func hfFilesLines(repos []string) []string {
 		m, err := hfInfo(repo, "")
 		var files []hfFile
 		if err == nil {
-			files, err = modelFiles(m)
+			files, err = downloadFiles(m)
 		}
 		if err != nil {
 			lines = append(lines, notice("hf-failed", repo+": "+err.Error()))
@@ -481,7 +530,7 @@ func hfDownload(repo, sha, dir string, out io.Writer) error {
 	if err != nil {
 		return err
 	}
-	files, err := modelFiles(m)
+	files, err := downloadFiles(m)
 	if err != nil {
 		return err
 	}

@@ -1,10 +1,11 @@
 #!/bin/bash
 # moremole - Software updates.
 # Lists updates for Homebrew apps and command-line tools, App Store apps,
-# macOS, and apps installed without Homebrew, either from Homebrew's newer
-# copy or from the app's own updater; then installs the ones picked.
-# moremole-updates-go does the scanning; this script shows the list and runs
-# the updates.
+# macOS, apps installed without Homebrew, either from Homebrew's newer copy
+# or from the app's own updater, and Ollama models; then installs the ones
+# picked. moremole-updates-go does the scanning, and moremole-models-go
+# checks the models; this script shows the list and runs the updates, and
+# moremole-models.sh updates the models.
 
 set -euo pipefail
 
@@ -29,10 +30,15 @@ source "$SCRIPT_DIR/../lib/moremole/runs.sh"
 source "$SCRIPT_DIR/../lib/moremole/details.sh"
 
 UPDATES_HELPER="$SCRIPT_DIR/moremole-updates-go"
+MODELS_HELPER="$SCRIPT_DIR/moremole-models-go"
+MODELS_SCRIPT="$SCRIPT_DIR/moremole-models.sh"
 UPDATES_OPEN=/usr/bin/open
-# Tests swap in a fake helper and a fake open, never outside test mode.
+# Tests swap in fake helpers, a fake models script and a fake open, never
+# outside test mode.
 if [[ "${MOLE_TEST_MODE:-0}" == "1" ]]; then
     UPDATES_HELPER="${MOREMOLE_TEST_UPDATES_HELPER:-$UPDATES_HELPER}"
+    MODELS_HELPER="${MOREMOLE_TEST_MODELS_HELPER:-$MODELS_HELPER}"
+    MODELS_SCRIPT="${MOREMOLE_TEST_MODELS_SCRIPT:-$MODELS_SCRIPT}"
     UPDATES_OPEN="${MOREMOLE_TEST_OPEN:-$UPDATES_OPEN}"
 fi
 readonly UPDATES_SETTINGS_URL="x-apple.systempreferences:com.apple.Software-Update-Settings.extension"
@@ -61,6 +67,8 @@ OPEN_INDICES=()
 OPENED_NAMES=()
 HOST_SKIPPED=()
 RETRIED_NAMES=()
+MODEL_INDICES=()
+MODEL_NOTES=()
 
 cleanup() {
     if [[ -n "$UPDATES_MACOS_PID" ]]; then
@@ -77,9 +85,11 @@ show_updates_help() {
 Usage: moremole updates [OPTIONS]
 
 Find and install updates for Homebrew apps and command-line tools,
-App Store apps (with mas), macOS, and apps installed without Homebrew:
-Homebrew's newer copy, or the app's own updater, which opens the app.
-The list is A-Z and nothing starts selected; you pick.
+App Store apps (with mas), macOS, apps installed without Homebrew
+(Homebrew's newer copy, or the app's own updater, which opens the app),
+and your Ollama models. The list is A-Z and nothing starts selected;
+you pick. Ollama is turned on for model updates if it is off, and off
+again after.
 
 Options:
   -n, --dry-run     List available updates without installing anything
@@ -210,6 +220,11 @@ scan_updates() {
     spin "Checking apps installed without Homebrew..."
     load_update_rows < <(run_helper apps)
     unspin
+    if [[ -x "$MODELS_HELPER" ]]; then
+        spin "Checking Ollama models..."
+        load_update_rows < <("$MODELS_HELPER" updates 2> /dev/null || true)
+        unspin
+    fi
     spin "Checking macOS updates..."
     wait "$UPDATES_MACOS_PID" 2> /dev/null || true
     UPDATES_MACOS_PID=""
@@ -262,6 +277,7 @@ kind_label() {
         tool) printf 'Command-line tool' ;;
         feed) printf 'Own updater' ;;
         macos | macos-settings) printf 'macOS' ;;
+        model | model-hf) printf 'Ollama model' ;;
         *) printf '%s' "$1" ;;
     esac
 }
@@ -271,6 +287,7 @@ kind_short() {
     case "$1" in
         takeover) printf 'To Homebrew' ;;
         tool) printf 'CLI tool' ;;
+        model | model-hf) printf 'Ollama' ;;
         *) kind_label "$1" ;;
     esac
 }
@@ -381,6 +398,8 @@ update_action_text() {
         feed) printf "MoreMole opens the app, and the app's own updater installs the update after checking its signature." ;;
         macos) printf 'macOS installs it (softwareupdate --install). It asks for your password.' ;;
         macos-settings) printf 'It restarts the Mac, so MoreMole opens Software Update in System Settings instead of installing it.' ;;
+        model) printf 'Ollama downloads only the parts that changed (ollama pull %s). If Ollama is off, it is turned on for this and off again after.' "$id" ;;
+        model-hf) printf 'MoreMole downloads it again in full from Hugging Face, checks that the new version starts, and only then replaces the old one. If Ollama is off, it is turned on for this and off again after.' ;;
     esac
 }
 
@@ -399,6 +418,7 @@ update_details() {
         feed) detail_line "App" "${U_ID[i]}" ;;
         macos | macos-settings) detail_line "Label" "${U_ID[i]}" ;;
         store) detail_line "App Store ID" "${U_ID[i]}" ;;
+        model | model-hf) detail_line "Ollama name" "${U_ID[i]}" ;;
         *) detail_line "Homebrew name" "${U_ID[i]}" ;;
     esac
     detail_line "Bundle ID" "${U_BUNDLE[i]}"
@@ -440,7 +460,7 @@ select_updates() {
 
 confirm_updates() {
     local -a indices=("$@") hosts=()
-    local idx host installable=0 has_app=false has_takeover=false has_store=false has_macos=false has_settings=false has_feed=false
+    local idx host installable=0 has_app=false has_takeover=false has_store=false has_macos=false has_settings=false has_feed=false has_model=false has_model_hf=false
     echo -e "${PURPLE_BOLD}Updates to install:${NC}"
     for idx in "${indices[@]}"; do
         if is_host_update "$idx"; then
@@ -459,6 +479,8 @@ confirm_updates() {
             macos) has_macos=true ;;
             macos-settings) has_settings=true ;;
             feed) has_feed=true ;;
+            model) has_model=true ;;
+            model-hf) has_model_hf=true ;;
         esac
     done
     echo ""
@@ -479,6 +501,15 @@ confirm_updates() {
     fi
     if [[ "$has_feed" == "true" ]]; then
         echo -e "${GRAY}Apps with their own updater open at the end; it installs the update.${NC}"
+    fi
+    if [[ "$has_model" == "true" ]]; then
+        echo -e "${GRAY}Ollama models download only the parts that changed.${NC}"
+    fi
+    if [[ "$has_model_hf" == "true" ]]; then
+        echo -e "${GRAY}Models from Hugging Face download again in full, and replace the old version only once the new one starts.${NC}"
+    fi
+    if [[ "$has_model" == "true" || "$has_model_hf" == "true" ]]; then
+        echo -e "${GRAY}If Ollama is off, it is turned on for the models and off again after.${NC}"
     fi
     for host in "${hosts[@]+"${hosts[@]}"}"; do
         print_host_advice "${YELLOW}${ICON_WARNING}${NC} " "$host"
@@ -586,6 +617,11 @@ install_update() {
             SETTINGS_ITEMS+=("${U_NAME[idx]}")
             return 0
             ;;
+        model | model-hf)
+            # moremole-models.sh updates them all at once, after the rest.
+            MODEL_INDICES+=("$idx")
+            return 0
+            ;;
         feed)
             # The app's own updater checks the download's signature; opening
             # the app hands the update to it.
@@ -645,6 +681,40 @@ install_update() {
     printf '\n'
 }
 
+# Update the picked Ollama models with moremole-models.sh, which pulls each
+# one or downloads it again from Hugging Face, turning Ollama on and off as
+# needed, and logs each one in this session; then count its results here.
+install_model_updates() {
+    [[ ${#MODEL_INDICES[@]} -gt 0 ]] || return 0
+    local -a model_names=()
+    local idx results kind text done_count=0 rc=0
+    for idx in "${MODEL_INDICES[@]}"; do
+        model_names+=("${U_ID[idx]}")
+    done
+    results=$(create_temp_file)
+    MOREMOLE_MODELS_RESULTS="$results" "$MODELS_SCRIPT" --install-updates "${model_names[@]}" || rc=$?
+    if [[ ! -s "$results" ]]; then
+        # It stopped before saying how each went.
+        for idx in "${MODEL_INDICES[@]}"; do
+            total_failed=$((total_failed + 1))
+            UPDATE_FAILURES+=("${U_NAME[idx]}: the model update stopped (exit $rc)")
+            log_operation "$MOLE_CURRENT_COMMAND" "FAILED" "${U_NAME[idx]}" "the model update stopped (exit $rc)"
+        done
+        return 0
+    fi
+    while IFS=$'\t' read -r kind text || [[ -n "${kind:-}" ]]; do
+        case "$kind" in
+            done) [[ "$text" =~ ^[0-9]+$ ]] && done_count=$text ;;
+            failed)
+                total_failed=$((total_failed + 1))
+                UPDATE_FAILURES+=("$text")
+                ;;
+            note) MODEL_NOTES+=("$text") ;;
+        esac
+    done < "$results"
+    total_updated=$((total_updated + done_count))
+}
+
 # Why the last update failed: the tool's own error line, else which tool.
 update_failure_reason() {
     local error
@@ -665,6 +735,7 @@ install_updates() {
         [[ "$idx" =~ ^[0-9]+$ && $idx -lt ${#U_KIND[@]} ]] || continue
         install_update "$idx"
     done
+    install_model_updates
     if [[ ${#SETTINGS_ITEMS[@]} -gt 0 ]]; then
         "$UPDATES_OPEN" "$UPDATES_SETTINGS_URL" 2> /dev/null || true
         local item
@@ -727,6 +798,9 @@ show_updates_summary() {
         done
         details+=("Updated after replacing Homebrew's leftover copy: $(mole_terminal_safe_text "$retried")")
     fi
+    for item in "${MODEL_NOTES[@]+"${MODEL_NOTES[@]}"}"; do
+        details+=("$item")
+    done
     if [[ ${#OPENED_NAMES[@]} -gt 0 ]]; then
         local names="${OPENED_NAMES[0]}"
         for item in "${OPENED_NAMES[@]:1}"; do

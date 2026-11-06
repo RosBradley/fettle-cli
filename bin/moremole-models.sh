@@ -177,29 +177,33 @@ ensure_ollama() {
         return 1
     fi
     [[ "$OLLAMA_RUNNING" == "1" ]] && return 0
-    if ! interactive; then
+    if [[ "$MODE" == "install-updates" ]]; then
+        echo -e "${GRAY}Ollama is off; turning it on for the model updates, and off again after.${NC}"
+    elif ! interactive; then
         echo -e "${YELLOW}${ICON_WARNING}${NC} Ollama is off."
         echo "Open the Ollama app, then run moremole models again."
         return 1
     fi
-    if [[ "${MOLE_DRY_RUN:-0}" == "1" ]]; then
-        echo -e "${YELLOW}${ICON_WARNING}${NC} Ollama is off, and a dry run doesn't turn it on."
-        echo "Open the Ollama app, then run this again to see its models."
-        return 2
-    fi
-
-    echo -e "${GRAY}Ollama is off. It needs to be on to look at its models; it goes off again when this is done.${NC}"
-    echo -ne "${PURPLE}${ICON_ARROW}${NC} Turn Ollama on?  ${GREEN}Enter${NC} turn on, ${GRAY}ESC${NC} cancel: "
-    local key
-    IFS= read -r -s -n1 key || key="cancel"
-    printf '\n'
-    case "$key" in
-        "" | $'\n' | $'\r') ;;
-        *)
-            moremole_note_cancel
+    if [[ "$MODE" != "install-updates" ]]; then
+        if [[ "${MOLE_DRY_RUN:-0}" == "1" ]]; then
+            echo -e "${YELLOW}${ICON_WARNING}${NC} Ollama is off, and a dry run doesn't turn it on."
+            echo "Open the Ollama app, then run this again to see its models."
             return 2
-            ;;
-    esac
+        fi
+
+        echo -e "${GRAY}Ollama is off. It needs to be on to look at its models; it goes off again when this is done.${NC}"
+        echo -ne "${PURPLE}${ICON_ARROW}${NC} Turn Ollama on?  ${GREEN}Enter${NC} turn on, ${GRAY}ESC${NC} cancel: "
+        local key
+        IFS= read -r -s -n1 key || key="cancel"
+        printf '\n'
+        case "$key" in
+            "" | $'\n' | $'\r') ;;
+            *)
+                moremole_note_cancel
+                return 2
+                ;;
+        esac
+    fi
 
     if [[ -n "$OLLAMA_APP" ]]; then
         # The app starts the service with its own settings, such as where
@@ -1195,6 +1199,63 @@ run_update() {
     show_summary "Models updated" "Updated"
 }
 
+# The Hugging Face model a model was added from by MoreMole, or nothing.
+hf_record_repo() {
+    local line
+    [[ -f "$HF_RECORD" ]] || return 0
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        if [[ "${line%%$'\t'*}" == "$1" ]]; then
+            line="${line#*$'\t'}"
+            printf '%s' "${line%%$'\t'*}"
+            return 0
+        fi
+    done < "$HF_RECORD"
+}
+
+# For Software updates (bin/moremole-updates.sh), which already listed and
+# confirmed these models: update each, as Ollama model updates would. Its
+# session holds the log rows; the results go to the file it names in
+# MOREMOLE_MODELS_RESULTS for its summary, one line each: "done<TAB>count",
+# "failed<TAB>name: reason" or "note<TAB>text".
+run_install_updates() {
+    local -a chosen=() from_hf=()
+    local name repo
+    for name in "$@"; do
+        repo=$(hf_record_repo "$name")
+        if [[ "$repo" =~ $HF_REPO_RE ]]; then
+            from_hf+=("$name"$'\t'"$repo")
+        else
+            chosen+=("$name")
+        fi
+    done
+    PROGRESS_TOTAL=$#
+    [[ ${#chosen[@]} -eq 0 ]] || pull_models "updated" "${chosen[@]}"
+    if [[ ${#from_hf[@]} -gt 0 ]]; then
+        MOREMOLE_RUN_ERRORS=$(create_temp_file)
+        update_from_hf "${from_hf[@]}"
+    fi
+    turn_off_if_started
+    local dir
+    for dir in "${HF_KEPT[@]+"${HF_KEPT[@]}"}"; do
+        SUMMARY_NOTES+=("The downloaded part is kept in $(mole_terminal_safe_text "$dir"), so trying again continues; delete that folder to free the space instead")
+    done
+}
+
+# Hand the results of run_install_updates to Software updates.
+write_install_results() {
+    local file="${MOREMOLE_MODELS_RESULTS:-}" item
+    [[ -n "$file" ]] || return 0
+    {
+        printf 'done\t%s\n' "$total_done"
+        for item in "${FAILURES[@]+"${FAILURES[@]}"}"; do
+            printf 'failed\t%s\n' "$item"
+        done
+        for item in "${SUMMARY_NOTES[@]+"${SUMMARY_NOTES[@]}"}"; do
+            printf 'note\t%s\n' "$item"
+        done
+    } > "$file"
+}
+
 # Show a pick list; PICKED holds the picked indices. Callers set the list's
 # MOLE_MENU_* options as locals.
 PICKED=()
@@ -1630,7 +1691,10 @@ run_huggingface() {
 
 main() {
     local arg
-    for arg in "$@"; do
+    local -a install_names=()
+    while [[ $# -gt 0 ]]; do
+        arg="$1"
+        shift
         case "$arg" in
             "--help" | "-h")
                 show_models_help
@@ -1641,6 +1705,12 @@ main() {
             "--remove") MODE="remove" ;;
             "--download") MODE="download" ;;
             "--huggingface") MODE="huggingface" ;;
+            # Software updates' own: the models it listed and the user confirmed.
+            "--install-updates")
+                MODE="install-updates"
+                install_names=("$@")
+                break
+                ;;
             *)
                 echo "Unknown option: $arg" >&2
                 echo "Use 'moremole models --help' for supported options." >&2
@@ -1659,6 +1729,21 @@ main() {
     fi
 
     local rc=0
+    if [[ "$MODE" == "install-updates" ]]; then
+        [[ ${#install_names[@]} -gt 0 && "${MOLE_DRY_RUN:-0}" != "1" ]] || return 0
+        if ensure_ollama; then
+            run_install_updates "${install_names[@]}"
+        else
+            for arg in "${install_names[@]}"; do
+                FAILURES+=("$arg: Ollama didn't start")
+                log_operation "$MOLE_CURRENT_COMMAND" "FAILED" "$arg" "Ollama didn't start"
+            done
+            total_failed=${#install_names[@]}
+        fi
+        write_install_results
+        [[ $total_failed -eq 0 ]] && return 0
+        return 1
+    fi
     ensure_ollama || rc=$?
     case "$rc" in
         0) ;;

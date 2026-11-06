@@ -274,6 +274,46 @@ func (f *fakeHF) serveRepo(repo, sha string, files map[string][]byte, extra ...s
 	f.api["/api/models/"+repo+"?blobs=true"] = string(info)
 }
 
+func TestHFDownloadTakesOnlyTheWeightsTheIndexNames(t *testing.T) {
+	f := useFakeHF(t)
+	f.serveRepo("someone/Two-Sets", testSHA, map[string][]byte{
+		"config.json":                      []byte(`{"model_type":"qwen3_5"}`),
+		"model-00001-of-00002.safetensors": bytes.Repeat([]byte("a"), 100),
+		"model-00002-of-00002.safetensors": bytes.Repeat([]byte("b"), 100),
+		"model-00001-of-00003.safetensors": bytes.Repeat([]byte("c"), 70),
+		"model-00002-of-00003.safetensors": bytes.Repeat([]byte("d"), 70),
+		"model-00003-of-00003.safetensors": bytes.Repeat([]byte("e"), 70),
+		hfIndexName:                        []byte(`{"weight_map":{"x.weight":"model-00001-of-00002.safetensors","y.weight":"model-00002-of-00002.safetensors"}}`),
+	})
+	lines := hfFilesLines([]string{"someone/Two-Sets"})
+	// config.json and the index (132 bytes) and the two parts it names
+	// (200); the three-part set (210) is left out.
+	if len(lines) != 1 || fields(lines[0])[3] != "332" || fields(lines[0])[4] != "4" {
+		t.Fatalf("files %q", lines)
+	}
+	dir := t.TempDir()
+	var out bytes.Buffer
+	if err := hfDownload("someone/Two-Sets", testSHA, dir, &out); err != nil {
+		t.Fatalf("download: %v\n%s", err, out.String())
+	}
+	if _, err := os.Stat(filepath.Join(dir, "model-00001-of-00003.safetensors")); err == nil {
+		t.Error("a part the index doesn't name was downloaded")
+	}
+	if _, err := os.Stat(filepath.Join(dir, "model-00002-of-00002.safetensors")); err != nil {
+		t.Error("a part the index names is missing")
+	}
+
+	// An index naming a part the model doesn't have stops the download.
+	f.serveRepo("someone/Broken-Index", testSHA, map[string][]byte{
+		"config.json":       []byte(`{"model_type":"qwen3_5"}`),
+		"model.safetensors": []byte("w"),
+		hfIndexName:         []byte(`{"weight_map":{"x":"model-00009-of-00009.safetensors"}}`),
+	})
+	if lines := hfFilesLines([]string{"someone/Broken-Index"}); len(lines) != 1 || !strings.Contains(lines[0], "model-00009-of-00009.safetensors, which the model doesn't have") {
+		t.Errorf("broken index %q", lines)
+	}
+}
+
 func TestHFDownloadChecksEveryFileFillsTheQuantizationModeAndContinuesAPartialFile(t *testing.T) {
 	f := useFakeHF(t)
 	weights := bytes.Repeat([]byte("w"), 5000)
