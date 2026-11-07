@@ -65,6 +65,7 @@ M_MODIFIED=()
 M_STATUS=()
 M_LOADED=()
 M_REPO=()
+M_MLX=()
 # Models in Ollama's library.
 L_NAME=()
 L_CAPS=()
@@ -277,11 +278,12 @@ print_notices() {
     [[ ${#NOTICE_TEXTS[@]} -eq 0 ]] || printf '\n'
 }
 
-# Read installed models ("model name size modified status loaded repo");
-# repo is the Hugging Face model it was added from by MoreMole.
+# Read installed models ("model name size modified status loaded repo mlx");
+# repo is the Hugging Face model it was added from by MoreMole, and mlx is 1
+# for a model Ollama runs on its MLX engine.
 load_models() {
-    local kind name size modified status loaded repo
-    while IFS="$MODELS_FIELD_SEP" read -r kind name size modified status loaded repo || [[ -n "${kind:-}" ]]; do
+    local kind name size modified status loaded repo mlx
+    while IFS="$MODELS_FIELD_SEP" read -r kind name size modified status loaded repo mlx || [[ -n "${kind:-}" ]]; do
         case "$kind" in
             notice) add_notice "$name" "$size" ;;
             model)
@@ -291,6 +293,7 @@ load_models() {
                 M_STATUS+=("$status")
                 M_LOADED+=("${loaded:-0}")
                 M_REPO+=("${repo:-}")
+                M_MLX+=("${mlx:-0}")
                 ;;
         esac
     done
@@ -508,10 +511,11 @@ name_width() {
     printf '%s' "$width"
 }
 
-# An installed model: its status first, then name, size, and whether it's in
-# use or came from Hugging Face.
+# An installed model: its status first, on Apple silicon MLX when Ollama runs
+# it on its MLX engine, then name, size, and whether it's in use or came from
+# Hugging Face.
 model_row_text() {
-    local i="$1" width="$2" extra
+    local i="$1" width="$2" extra mlx=""
     size_text "${M_SIZE[i]}"
     extra="$TEXT"
     [[ "${M_LOADED[i]}" != "1" ]] || extra+=" · in use"
@@ -519,6 +523,10 @@ model_row_text() {
     ROW=""
     status_text "${M_STATUS[i]}" short
     cell "$TEXT" 10
+    if [[ "${MODELS_APPLE_SILICON:-0}" == "1" ]]; then
+        [[ "${M_MLX[i]:-0}" != "1" ]] || mlx="MLX"
+        cell "$mlx" 3
+    fi
     cell "${M_NAME[i]}" "$width"
     ROW+="  $extra"
 }
@@ -529,6 +537,7 @@ COLUMNS_HEADER=""
 model_header() {
     ROW=""
     cell "Status" 10
+    [[ "${MODELS_APPLE_SILICON:-0}" != "1" ]] || cell "MLX" 3
     cell "Name" "$1"
     ROW+="  Size"
     COLUMNS_HEADER="$ROW"
@@ -738,11 +747,12 @@ hf_name_width() {
     printf '%s' "$room"
 }
 
-# A version: installed or default and its memory fit first, then name, size,
+# A version: installed or latest (what the model's name alone downloads,
+# which Ollama tags latest) and its memory fit first, then name, size,
 # context window, input, and MLX.
 tag_row_text() {
     local i="$1" width="$2" status=""
-    [[ "${T_DEFAULT[i]}" != "1" ]] || status="default"
+    [[ "${T_DEFAULT[i]}" != "1" ]] || status="latest"
     [[ "${T_INSTALLED[i]}" != "1" ]] || status="installed"
     ROW=""
     cell "$status" 9
@@ -837,6 +847,11 @@ installed_details() {
     status_text "${M_STATUS[i]}"
     detail_line "Status" "$TEXT"
     detail_line "Size on disk" "$(human_size "${M_SIZE[i]}")"
+    if [[ "${M_MLX[i]:-0}" == "1" ]]; then
+        detail_line "Runs on" "Ollama's MLX engine, for Apple silicon"
+    else
+        detail_line "Runs on" "Ollama's standard engine (GGUF), not MLX"
+    fi
     detail_line "Changed" "$(date_text "${M_MODIFIED[i]}")"
     detail_line "In use" "$in_use"
     if [[ -n "${M_REPO[i]:-}" ]]; then
@@ -1197,11 +1212,9 @@ run_update() {
         names+=("${M_NAME[i]}")
         repos+=("${M_REPO[i]:-}")
     done
-    local -a sizes_kb=() ranks=() search=()
+    local -a sizes_kb=() search=()
     for i in "${updates[@]}"; do
         sizes_kb+=("$((${M_SIZE[i]:-0} / 1024))")
-        status_rank "${M_STATUS[i]}"
-        ranks+=("$TEXT")
         search+=("${M_NAME[i]}")
     done
     local MOLE_MENU_META_SIZEKB MOLE_MENU_FILTER_NAMES
@@ -1210,9 +1223,8 @@ run_update() {
         printf '%s' "${sizes_kb[*]}"
     )
     MOLE_MENU_FILTER_NAMES=$(printf '%s\n' "${search[@]}")
-    local -a MOLE_MENU_SORT_COLUMNS=("Status|num" "Name|name" "Size|size") MOLE_MENU_SORT_KEYS=()
-    sort_keys "${ranks[@]}"
-    MOLE_MENU_SORT_KEYS[0]="$TEXT"
+    local -a MOLE_MENU_SORT_COLUMNS=() MOLE_MENU_SORT_KEYS=()
+    installed_columns "${updates[@]}"
     local MOLE_MENU_SORT_MODE=name MOLE_MENU_SORT_REVERSE=false
     DETAILS_KIND=installed
     DETAILS_MAP=("${updates[@]}")
@@ -1336,6 +1348,30 @@ fit_rank() {
     esac
 }
 
+# The sortable columns of a list of installed models (M_ indices): Status,
+# updates first; on Apple silicon MLX, where Enter shows only MLX models;
+# Name and Size. Callers declare MOLE_MENU_SORT_COLUMNS and
+# MOLE_MENU_SORT_KEYS local.
+installed_columns() {
+    local i
+    local -a ranks=() mlx=()
+    for i in "$@"; do
+        status_rank "${M_STATUS[i]}"
+        ranks+=("$TEXT")
+        mlx+=("${M_MLX[i]:-0}")
+    done
+    MOLE_MENU_SORT_COLUMNS=("Status|num")
+    MOLE_MENU_SORT_KEYS=()
+    sort_keys "${ranks[@]}"
+    MOLE_MENU_SORT_KEYS[0]="$TEXT"
+    if [[ "${MODELS_APPLE_SILICON:-0}" == "1" ]]; then
+        MOLE_MENU_SORT_COLUMNS+=("MLX|filter")
+        sort_keys "${mlx[@]}"
+        MOLE_MENU_SORT_KEYS[1]="$TEXT"
+    fi
+    MOLE_MENU_SORT_COLUMNS+=("Name|name" "Size|size")
+}
+
 # Show a pick list; PICKED holds the picked indices. Callers set the list's
 # MOLE_MENU_* options as locals. Lists with a heading line also name their
 # sortable columns (MOLE_MENU_SORT_COLUMNS, MOLE_MENU_SORT_KEYS), which
@@ -1376,14 +1412,11 @@ pick_to_remove() {
         printf '%s' "${epochs[*]}"
     )
     MOLE_MENU_FILTER_NAMES=$(printf '%s\n' "${M_NAME[@]}")
-    local -a ranks=()
+    local -a MOLE_MENU_SORT_COLUMNS=() MOLE_MENU_SORT_KEYS=() all=()
     for ((i = 0; i < ${#M_NAME[@]}; i++)); do
-        status_rank "${M_STATUS[i]}"
-        ranks+=("$TEXT")
+        all+=("$i")
     done
-    local -a MOLE_MENU_SORT_COLUMNS=("Status|num" "Name|name" "Size|size") MOLE_MENU_SORT_KEYS=()
-    sort_keys "${ranks[@]}"
-    MOLE_MENU_SORT_KEYS[0]="$TEXT"
+    installed_columns "${all[@]}"
     local MOLE_MENU_SORT_MODE=name MOLE_MENU_SORT_REVERSE=false _MOLE_MENU_SELECT_ALL=true
     DETAILS_KIND=installed
     DETAILS_MAP=()
@@ -1402,18 +1435,21 @@ LIB_SEARCH=""
 LIB_FILTERS=""
 LIB_ITEM=""
 LIB_ORDER=""
+LIB_HEADINGS=""
 HFL_SORT_MODE=name
 HFL_SORT_REVERSE=false
 HFL_SEARCH=""
 HFL_FILTERS=""
 HFL_ITEM=""
 HFL_ORDER=""
+HFL_HEADINGS=""
 # The versions list on a model's screen keeps its sort and filters from one
 # model to the next, opening smallest first.
 VER_SORT_MODE=size
 VER_SORT_REVERSE=true
 VER_FILTERS=""
 VER_ITEM=""
+VER_HEADINGS=""
 # What a model's screen asked for: prev, next, download, add, or back.
 SCREEN_ACTION=""
 # Whether this run has started its operation-log session.
@@ -1463,7 +1499,7 @@ pick_library_model() {
     fi
     MOLE_MENU_SORT_COLUMNS+=("Name|name" "Size|size" "Pulls|count" "Updated|date:desc")
     local MOLE_MENU_SORT_MODE="$LIB_SORT_MODE" MOLE_MENU_SORT_REVERSE="$LIB_SORT_REVERSE"
-    local MOLE_MENU_SEARCH="$LIB_SEARCH" MOLE_MENU_COLUMN_FILTERS="$LIB_FILTERS" MOLE_MENU_START_ITEM="$LIB_ITEM" MOLE_MENU_VIEW_ORDER=""
+    local MOLE_MENU_SEARCH="$LIB_SEARCH" MOLE_MENU_COLUMN_FILTERS="$LIB_FILTERS" MOLE_MENU_START_ITEM="$LIB_ITEM" MOLE_MENU_VIEW_ORDER="" MOLE_MENU_HEADINGS_USED="$LIB_HEADINGS"
     local MOLE_MENU_SINGLE=true MOLE_MENU_ENTER_LABEL="Versions" MOLE_MENU_CANCEL_LABEL="Done"
     local title="Ollama's library"
     [[ "${MODELS_APPLE_SILICON:-0}" != "1" ]] || title+="; MLX: has versions for Apple silicon"
@@ -1472,7 +1508,7 @@ pick_library_model() {
     pick "$title" "$@" || rc=$?
     LIB_SORT_MODE="$MOLE_MENU_SORT_MODE" LIB_SORT_REVERSE="$MOLE_MENU_SORT_REVERSE"
     LIB_SEARCH="$MOLE_MENU_SEARCH" LIB_FILTERS="$MOLE_MENU_COLUMN_FILTERS"
-    LIB_ITEM="$MOLE_MENU_START_ITEM" LIB_ORDER="$MOLE_MENU_VIEW_ORDER"
+    LIB_ITEM="$MOLE_MENU_START_ITEM" LIB_ORDER="$MOLE_MENU_VIEW_ORDER" LIB_HEADINGS="$MOLE_MENU_HEADINGS_USED"
     return "$rc"
 }
 
@@ -1497,6 +1533,7 @@ model_intro() {
     [[ -z "$TEXT" ]] || parts="Can do: ${TEXT// /, }"
     parts+="${parts:+ · }$(model_page "${L_NAME[i]}")"
     printf '%s%s%s\n' "$GRAY" "$(truncate_by_display_width "$parts" "$width")" "$NC"
+    printf '%s%s%s\n' "$GRAY" "$(truncate_by_display_width "latest: the version ollama pull ${L_NAME[i]} downloads" "$width")" "$NC"
     if [[ "$failed" == "true" ]]; then
         printf '%s%s%s\n' "$YELLOW" "$(truncate_by_display_width "Couldn't read its versions page, so its sizes are listed without details." "$width")" "$NC"
     fi
@@ -1526,7 +1563,7 @@ versions_screen() {
         rows+=("$ROW")
         words="${T_NAME[j]} ${T_INPUT[j]//,/}"
         [[ "${T_MLX[j]}" != "1" ]] || words+=" mlx"
-        [[ "${T_DEFAULT[j]}" != "1" ]] || words+=" default"
+        [[ "${T_DEFAULT[j]}" != "1" ]] || words+=" latest"
         [[ "${T_INSTALLED[j]}" != "1" ]] || words+=" installed"
         search+=("$words")
         sizes_kb+=("$((${T_BYTES[j]:-0} / 1024))")
@@ -1559,7 +1596,7 @@ versions_screen() {
         MOLE_MENU_SORT_KEYS[4]="$TEXT"
     fi
     local MOLE_MENU_SORT_MODE="$VER_SORT_MODE" MOLE_MENU_SORT_REVERSE="$VER_SORT_REVERSE"
-    local MOLE_MENU_SEARCH="" MOLE_MENU_COLUMN_FILTERS="$VER_FILTERS" MOLE_MENU_START_ITEM="$VER_ITEM" MOLE_MENU_VIEW_ORDER=""
+    local MOLE_MENU_SEARCH="" MOLE_MENU_COLUMN_FILTERS="$VER_FILTERS" MOLE_MENU_START_ITEM="$VER_ITEM" MOLE_MENU_VIEW_ORDER="" MOLE_MENU_HEADINGS_USED="$VER_HEADINGS"
     local MOLE_MENU_SIDE_RETURN=true MOLE_MENU_SIDE_LABEL="Other model" MOLE_MENU_ENTER_LABEL="Download" MOLE_MENU_CANCEL_LABEL="Back"
     local PICK_KEEP_EMPTY=false
     DETAILS_KIND=""
@@ -1567,7 +1604,7 @@ versions_screen() {
     local rc=0
     pick "$name" "${rows[@]}" || rc=$?
     VER_SORT_MODE="$MOLE_MENU_SORT_MODE" VER_SORT_REVERSE="$MOLE_MENU_SORT_REVERSE"
-    VER_FILTERS="$MOLE_MENU_COLUMN_FILTERS" VER_ITEM="$MOLE_MENU_START_ITEM"
+    VER_FILTERS="$MOLE_MENU_COLUMN_FILTERS" VER_ITEM="$MOLE_MENU_START_ITEM" VER_HEADINGS="$MOLE_MENU_HEADINGS_USED"
     case "$MOLE_MENU_ACTION" in
         prev | next) SCREEN_ACTION="$MOLE_MENU_ACTION" ;;
         save) if [[ $rc -eq 0 ]]; then SCREEN_ACTION=download; else SCREEN_ACTION=back; fi ;;
@@ -1742,14 +1779,14 @@ pick_hf_model() {
     sort_keys "${bits[@]}"
     MOLE_MENU_SORT_KEYS[2]="$TEXT"
     local MOLE_MENU_SORT_MODE="$HFL_SORT_MODE" MOLE_MENU_SORT_REVERSE="$HFL_SORT_REVERSE"
-    local MOLE_MENU_SEARCH="$HFL_SEARCH" MOLE_MENU_COLUMN_FILTERS="$HFL_FILTERS" MOLE_MENU_START_ITEM="$HFL_ITEM" MOLE_MENU_VIEW_ORDER=""
+    local MOLE_MENU_SEARCH="$HFL_SEARCH" MOLE_MENU_COLUMN_FILTERS="$HFL_FILTERS" MOLE_MENU_START_ITEM="$HFL_ITEM" MOLE_MENU_VIEW_ORDER="" MOLE_MENU_HEADINGS_USED="$HFL_HEADINGS"
     local MOLE_MENU_SINGLE=true MOLE_MENU_ENTER_LABEL="Details" MOLE_MENU_CANCEL_LABEL="Done"
     DETAILS_KIND=""
     local rc=0
     pick "MLX models on Hugging Face" "$@" || rc=$?
     HFL_SORT_MODE="$MOLE_MENU_SORT_MODE" HFL_SORT_REVERSE="$MOLE_MENU_SORT_REVERSE"
     HFL_SEARCH="$MOLE_MENU_SEARCH" HFL_FILTERS="$MOLE_MENU_COLUMN_FILTERS"
-    HFL_ITEM="$MOLE_MENU_START_ITEM" HFL_ORDER="$MOLE_MENU_VIEW_ORDER"
+    HFL_ITEM="$MOLE_MENU_START_ITEM" HFL_ORDER="$MOLE_MENU_VIEW_ORDER" HFL_HEADINGS="$MOLE_MENU_HEADINGS_USED"
     return "$rc"
 }
 

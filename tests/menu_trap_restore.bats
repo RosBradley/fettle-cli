@@ -375,6 +375,8 @@ def run(keys, tag):
 out, err = run('ENTER', 'plain')
 assert 'result=1' in out, out
 assert 'Name▲' in ansi.sub('', err), err
+# Until S is used, the heading line says how to sort.
+assert 'S: sort by a column' in ansi.sub('', err), err
 
 # Up, Right to Size, Enter sorts largest first, as its spec says.
 out, err = run('CHAR:s RIGHT ENTER DOWN ENTER', 'size')
@@ -437,7 +439,7 @@ MOLE_MENU_SEARCH="$SEARCH"
 MOLE_MENU_START_ITEM="$START"
 rc=0
 paginated_multi_select Pick "beta    MLX" "alpha" "gamma   MLX" "delta" || rc=$?
-echo "rc=$rc result=$MOLE_SELECTION_RESULT action=$MOLE_MENU_ACTION start=$MOLE_MENU_START_ITEM search=$MOLE_MENU_SEARCH filters=$MOLE_MENU_COLUMN_FILTERS order=$MOLE_MENU_VIEW_ORDER"
+echo "rc=$rc result=$MOLE_SELECTION_RESULT action=$MOLE_MENU_ACTION start=$MOLE_MENU_START_ITEM search=$MOLE_MENU_SEARCH filters=$MOLE_MENU_COLUMN_FILTERS order=$MOLE_MENU_VIEW_ORDER headings=$MOLE_MENU_HEADINGS_USED"
 """
 ansi = re.compile(r'\x1b\[[0-?]*[ -/]*[@-~]')
 
@@ -467,7 +469,7 @@ assert '○' not in err and '4 of 4' in err and 'Enter Open' in err, err
 
 # Enter on a filter heading shows only its rows, and says so.
 out, err = run('CHAR:s RIGHT ENTER DOWN ENTER', 'filter', SINGLE='true')
-assert 'result=0' in out and 'filters=MLX' in out and 'order=0,2' in out, out
+assert 'result=0' in out and 'filters=MLX' in out and 'order=0,2' in out and 'headings=true' in out, out
 assert 'MLX only · 2 of 4' in err and 'MLX●' in err and 'Enter Show only MLX' in err, err
 
 # Left and Right return to the caller, with the list's state.
@@ -477,8 +479,9 @@ assert '← → Other row' in err, err
 
 # Intro lines sit above the search line; a reopened list keeps its search
 # and puts the cursor on the row it was on.
-out, err = run('ENTER', 'reopen', SINGLE='true', INTRO='About these rows', SEARCH='a', START='3')
-assert 'result=3' in out and 'search=a' in out, out
+out, err = run('ENTER', 'reopen', SINGLE='true', INTRO='About these rows', SEARCH='a', START='3', MOLE_MENU_HEADINGS_USED='true')
+assert 'result=3' in out and 'search=a' in out and 'headings=true' in out, out
+assert 'S: sort by a column' not in err, err
 lines = [l for l in err.replace('\r', '\n').split('\n') if l.strip()]
 assert lines[1] == 'About these rows' and lines[2].startswith('/ Search: a'), lines[:4]
 print('ok')

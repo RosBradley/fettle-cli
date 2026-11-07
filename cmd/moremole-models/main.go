@@ -17,7 +17,7 @@
 // separated by the ASCII unit separator (0x1f) so empty fields survive a
 // shell read:
 //
-//	list:     model  name  size  modified  status  loaded  hf-repo
+//	list:     model  name  size  modified  status  loaded  hf-repo  mlx
 //	library:  model  name  capabilities  pulls  updated  installed  sizes  mlx  bytes  description
 //	tags:     tag    name  bytes  size  context  input  mlx  default  installed
 //	size:     size   name  bytes
@@ -37,6 +37,7 @@
 // Unix seconds; sizes are bytes, 0 when unknown. In library, sizes are the
 // size tags a model comes in (8b,70b) and installed is 1 when any version
 // is installed, and on Apple silicon mlx is how many MLX versions it has
+// (in list, mlx is 1 for a model Ollama runs on its MLX engine)
 // (empty when unknown). bytes is the download size of the version the
 // model's name alone downloads, from its tags page, 0 when unknown. hf-repo is the Hugging Face model a model was added
 // from by MoreMole, whose status then compares it with Hugging Face. In tags, size is as the page shows it ("6.6GB - 7.6GB"),

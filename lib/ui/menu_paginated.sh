@@ -204,6 +204,9 @@ paginated_multi_select() {
     # reverses, Down goes back to the list.
     local -a sort_col_label=() sort_col_pos=() sort_col_mode=() sort_col_type=() sort_col_first=() sort_col_keys=() col_filter_on=()
     local sort_col_count=0 header_focus=false header_col=0
+    # Until S is used in this list, the heading line ends with a hint that
+    # says how to sort; MOLE_MENU_HEADINGS_USED carries that across reopens.
+    local headings_used="${MOLE_MENU_HEADINGS_USED:-false}"
     if [[ -n "$column_header" ]]; then
         local _spec _label _mode _dir _from=0 _rest _prefix _s=0 _k
         local -a _keys=()
@@ -677,6 +680,7 @@ paginated_multi_select() {
         export MOLE_MENU_COLUMN_FILTERS="$_filters"
         export MOLE_MENU_VIEW_ORDER="$_order"
         export MOLE_MENU_START_ITEM="${view_indices[top_index + cursor_pos]:-}"
+        export MOLE_MENU_HEADINGS_USED="$headings_used"
     }
 
     render_item() {
@@ -870,6 +874,11 @@ paginated_multi_select() {
             fi
         done
         out+="${plain:prev}"
+        # The hint, when it fits the row after the headings.
+        local hint="S: sort by a column"
+        if [[ "$headings_used" != true && "$header_focus" != true ]] && ((limit == 0 || ${#plain} + 4 + ${#hint} <= limit)); then
+            out+="    ${NC}"$'\033[2m'"${hint}${NC}${GRAY}"
+        fi
         printf '%s' "$out"
     }
 
@@ -964,7 +973,7 @@ paginated_multi_select() {
         local order_ctrl="${GRAY}O ${reverse_arrow}${NC}"
         # MoreMole: a list with sortable headings sorts from them; S goes there.
         if ((sort_col_count > 0)); then
-            sort_ctrl="${GRAY}S Sort${NC}"
+            sort_ctrl="${GRAY}S Sort by column${NC}"
             order_ctrl=""
         fi
         local side_ctrl=""
@@ -1156,6 +1165,7 @@ paginated_multi_select() {
         # headings; they replace S and O's own sorting there.
         if [[ ("$key" == "CHAR:s" || "$key" == "CHAR:S") && -z "${MOLE_READ_KEY_FORCE_CHAR:-}" && "$header_focus" != true && $sort_col_count -gt 0 ]]; then
             header_focus=true
+            headings_used=true
             header_col=0
             local _c
             for ((_c = 0; _c < sort_col_count; _c++)); do

@@ -358,8 +358,8 @@ library_models() {
 @test "a model's screen lists its versions, Enter downloads one, and Right shows the next model" {
 	library_models
 	printf 'mlx=1\n' >> "$ROWS_DIR/status"
-	row tags tag gemma3:27b 17000000000 17GB 128K "Text, Image" 0 0 0
-	row tags tag gemma3:4b 3300000000 3.3GB 128K "Text, Image" 0 1 1
+	row tags tag gemma3:27b 17000000000 17GB 128K "Text, Image" 0 1 0
+	row tags tag gemma3:4b 3300000000 3.3GB 128K "Text, Image" 0 0 1
 	row tags tag gemma3:4b-mlx 3500000000 3.5GB 128K "Text, Image" 1 0 0
 	row tags tag llama3.1:405b 243000000000 243GB 128K Text 0 0 0
 	# The library A-Z: gemma3, llama3.1. Enter opens gemma3, whose versions
@@ -379,9 +379,10 @@ library_models() {
 	[[ "$output" == *"installed  MLX  gemma3"*"3.30GB  1b–27b"*"30.1M  2026-09-21"* ]] || return 1
 	[[ "$output" == *"Enter Versions"* ]] || return 1
 	# The model's screen: who makes it, its description, then its versions.
-	[[ "$output" == *"Google (United States) · 30.1M pulls · updated "*"Gemma 3 from Google."*"Can do: vision · https://ollama.com/library/gemma3"* ]] || return 1
+	[[ "$output" == *"Google (United States) · 30.1M pulls · updated "*"Gemma 3 from Google."*"Can do: vision · https://ollama.com/library/gemma3"*"latest: the version ollama pull gemma3 downloads"* ]] || return 1
 	[[ "$output" == *"Status     Memory   Version"*"Size"*"Context"*"Input"*"MLX"* ]] || return 1
 	[[ "$output" == *"installed  fits     gemma3:4b "*"3.3GB"*"128K"*"Text, Image"* ]] || return 1
+	[[ "$output" == *"latest     too big  gemma3:27b"* ]] || return 1
 	[[ "$output" == *"Enter Download"*"← → Other model"*"Q Back"* ]] || return 1
 	[[ "$output" == *"Download:"*"gemma3:27b"*"17.00GB · too big for 17.18GB memory"*"Download 1 version, up to 17.00GB"* ]] || return 1
 	[[ "$output" == *"Meta (United States) · 120.6M pulls"*"llama3.1:405b"* ]] || return 1
@@ -505,7 +506,7 @@ hf_models() {
 		printf "\033" | main --huggingface
 	' bash "$PROJECT_ROOT/bin/moremole-models.sh" "$SCRIPTED"
 	[ "$status" -eq 0 ] || { echo "$output"; return 1; }
-	[[ "$output" == *"S Sort"* && "$output" != *"S Downloads"* ]] || return 1
+	[[ "$output" == *"S Sort by column"* && "$output" != *"S Downloads"* ]] || return 1
 	[[ "$output" == *"Add from Hugging Face:"*"someone/Gemma-4-nochat-bf16"* ]] || return 1
 
 	# The library: S, then Right Right Right to Pulls (Status, MLX, Name,
@@ -513,13 +514,15 @@ hf_models() {
 	library_models
 	: > "$KEY_STATE"
 	printf '%s\n' CHAR:s RIGHT RIGHT ENTER DOWN ENTER QUIT QUIT > "$KEYS_FILE"
-	run models_env /bin/bash -c '
+	run models_env COLUMNS=160 /bin/bash -c '
 		source "$1"
 		eval "$2"
 		main --download
 	' bash "$PROJECT_ROOT/bin/moremole-models.sh" "$SCRIPTED"
 	[ "$status" -eq 0 ] || { echo "$output"; return 1; }
 	[[ "$(printf '%s' "$output" | sed $'s/\033\\[[0-9;]*m//g')" == *"Pulls▼"* ]] || return 1
+	# A wide window leaves room for the hint after the headings.
+	[[ "$output" == *"S: sort by a column"* ]] || return 1
 	[ "$(cat "$ROWS_DIR/tags-asked")" = "llama3.1" ] || { cat "$ROWS_DIR/tags-asked"; return 1; }
 }
 
@@ -603,7 +606,7 @@ ollama rm hf.co/someone/gemma-4-nochat-bf16-moremole-check" ] || { cat "$CALLS";
 	mkdir -p "$HOME/.config/mole"
 	printf 'hf.co/me/m-4bit:latest\tme/M-4bit\t%s\nother:latest\tme/Other\t%s\n' "$HF_SHA" "$HF_SHA" > "$HOME/.config/mole/moremole-hf-models"
 	row list-check model gemma3:4b 3300000000 1790848800 update 0 ""
-	row list-check model hf.co/me/m-4bit:latest 5000000000 1790848800 update 0 me/M-4bit
+	row list-check model hf.co/me/m-4bit:latest 5000000000 1790848800 update 0 me/M-4bit 1
 	row hf-files files me/M-4bit "$HF_NEW" 5100000000 3 hf.co/me/m-4bit
 	printf 'mlx=1\n' >> "$ROWS_DIR/status"
 	printf '%s\n' SPACE DOWN SPACE CHAR:d > "$KEYS_FILE"
@@ -613,7 +616,7 @@ ollama rm hf.co/someone/gemma-4-nochat-bf16-moremole-check" ] || { cat "$CALLS";
 		printf "\n" | main
 	' bash "$PROJECT_ROOT/bin/moremole-models.sh" "$SCRIPTED"
 	[ "$status" -eq 0 ] || { echo "$output"; return 1; }
-	[[ "$output" == *"update      hf.co/me/m-4bit:latest"*"from Hugging Face"* ]] || return 1
+	[[ "$output" == *"update      MLX  hf.co/me/m-4bit:latest"*"from Hugging Face"* ]] || return 1
 	[[ "$output" == *"Models to update:"*"gemma3:4b"*"hf.co/me/m-4bit:latest "*"from Hugging Face"* ]] || return 1
 	[[ "$output" == *"Ollama downloads only the parts that changed."*"Models from Hugging Face download again in full, and replace the old version only once the new one starts."* ]] || return 1
 	[[ "$(cat "$CALLS")" == "ollama pull gemma3:4b
@@ -705,4 +708,30 @@ note	Ollama was off, so it is off again" ] || { cat "$results"; return 1; }
 	[[ "$(printf '%s' "$output" | sed $'s/\033\\[[0-9;]*m//g')" == *"Bits▼"* ]] || return 1
 	[[ "$output" == *"Add from Hugging Face:"*"someone/Gemma-4-nochat-bf16"* ]] || return 1
 	[[ "$output" != *"Add from Hugging Face:"*"mlx-community/Qwen3.5-9B-4bit "*"· as"* ]]
+}
+
+@test "on Apple silicon your models say which run on MLX, and Enter on the MLX heading shows only those" {
+	printf 'mlx=1\n' >> "$ROWS_DIR/status"
+	row list-check model deepseek-r1:70b 42520000000 1790848800 update 0 "" 0
+	row list-check model qwen3.5:35b-mlx 21010000000 1790848800 update 0 "" 1
+	row list-check model qwen3.8:27b-mlx-bf16 54000000000 1790848800 current 0 "" 1
+	run models_env /bin/bash -c 'source "$1"; main --dry-run' bash "$PROJECT_ROOT/bin/moremole-models.sh" < /dev/null
+	[ "$status" -eq 0 ] || { echo "$output"; return 1; }
+	[[ "$output" == *"Status      MLX  Name"* ]] || return 1
+	[[ "$output" == *"update           deepseek-r1:70b"* ]] || return 1
+	[[ "$output" == *"update      MLX  qwen3.5:35b-mlx"* ]] || return 1
+	[[ "$output" == *"up to date  MLX  qwen3.8:27b-mlx-bf16"* ]] || return 1
+
+	# The update list: S, Left to MLX, Enter, Down; the first row is then the
+	# MLX one, and its details say what runs it.
+	printf '%s\n' CHAR:s LEFT ENTER DOWN ENTER QUIT QUIT > "$KEYS_FILE"
+	run models_env /bin/bash -c '
+		source "$1"
+		eval "$2"
+		main
+	' bash "$PROJECT_ROOT/bin/moremole-models.sh" "$SCRIPTED"
+	[ "$status" -eq 0 ] || { echo "$output"; return 1; }
+	[[ "$output" == *"MLX only · 0/2 selected"* ]] || return 1
+	[[ "$output" == *"qwen3.5:35b-mlx"*"Runs on"*"Ollama's MLX engine, for Apple silicon"* ]] || return 1
+	[ ! -s "$CALLS" ]
 }

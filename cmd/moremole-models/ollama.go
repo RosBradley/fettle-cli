@@ -192,6 +192,20 @@ type localModel struct {
 	Size     int64     `json:"size"`
 	Digest   string    `json:"digest"`
 	Modified time.Time `json:"modified_at"`
+	Details  struct {
+		Format string `json:"format"` // gguf, or safetensors for MLX
+		Runner string `json:"runner"` // ggml, or mlx: the engine that runs it
+	} `json:"details"`
+}
+
+// mlx says whether the model runs on Ollama's MLX engine (Apple silicon),
+// as Ollama reports it; Ollamas that predate the runner field leave it
+// out, and then MLX models are the ones stored as safetensors.
+func (m localModel) mlx() bool {
+	if m.Details.Runner != "" {
+		return m.Details.Runner == "mlx"
+	}
+	return m.Details.Format == "safetensors"
 }
 
 func (s service) models() ([]localModel, error) {
@@ -244,7 +258,7 @@ func listLines(s service, check bool, fetch manifestFetcher, records map[string]
 		if !m.Modified.IsZero() {
 			modified = strconv.FormatInt(m.Modified.Unix(), 10)
 		}
-		lines = append(lines, row("model", m.Name, strconv.FormatInt(m.Size, 10), modified, statuses[i], isLoaded, records[m.Name].Repo))
+		lines = append(lines, row("model", m.Name, strconv.FormatInt(m.Size, 10), modified, statuses[i], isLoaded, records[m.Name].Repo, flag(m.mlx())))
 	}
 	return lines
 }

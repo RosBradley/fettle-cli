@@ -116,9 +116,9 @@ func fakeService(t *testing.T, tags, ps string) service {
 func TestListLinesShowSizesStatusAndWhatIsLoaded(t *testing.T) {
 	const plain = `{"layers":[{"size":1}]}`
 	tags, _ := json.Marshal(map[string]any{"models": []map[string]any{
-		{"name": "qwen3:4b", "size": 2500, "digest": sha256Hex([]byte(plain)), "modified_at": "2026-10-01T10:00:00Z"},
-		{"name": "Llama3.2:latest", "size": 2000, "digest": "00", "modified_at": "2026-09-01T10:00:00Z"},
-		{"name": "my-assistant:latest", "size": 2000, "digest": "11", "modified_at": "2026-09-02T10:00:00Z"},
+		{"name": "qwen3:4b", "size": 2500, "digest": sha256Hex([]byte(plain)), "modified_at": "2026-10-01T10:00:00Z", "details": map[string]any{"format": "safetensors", "runner": "mlx"}},
+		{"name": "Llama3.2:latest", "size": 2000, "digest": "00", "modified_at": "2026-09-01T10:00:00Z", "details": map[string]any{"format": "gguf", "runner": "ggml"}},
+		{"name": "my-assistant:latest", "size": 2000, "digest": "11", "modified_at": "2026-09-02T10:00:00Z", "details": map[string]any{"format": "safetensors"}},
 	}})
 	s := fakeService(t, string(tags), `{"models":[{"name":"qwen3:4b"}]}`)
 	if !s.running() {
@@ -140,9 +140,11 @@ func TestListLinesShowSizesStatusAndWhatIsLoaded(t *testing.T) {
 	}
 	lines = listLines(s, true, fetch, nil, nil)
 	want := []string{
-		row("model", "Llama3.2:latest", "2000", "1788256800", "update", "0", ""),
-		row("model", "my-assistant:latest", "2000", "1788343200", "local", "0", ""),
-		row("model", "qwen3:4b", "2500", "1790848800", "current", "1", ""),
+		// The last field: Ollama runs it on its MLX engine, by its runner,
+		// or by its format when an older Ollama leaves the runner out.
+		row("model", "Llama3.2:latest", "2000", "1788256800", "update", "0", "", "0"),
+		row("model", "my-assistant:latest", "2000", "1788343200", "local", "0", "", "1"),
+		row("model", "qwen3:4b", "2500", "1790848800", "current", "1", "", "1"),
 	}
 	if !reflect.DeepEqual(lines, want) {
 		t.Errorf("got %q\nwant %q", lines, want)
