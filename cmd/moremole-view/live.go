@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"strings"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -31,10 +32,24 @@ type pane struct {
 	term   *terminal
 	prev   []string // rows last drawn, to redraw only what changed
 	ticks  int      // redraw ticks, which turn the spinner
+	// waiting is true while the command has printed nothing for a while
+	// beyond answering keys, as when a pick list waits for one: the spinner
+	// stops and the bar says the command is waiting for you.
+	waiting  bool
+	lastKey  atomic.Int64 // when a key last went to the command, Unix ns
+	lastWork time.Time    // when the command last printed on its own
 }
 
 // redrawEvery caps redraws while output streams in.
 const redrawEvery = 33 * time.Millisecond
+
+// keyEcho is how long after a key the command's output counts as its answer
+// to the key (a list redrawing), not as work of its own.
+const keyEcho = 400 * time.Millisecond
+
+// idleAfter is how long the command may print nothing of its own before
+// the pane says it is waiting for you.
+const idleAfter = time.Second
 
 // settleAfterExit is how long output may keep arriving after the command
 // exits, from children it left running, before the pane stops reading.
@@ -71,13 +86,38 @@ func setSize(master *os.File, cols, rows int) {
 // spinEvery is how many redraw ticks each spinner frame shows.
 const spinEvery = 4
 
-func (p *pane) spinner() string { return spinnerFrames[(p.ticks/spinEvery)%len(spinnerFrames)] }
+func (p *pane) spinner() string {
+	if p.waiting {
+		return "·"
+	}
+	return spinnerFrames[(p.ticks/spinEvery)%len(spinnerFrames)]
+}
 
 func (p *pane) top(cols int) []string {
 	return topRows(p.title, "", placeholder(p.labels, p.spinner()), cols)
 }
 
-func (p *pane) bottom(cols int) []string { return bottomRows(liveBar(p.spinner(), cols), cols) }
+func (p *pane) bottom(cols int) []string {
+	if p.waiting {
+		return bottomRows(waitingBar(cols), cols)
+	}
+	return bottomRows(liveBar(p.spinner(), cols), cols)
+}
+
+// noteOutput counts output as the command's own work unless it came just
+// after a key; idle updates waiting, saying whether it changed.
+func (p *pane) noteOutput(now time.Time) {
+	if now.Sub(time.Unix(0, p.lastKey.Load())) > keyEcho {
+		p.lastWork = now
+	}
+}
+
+func (p *pane) idle(now time.Time) bool {
+	waiting := now.Sub(p.lastWork) > idleAfter
+	changed := waiting != p.waiting
+	p.waiting = waiting
+	return changed
+}
 
 // rowsFor leaves the fixed rows at the top and the bar at the bottom out of
 // the command's screen.
@@ -123,6 +163,7 @@ func (p *pane) run(argv []string) ([]string, int, error) {
 	_ = slave.Close()
 
 	_, _ = io.WriteString(p.out, "\x1b[?1049h\x1b[2J")
+	p.lastWork = time.Now()
 	p.draw()
 
 	output := make(chan []byte, 64)
@@ -141,7 +182,7 @@ func (p *pane) run(argv []string) ([]string, int, error) {
 	}()
 	stopInput := make(chan struct{})
 	inputDone := make(chan struct{})
-	go forwardInput(inFd, master, stopInput, inputDone)
+	go forwardInput(inFd, master, stopInput, inputDone, func() { p.lastKey.Store(time.Now().UnixNano()) })
 	exited := make(chan int, 1)
 	go func() {
 		err := cmd.Wait()
@@ -173,6 +214,7 @@ loop:
 				continue
 			}
 			p.term.write(data)
+			p.noteOutput(time.Now())
 			dirty = true
 			if done {
 				settle = time.After(settleAfterExit)
@@ -193,9 +235,15 @@ loop:
 				dirty = true
 			}
 		case <-tick.C:
-			p.ticks++
-			if p.ticks%spinEvery == 0 {
+			if p.idle(time.Now()) {
 				dirty = true
+			}
+			// The spinner turns only while the command works.
+			if !p.waiting {
+				p.ticks++
+				if p.ticks%spinEvery == 0 {
+					dirty = true
+				}
 			}
 			if dirty {
 				p.draw()
@@ -212,7 +260,7 @@ loop:
 // forwardInput passes keys to the command until stop closes. It waits with
 // select, which works on terminals on macOS too, so it never sits in a read
 // that would swallow the first key meant for the results screen.
-func forwardInput(fd int, to io.Writer, stop <-chan struct{}, done chan<- struct{}) {
+func forwardInput(fd int, to io.Writer, stop <-chan struct{}, done chan<- struct{}, onKey func()) {
 	defer close(done)
 	buf := make([]byte, 1024)
 	for {
@@ -236,6 +284,7 @@ func forwardInput(fd int, to io.Writer, stop <-chan struct{}, done chan<- struct
 		}
 		k, err := unix.Read(fd, buf)
 		if k > 0 {
+			onKey()
 			if _, werr := to.Write(buf[:k]); werr != nil {
 				return
 			}

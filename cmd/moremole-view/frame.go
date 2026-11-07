@@ -72,6 +72,11 @@ func fitBar(status string, keys, optional []string, width int) string {
 	}
 }
 
+// waitingBar is the bar while the command waits for a key: no spinner.
+func waitingBar(width int) string {
+	return fitBar("· Waiting for you", []string{"Keys go to the command", "Ctrl-C Stop"}, []string{"Keys go to the command"}, width)
+}
+
 // liveBar is the bar while the command runs.
 func liveBar(spin string, width int) string {
 	return fitBar(spin+" Running", []string{"Keys go to the command", "Ctrl-C Stop"}, []string{"Keys go to the command"}, width)

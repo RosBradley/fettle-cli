@@ -161,3 +161,43 @@ func TestPaneDrawsOnlyRowsThatChanged(t *testing.T) {
 		t.Errorf("the changed row was not drawn: %q", out.String())
 	}
 }
+
+func TestTheSpinnerStopsWhileTheCommandWaitsForAKey(t *testing.T) {
+	p := &pane{title: "Add Ollama models"}
+	start := time.Unix(1790000000, 0)
+	p.lastWork = start
+	// Output of its own keeps it working.
+	if p.idle(start.Add(500*time.Millisecond)) || p.waiting {
+		t.Fatal("waiting half a second after output")
+	}
+	// A second with nothing printed: waiting, with no spinner.
+	if !p.idle(start.Add(1500*time.Millisecond)) || !p.waiting {
+		t.Fatal("not waiting after a quiet second")
+	}
+	if got := ansi.Strip(p.bottom(70)[1]); got != "· Waiting for you  |  Keys go to the command  |  Ctrl-C Stop" {
+		t.Errorf("waiting bar %q", got)
+	}
+	before := p.ticks
+	_ = p.spinner()
+	if p.ticks != before || p.spinner() != "·" {
+		t.Error("the spinner turns while waiting")
+	}
+	// A list redrawing just after a key is its answer, not work.
+	p.lastKey.Store(start.Add(2 * time.Second).UnixNano())
+	p.noteOutput(start.Add(2*time.Second + 100*time.Millisecond))
+	if p.idle(start.Add(2*time.Second + 200*time.Millisecond)) || !p.waiting {
+		t.Error("a redraw after a key woke the spinner")
+	}
+	// Output that goes on past the key is work again.
+	p.noteOutput(start.Add(3 * time.Second))
+	if !p.idle(start.Add(3*time.Second + 100*time.Millisecond)) || p.waiting {
+		t.Error("work after a key did not turn the spinner back on")
+	}
+}
+
+func TestPaneSaysWhenTheCommandWaits(t *testing.T) {
+	_, code, drawn := runPane(t, nil, "/bin/sh", "-c", "echo start; sleep 2; echo done")
+	if code != 0 || !strings.Contains(drawn, "Waiting for you") || !strings.Contains(drawn, "Running") {
+		t.Errorf("code %d, drawn %q", code, drawn)
+	}
+}
