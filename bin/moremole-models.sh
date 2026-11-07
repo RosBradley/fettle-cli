@@ -1403,6 +1403,18 @@ menu_column() {
     MOLE_MENU_COL_CHOICES[i]="$4"
 }
 
+# A list's saved filters ($1, "Label=ids;Label=ids") with field $2 set to
+# ids $3.
+menu_filter_set() {
+    local out="" part
+    local -a saved_parts=()
+    IFS=';' read -r -a saved_parts <<< "$1"
+    for part in ${saved_parts[@]+"${saved_parts[@]}"}; do
+        [[ -z "$part" || "${part%%=*}" == "$2" ]] || out+="${out:+;}$part"
+    done
+    printf '%s' "${out:+$out;}$2=$3"
+}
+
 # Keep, of the choice lines in $1 ("id<TAB>label", or a group
 # "+<TAB>label<TAB>ids"), those some item has, the items' ids being the
 # rest of the arguments; into TEXT.
@@ -2134,6 +2146,11 @@ browse_library() {
         pick_library_model "${rows[@]}" || break
         i="${PICKED[0]}"
         VER_ITEM=""
+        # A library shown only with MLX opens a model's versions shown only
+        # with MLX too; Enter on its MLX heading shows them all.
+        if [[ ";$LIB_FILTERS;" == *";MLX=1;"* ]]; then
+            VER_FILTERS=$(menu_filter_set "$VER_FILTERS" MLX 1)
+        fi
         while true; do
             versions_screen "$i"
             case "$SCREEN_ACTION" in

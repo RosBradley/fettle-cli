@@ -1459,7 +1459,7 @@ paginated_multi_select() {
         local order_ctrl="${GRAY}O ${reverse_arrow}${NC}"
         # MoreMole: a list with sortable headings sorts from them; S goes there.
         if ((sort_col_count > 0)); then
-            sort_ctrl="${GRAY}S Sort by column${NC}"
+            sort_ctrl="${GRAY}S Sort/filter by column${NC}"
             order_ctrl=""
         fi
         local side_ctrl=""
@@ -1496,7 +1496,7 @@ paginated_multi_select() {
             # MoreMole: every field to filter by, and clearing the filters.
             local fields_ctrl="" clear_ctrl="" _c
             if ((sort_col_count > 0)); then
-                fields_ctrl="${GRAY}F Filter${NC}"
+                fields_ctrl="${GRAY}F All filters${NC}"
                 _segs_browse+=("$fields_ctrl")
                 for ((_c = 0; _c < sort_col_count; _c++)); do
                     [[ -z "${col_sel[_c]}" ]] || clear_ctrl="${GRAY}X Clear filters${NC}"
@@ -1505,7 +1505,14 @@ paginated_multi_select() {
             fi
             _segs_browse+=("$page_ctrl")
             controls=("${_segs[@]}" "${_segs_browse[@]}")
-            optional_controls=("$page_ctrl" "$nav" "$order_ctrl" "$select_all" "${fields_ctrl:-}" "$sort_ctrl" "$filter_ctrl" "$side_ctrl")
+            optional_controls=("$page_ctrl" "$nav" "$order_ctrl" "$select_all" "$sort_ctrl" "$filter_ctrl" "$side_ctrl")
+            # MoreMole: in a list with headings, S and F are how to sort and
+            # filter it, and Left and Right how to reach the next model, so
+            # the keys wrap onto a second line before they go; the other
+            # hints still give way first.
+            if ((sort_col_count > 0)); then
+                optional_controls=("$page_ctrl" "$nav" "$select_all" "$filter_ctrl")
+            fi
         fi
         # Drop the hints this list doesn't have.
         local -a _present=()

@@ -506,7 +506,7 @@ hf_models() {
 		printf "\033" | main --huggingface
 	' bash "$PROJECT_ROOT/bin/moremole-models.sh" "$SCRIPTED"
 	[ "$status" -eq 0 ] || { echo "$output"; return 1; }
-	[[ "$output" == *"S Sort by column"* && "$output" != *"S Downloads"* ]] || return 1
+	[[ "$output" == *"S Sort/filter by column"* && "$output" != *"S Downloads"* ]] || return 1
 	[[ "$output" == *"Add from Hugging Face:"*"someone/Gemma-4-nochat-bf16"* ]] || return 1
 
 	# The library: S, then three Rights to Pulls (past Size and Sizes); its
@@ -805,4 +805,26 @@ note	Ollama was off, so it is off again" ] || { cat "$results"; return 1; }
 	[[ "$output" == *"Show all  (4)"*"default  (1)"*"q8_0  (2)"*"qat  (1)"* ]] || return 1
 	[[ "$output" == *"Filtered: Quantization: q8_0 · 0/4 selected"* || "$output" == *"Filtered: Quantization: q8_0"*"0/4 selected"* ]] || return 1
 	[ ! -s "$CALLS" ]
+}
+
+@test "a library shown only with MLX opens a model's versions shown only with MLX, and S and F stay in the keys" {
+	library_models
+	printf 'mlx=1\n' >> "$ROWS_DIR/status"
+	row tags tag gemma3:4b 3300000000 3.3GB 128K "Text, Image" 0 1 1
+	row tags tag gemma3:4b-mlx 3500000000 3.5GB 128K "Text, Image" 1 0 0
+	# The library's MLX menu: MLX; Enter opens gemma3, its versions MLX only.
+	printf '%s\n' CHAR:s LEFT ENTER DOWN ENTER ENTER QUIT QUIT > "$KEYS_FILE"
+	run models_env COLUMNS=90 /bin/bash -c '
+		source "$1"
+		eval "$2"
+		main --download
+	' bash "$PROJECT_ROOT/bin/moremole-models.sh" "$SCRIPTED"
+	[ "$status" -eq 0 ] || { echo "$output"; return 1; }
+	local plain
+	plain=$(printf '%s' "$output" | sed $'s/\033\\[[0-9;]*m//g')
+	[[ "$plain" == *"gemma3  Filtered: MLX · 0/2 selected"* ]] || return 1
+	[[ "$plain" == *"gemma3:4b-mlx"* ]] || return 1
+	# Even at 90 columns the model's keys name S, F and the other models,
+	# on a second line when they need one.
+	[[ "$plain" == *"Enter Download"*"← → Other model"*"S Sort/filter by column"*"F All filters"* ]]
 }
