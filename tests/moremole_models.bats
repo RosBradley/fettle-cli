@@ -355,7 +355,7 @@ library_models() {
 	row library model llama3.1 "tools" 120.6M 1733006040 0 "8b,70b,405b" 0 4900000000 "Llama 3.1 from Meta."
 }
 
-@test "a model's screen lists its versions, Enter downloads one, and Right shows the next model" {
+@test "a model's screen lists its versions, Enter downloads one, and Q goes back to the list for the next" {
 	library_models
 	printf 'mlx=1\n' >> "$ROWS_DIR/status"
 	row tags tag gemma3:27b 17000000000 17GB 128K "Text, Image" 0 1 0
@@ -364,9 +364,9 @@ library_models() {
 	row tags tag llama3.1:405b 243000000000 243GB 128K Text 0 0 0
 	# The library A-Z: gemma3, llama3.1. Enter opens gemma3, whose versions
 	# open smallest first: 4b, 4b-mlx, 27b. Down Down Enter downloads 27b.
-	# Right shows llama3.1, where Space and Enter download 405b; Q goes back
-	# to the model, then to the list, then ends.
-	printf '%s\n' ENTER DOWN DOWN ENTER RIGHT SPACE ENTER QUIT QUIT > "$KEYS_FILE"
+	# Q goes back to the list, at gemma3: Down Enter opens llama3.1, where
+	# Space and Enter download 405b; Q goes back, and Q ends.
+	printf '%s\n' ENTER DOWN DOWN ENTER QUIT DOWN ENTER SPACE ENTER QUIT QUIT > "$KEYS_FILE"
 	run models_env /bin/bash -c '
 		source "$1"
 		eval "$2"
@@ -383,7 +383,7 @@ library_models() {
 	[[ "$output" == *"Status     Memory   Version"*"Size"*"Context"*"Input"*"MLX"* ]] || return 1
 	[[ "$output" == *"installed  fits     gemma3:4b "*"3.3GB"*"128K"*"Text, Image"* ]] || return 1
 	[[ "$output" == *"latest     too big  gemma3:27b"* ]] || return 1
-	[[ "$output" == *"Enter Download"*"← → Other model"*"Q Back"* ]] || return 1
+	[[ "$output" == *"Enter Download"*"Q Back"* && "$output" != *"Other model"* ]] || return 1
 	[[ "$output" == *"Download:"*"gemma3:27b"*"17.00GB · too big for 17.18GB memory"*"Download 1 version, up to 17.00GB"* ]] || return 1
 	[[ "$output" == *"Meta (United States) · 120.6M pulls"*"llama3.1:405b"* ]] || return 1
 	[[ "$output" == *"Models downloaded"*"Downloaded"*"2"* ]] || return 1
@@ -506,7 +506,7 @@ hf_models() {
 		printf "\033" | main --huggingface
 	' bash "$PROJECT_ROOT/bin/moremole-models.sh" "$SCRIPTED"
 	[ "$status" -eq 0 ] || { echo "$output"; return 1; }
-	[[ "$output" == *"S Sort/filter by column"* && "$output" != *"S Downloads"* ]] || return 1
+	[[ "$output" == *"S Sort/filter"* && "$output" != *"S Downloads"* ]] || return 1
 	[[ "$output" == *"Add from Hugging Face:"*"someone/Gemma-4-nochat-bf16"* ]] || return 1
 
 	# The library: S, then three Rights to Pulls (past Size and Sizes); its
@@ -529,9 +529,9 @@ hf_models() {
 @test "adding from Hugging Face downloads, adds, starts and only then names each model" {
 	hf_models
 	# A-Z: mlx-community/..., someone/... Enter opens Qwen, Enter adds it
-	# (confirmed); Right shows Gemma, Enter adds it (confirmed), and it
-	# fails its start, so a key goes back. Q Q leaves.
-	printf '%s\n' ENTER ENTER RIGHT ENTER QUIT QUIT > "$KEYS_FILE"
+	# (confirmed); Q goes back, Down Enter opens Gemma, Enter adds it
+	# (confirmed), and it fails its start, so a key goes back. Q Q leaves.
+	printf '%s\n' ENTER ENTER QUIT DOWN ENTER ENTER QUIT QUIT > "$KEYS_FILE"
 	run models_env /bin/bash -c '
 		source "$1"
 		eval "$2"
@@ -814,7 +814,7 @@ note	Ollama was off, so it is off again" ] || { cat "$results"; return 1; }
 	row tags tag gemma3:4b-mlx 3500000000 3.5GB 128K "Text, Image" 1 0 0
 	# The library's MLX menu: MLX; Enter opens gemma3, its versions MLX only.
 	printf '%s\n' CHAR:s LEFT ENTER DOWN ENTER ENTER QUIT QUIT > "$KEYS_FILE"
-	run models_env COLUMNS=90 /bin/bash -c '
+	run models_env COLUMNS=88 /bin/bash -c '
 		source "$1"
 		eval "$2"
 		main --download
@@ -824,9 +824,8 @@ note	Ollama was off, so it is off again" ] || { cat "$results"; return 1; }
 	plain=$(printf '%s' "$output" | sed $'s/\033\\[[0-9;]*m//g')
 	[[ "$plain" == *"gemma3  Filtered: MLX · 0/2 selected"* ]] || return 1
 	[[ "$plain" == *"gemma3:4b-mlx"* ]] || return 1
-	# Even at 90 columns the model's keys name S, F and the other models,
-	# on a second line when they need one.
-	[[ "$plain" == *"Enter Download"*"← → Other model"*"S Sort/filter by column"*"F All filters"* ]]
+	# At 88 columns the model's keys, S and F among them, fit one line.
+	[[ "$plain" == *"Space Select | Enter Download | Q Back | S Sort/filter | F All filters | X Clear"* ]]
 }
 
 @test "a model's versions say how long ago each changed, and sort and filter by it" {

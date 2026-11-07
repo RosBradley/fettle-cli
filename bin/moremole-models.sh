@@ -1928,14 +1928,12 @@ pick_to_remove() {
 # The lists to browse (Ollama's library and Hugging Face's MLX models) are
 # single-pick: Enter opens a model's screen, which downloads it. These hold
 # each list's sort, search, filters and row, so it opens again as it was
-# left, and the order its rows were in, for Left and Right on a model's
-# screen to move through.
+# left.
 LIB_SORT_MODE=name
 LIB_SORT_REVERSE=false
 LIB_SEARCH=""
 LIB_FILTERS=""
 LIB_ITEM=""
-LIB_ORDER=""
 LIB_HEADINGS=""
 LIB_SORT2=""
 LIB_SORT2_REVERSE=false
@@ -1944,7 +1942,6 @@ HFL_SORT_REVERSE=false
 HFL_SEARCH=""
 HFL_FILTERS=""
 HFL_ITEM=""
-HFL_ORDER=""
 HFL_HEADINGS=""
 HFL_SORT2=""
 HFL_SORT2_REVERSE=false
@@ -2085,7 +2082,7 @@ pick_library_model() {
     LIB_SORT_MODE="$MOLE_MENU_SORT_MODE" LIB_SORT_REVERSE="$MOLE_MENU_SORT_REVERSE"
     LIB_SORT2="$MOLE_MENU_SORT2_MODE" LIB_SORT2_REVERSE="$MOLE_MENU_SORT2_REVERSE"
     LIB_SEARCH="$MOLE_MENU_SEARCH" LIB_FILTERS="$MOLE_MENU_COLUMN_FILTERS"
-    LIB_ITEM="$MOLE_MENU_START_ITEM" LIB_ORDER="$MOLE_MENU_VIEW_ORDER" LIB_HEADINGS="$MOLE_MENU_HEADINGS_USED"
+    LIB_ITEM="$MOLE_MENU_START_ITEM" LIB_HEADINGS="$MOLE_MENU_HEADINGS_USED"
     return "$rc"
 }
 
@@ -2171,7 +2168,7 @@ model_intro() {
 
 # A library model's screen: its details, then its versions to download.
 # Enter downloads the version under the cursor, or the ones selected with
-# Space; Left and Right show the previous or next model in the list.
+# Space.
 versions_screen() {
     local i="$1"
     local name="${L_NAME[i]}" failed=false
@@ -2321,7 +2318,7 @@ versions_screen() {
     local MOLE_MENU_SORT_MODE="$VER_SORT_MODE" MOLE_MENU_SORT_REVERSE="$VER_SORT_REVERSE"
     local MOLE_MENU_SORT2_MODE="$VER_SORT2" MOLE_MENU_SORT2_REVERSE="$VER_SORT2_REVERSE"
     local MOLE_MENU_SEARCH="" MOLE_MENU_COLUMN_FILTERS="$VER_FILTERS" MOLE_MENU_START_ITEM="$VER_ITEM" MOLE_MENU_VIEW_ORDER="" MOLE_MENU_HEADINGS_USED="$VER_HEADINGS"
-    local MOLE_MENU_SIDE_RETURN=true MOLE_MENU_SIDE_LABEL="Other model" MOLE_MENU_ENTER_LABEL="Download" MOLE_MENU_CANCEL_LABEL="Back"
+    local MOLE_MENU_ENTER_LABEL="Download" MOLE_MENU_CANCEL_LABEL="Back"
     local PICK_KEEP_EMPTY=false
     DETAILS_KIND=""
     MOLE_MENU_ACTION=""
@@ -2331,34 +2328,9 @@ versions_screen() {
     VER_SORT2="$MOLE_MENU_SORT2_MODE" VER_SORT2_REVERSE="$MOLE_MENU_SORT2_REVERSE"
     VER_FILTERS="$MOLE_MENU_COLUMN_FILTERS" VER_ITEM="$MOLE_MENU_START_ITEM" VER_HEADINGS="$MOLE_MENU_HEADINGS_USED"
     case "$MOLE_MENU_ACTION" in
-        prev | next) SCREEN_ACTION="$MOLE_MENU_ACTION" ;;
         save) if [[ $rc -eq 0 ]]; then SCREEN_ACTION=download; else SCREEN_ACTION=back; fi ;;
         *) SCREEN_ACTION=back ;;
     esac
-}
-
-# The model before or after model $1 in a list's order ($3, the row indices
-# as the list last showed them), going round at the ends.
-neighbor() {
-    local i="$1" way="$2" n pos=-1
-    local -a order=()
-    [[ -z "$3" ]] || IFS=',' read -r -a order <<< "$3"
-    n=${#order[@]}
-    ((n > 0)) || {
-        printf '%s' "$i"
-        return 0
-    }
-    local k
-    for ((k = 0; k < n; k++)); do
-        [[ "${order[k]}" != "$i" ]] || pos=$k
-    done
-    if ((pos < 0)); then
-        printf '%s' "${order[0]}"
-    elif [[ "$way" == "prev" ]]; then
-        printf '%s' "${order[(pos + n - 1) % n]}"
-    else
-        printf '%s' "${order[(pos + 1) % n]}"
-    fi
 }
 
 # Start this run's operation-log session at its first download.
@@ -2501,10 +2473,6 @@ browse_library() {
         while true; do
             versions_screen "$i"
             case "$SCREEN_ACTION" in
-                prev | next)
-                    i=$(neighbor "$i" "$SCREEN_ACTION" "$LIB_ORDER")
-                    VER_ITEM=""
-                    ;;
                 download)
                     if download_versions "${PICKED[@]}"; then
                         L_INSTALLED[i]=1
@@ -2654,12 +2622,12 @@ pick_hf_model() {
     HFL_SORT_MODE="$MOLE_MENU_SORT_MODE" HFL_SORT_REVERSE="$MOLE_MENU_SORT_REVERSE"
     HFL_SORT2="$MOLE_MENU_SORT2_MODE" HFL_SORT2_REVERSE="$MOLE_MENU_SORT2_REVERSE"
     HFL_SEARCH="$MOLE_MENU_SEARCH" HFL_FILTERS="$MOLE_MENU_COLUMN_FILTERS"
-    HFL_ITEM="$MOLE_MENU_START_ITEM" HFL_ORDER="$MOLE_MENU_VIEW_ORDER" HFL_HEADINGS="$MOLE_MENU_HEADINGS_USED"
+    HFL_ITEM="$MOLE_MENU_START_ITEM" HFL_HEADINGS="$MOLE_MENU_HEADINGS_USED"
     return "$rc"
 }
 
 # A Hugging Face model's screen: its details, with Enter to add it to
-# Ollama, and Left and Right for the previous or next model.
+# Ollama.
 hf_screen() {
     local i="$1" name row bytes cols
     spin "Getting $(mole_terminal_safe_text "${H_REPO[i]}")'s files from Hugging Face..."
@@ -2678,7 +2646,7 @@ hf_screen() {
     local MOLE_MENU_INTRO
     MOLE_MENU_INTRO="$(MOLE_MENU_DETAILS_WIDTH="$cols" hf_details "$i" | sed '1,2d')"$'\n'
     local -a MOLE_MENU_SORT_COLUMNS=() MOLE_MENU_SORT_KEYS=() MOLE_MENU_COL_VALUES=() MOLE_MENU_COL_CHOICES=()
-    local MOLE_MENU_SINGLE=true MOLE_MENU_SIDE_RETURN=true MOLE_MENU_SIDE_LABEL="Other model" MOLE_MENU_ENTER_LABEL="Add" MOLE_MENU_CANCEL_LABEL="Back"
+    local MOLE_MENU_SINGLE=true MOLE_MENU_ENTER_LABEL="Add" MOLE_MENU_CANCEL_LABEL="Back"
     local MOLE_MENU_SEARCH="" MOLE_MENU_COLUMN_FILTERS="" MOLE_MENU_START_ITEM="" MOLE_MENU_VIEW_ORDER="" MOLE_MENU_SORT_MODE=name MOLE_MENU_SORT_REVERSE=false
     COLUMNS_HEADER=""
     DETAILS_KIND=""
@@ -2686,7 +2654,6 @@ hf_screen() {
     local rc=0
     pick "${H_REPO[i]}" "$row" || rc=$?
     case "$MOLE_MENU_ACTION" in
-        prev | next) SCREEN_ACTION="$MOLE_MENU_ACTION" ;;
         open) if [[ $rc -eq 0 ]]; then SCREEN_ACTION=add; else SCREEN_ACTION=back; fi ;;
         *) SCREEN_ACTION=back ;;
     esac
@@ -2735,7 +2702,6 @@ browse_hf() {
         while true; do
             hf_screen "$i"
             case "$SCREEN_ACTION" in
-                prev | next) i=$(neighbor "$i" "$SCREEN_ACTION" "$HFL_ORDER") ;;
                 add) if add_hf_model "$i"; then H_INSTALLED[i]=1; fi ;;
                 *) break ;;
             esac

@@ -133,9 +133,7 @@ paginated_multi_select() {
     # search line, such as a model's description; the caller fits them to
     # the window. MOLE_MENU_SINGLE=true makes a list without checkboxes where
     # Enter returns the row under the cursor (MOLE_MENU_ENTER_LABEL names
-    # it). MOLE_MENU_SIDE_RETURN=true makes Left and Right return, setting
-    # MOLE_MENU_ACTION to prev or next, as a details screen moves between
-    # rows. MOLE_MENU_CANCEL_LABEL names what Q does.
+    # it). MOLE_MENU_CANCEL_LABEL names what Q does.
     local -a intro_lines=()
     if [[ -n "${MOLE_MENU_INTRO:-}" ]]; then
         local _intro_line
@@ -143,7 +141,7 @@ paginated_multi_select() {
             intro_lines+=("$_intro_line")
         done <<< "$MOLE_MENU_INTRO"
     fi
-    local single_mode="${MOLE_MENU_SINGLE:-false}" side_return="${MOLE_MENU_SIDE_RETURN:-false}"
+    local single_mode="${MOLE_MENU_SINGLE:-false}"
     MOLE_MENU_ACTION=""
     local list_top=$((3 + ${#intro_lines[@]}))
     [[ -z "$column_header" ]] || list_top=$((list_top + 1))
@@ -787,7 +785,7 @@ paginated_multi_select() {
     # MoreMole: what a caller opening this list again needs to bring it
     # back as it was left.
     _pm_export_state() {
-        [[ $sort_col_count -gt 0 || "$single_mode" == true || "$side_return" == true ]] || return 0
+        [[ $sort_col_count -gt 0 || "$single_mode" == true ]] || return 0
         local _c _filters="" _order=""
         for ((_c = 0; _c < sort_col_count; _c++)); do
             [[ -z "${col_sel[_c]}" ]] || _filters+="${_filters:+;}${sort_col_label[_c]}=${col_sel[_c]}"
@@ -1459,11 +1457,9 @@ paginated_multi_select() {
         local order_ctrl="${GRAY}O ${reverse_arrow}${NC}"
         # MoreMole: a list with sortable headings sorts from them; S goes there.
         if ((sort_col_count > 0)); then
-            sort_ctrl="${GRAY}S Sort/filter by column${NC}"
+            sort_ctrl="${GRAY}S Sort/filter${NC}"
             order_ctrl=""
         fi
-        local side_ctrl=""
-        [[ "$side_return" != true ]] || side_ctrl="${GRAY}← → ${MOLE_MENU_SIDE_LABEL:-Other row}${NC}"
         local filter_ctrl="${GRAY}/ Search${NC}"
 
         local term_width
@@ -1483,7 +1479,6 @@ paginated_multi_select() {
             local -a _segs=("$nav" "$space_select")
             [[ "$select_all_enabled" == true ]] && _segs+=("$select_all")
             _segs+=("$enter")
-            [[ -z "$side_ctrl" ]] || _segs+=("$side_ctrl")
             # Q clears an applied search like Esc, so it only cancels without one.
             [[ -z "$filter_text" ]] && _segs+=("$cancel_label")
             local -a _segs_browse=("$filter_ctrl")
@@ -1499,17 +1494,16 @@ paginated_multi_select() {
                 fields_ctrl="${GRAY}F All filters${NC}"
                 _segs_browse+=("$fields_ctrl")
                 for ((_c = 0; _c < sort_col_count; _c++)); do
-                    [[ -z "${col_sel[_c]}" ]] || clear_ctrl="${GRAY}X Clear filters${NC}"
+                    [[ -z "${col_sel[_c]}" ]] || clear_ctrl="${GRAY}X Clear${NC}"
                 done
                 [[ -z "$clear_ctrl" ]] || _segs_browse+=("$clear_ctrl")
             fi
             _segs_browse+=("$page_ctrl")
             controls=("${_segs[@]}" "${_segs_browse[@]}")
-            optional_controls=("$page_ctrl" "$nav" "$order_ctrl" "$select_all" "$sort_ctrl" "$filter_ctrl" "$side_ctrl")
+            optional_controls=("$page_ctrl" "$nav" "$order_ctrl" "$select_all" "$sort_ctrl" "$filter_ctrl")
             # MoreMole: in a list with headings, S and F are how to sort and
-            # filter it, and Left and Right how to reach the next model, so
-            # the keys wrap onto a second line before they go; the other
-            # hints still give way first.
+            # filter it, so the keys wrap onto a second line before they go;
+            # the other hints still give way first.
             if ((sort_col_count > 0)); then
                 optional_controls=("$page_ctrl" "$nav" "$select_all" "$filter_ctrl")
             fi
@@ -1731,14 +1725,6 @@ paginated_multi_select() {
             elif [[ "$key" == "DOWN" && $((top_index + cursor_pos)) -eq $((${#view_indices[@]} - 1)) ]]; then
                 key="TOP"
             fi
-        fi
-
-        # MoreMole: Left and Right return to the caller, to show another row.
-        if [[ "$side_return" == true && ("$key" == "LEFT" || "$key" == "RIGHT") && -z "${MOLE_READ_KEY_FORCE_CHAR:-}" ]]; then
-            MOLE_MENU_ACTION=next
-            [[ "$key" != "LEFT" ]] || MOLE_MENU_ACTION=prev
-            _pm_finish_selection
-            return 0
         fi
 
         # MoreMole: a single-pick list returns the row under the cursor.

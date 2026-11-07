@@ -434,7 +434,6 @@ MOLE_MENU_SORT_COLUMNS=("Name|text" "MLX|filter")
 MOLE_MENU_SORT_KEYS=($'beta\x1falpha\x1fgamma\x1fdelta' $'1\x1f0\x1f1\x1f0')
 MOLE_MENU_SORT_MODE=col:0
 MOLE_MENU_SINGLE="$SINGLE"
-MOLE_MENU_SIDE_RETURN="$SIDE"
 MOLE_MENU_INTRO="$INTRO"
 MOLE_MENU_SEARCH="$SEARCH"
 MOLE_MENU_START_ITEM="$START"
@@ -448,7 +447,7 @@ ansi = re.compile(r'\x1b\[[0-?]*[ -/]*[@-~]')
 def run(keys, tag, **extra):
     state = os.path.join(os.environ['BATS_TEST_TMPDIR'], 'keys-' + tag)
     env = dict(os.environ, COLUMNS='60', LINES='16', KEY_STATE=state, KEY_LIST=keys,
-               SINGLE='', SIDE='', INTRO='', SEARCH='', START='')
+               SINGLE='', INTRO='', SEARCH='', START='')
     env.update(extra)
     r = subprocess.run(['/bin/bash', '--noprofile', '--norc', '-c', script],
                        env=env, capture_output=True, text=True, check=True)
@@ -473,11 +472,6 @@ assert '○' not in err and '4 of 4' in err and 'Enter Open' in err, err
 out, err = run('CHAR:s RIGHT ENTER DOWN ENTER ENTER', 'filter', SINGLE='true')
 assert 'result=0' in out and 'filters=MLX=1' in out and 'order=0,2' in out and 'headings=true' in out, out
 assert 'Filtered: MLX · 2 of 4' in err and 'MLX●' in err and 'not MLX  (2)' in err, err
-
-# Left and Right return to the caller, with the list's state.
-out, err = run('DOWN DOWN RIGHT', 'side', SIDE='true')
-assert 'rc=0 result= action=next start=3' in out, out
-assert '← → Other row' in err, err
 
 # Intro lines sit above the search line; a reopened list keeps its search
 # and puts the cursor on the row it was on.
@@ -553,7 +547,7 @@ assert 'filters=Month=m2026-11 m2026-10;Maker=mk_a' in out, out
 assert 'Filter or sort by' in err and 'Maker' in err and 'Acme  (4)' in err and 'Bolt  (2)' in err, err
 assert '2026  (2)' in err and 'November 2026  (1)' in err and 'March 2025  (2)' in err, err
 assert 'Filtered: Month: November 2026, October 2026 · Maker: Acme · 2 of 6' in err, err
-assert 'X Clear filters' in err, err
+assert 'X Clear' in err, err
 
 # X clears every filter.
 out, err = run(keys + ' CHAR:x ENTER', 'clear')
