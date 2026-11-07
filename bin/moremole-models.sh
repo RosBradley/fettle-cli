@@ -66,6 +66,15 @@ M_STATUS=()
 M_LOADED=()
 M_REPO=()
 M_MLX=()
+# Better versions of installed models for this Mac (moremole-models-go
+# better): the installed model, its replacement, why (mlx or newer), the
+# replacement's size, whether it is MLX, and a note.
+B_FROM=()
+B_TO=()
+B_KIND=()
+B_BYTES=()
+B_MLX=()
+B_NOTE=()
 # Models in Ollama's library.
 L_NAME=()
 L_CAPS=()
@@ -85,6 +94,7 @@ T_INPUT=()
 T_MLX=()
 T_DEFAULT=()
 T_INSTALLED=()
+T_UPDATED=()
 # MLX models on Hugging Face that Ollama runs.
 H_REPO=()
 H_FAMILY=()
@@ -327,8 +337,8 @@ load_library() {
 # couldn't be read.
 TAGS_FAILED=()
 load_tags() {
-    local kind name bytes size context input mlx default installed
-    while IFS="$MODELS_FIELD_SEP" read -r kind name bytes size context input mlx default installed || [[ -n "${kind:-}" ]]; do
+    local kind name bytes size context input mlx default installed updated
+    while IFS="$MODELS_FIELD_SEP" read -r kind name bytes size context input mlx default installed updated || [[ -n "${kind:-}" ]]; do
         case "$kind" in
             notice) [[ "$name" != "tags-failed" ]] || TAGS_FAILED+=("$bytes") ;;
             tag)
@@ -340,6 +350,7 @@ load_tags() {
                 T_MLX+=("${mlx:-0}")
                 T_DEFAULT+=("${default:-0}")
                 T_INSTALLED+=("${installed:-0}")
+                T_UPDATED+=("${updated:-0}")
                 ;;
         esac
     done
@@ -384,6 +395,7 @@ add_plain_versions() {
         T_MLX+=(0)
         T_DEFAULT+=(0)
         T_INSTALLED+=(0)
+        T_UPDATED+=(0)
     done
 }
 
@@ -597,8 +609,11 @@ tag_header() {
     cell "Memory" 7
     cell "Version" "$1"
     cell "Size" 11
-    cell "Context" 7
-    cell "Input" 12
+    cell "Updated" 9
+    if [[ "$VER_SHOW_CI" == "1" ]]; then
+        cell "Context" 7
+        cell "Input" 12
+    fi
     [[ "${MODELS_APPLE_SILICON:-0}" != "1" ]] || ROW+="  MLX"
     COLUMNS_HEADER="$ROW"
 }
@@ -798,9 +813,60 @@ tag_row_text() {
     cell "$TEXT" 7
     cell "${T_NAME[i]}" "$width"
     cell "${T_SIZE[i]:-?}" 11
-    cell "${T_CONTEXT[i]}" 7
-    cell "${T_INPUT[i]}" 12
+    age_text "${T_UPDATED[i]:-0}"
+    cell "$TEXT" 9
+    if [[ "$VER_SHOW_CI" == "1" ]]; then
+        cell "${T_CONTEXT[i]}" 7
+        cell "${T_INPUT[i]}" 12
+    fi
     [[ "${T_MLX[i]}" != "1" ]] || ROW+="  MLX"
+}
+
+# Whether a model's versions show their Context and Input columns, which a
+# narrow window drops for the names.
+VER_SHOW_CI=1
+
+# How long ago a time was, as the tags page rounds it: "3 days", "2 weeks",
+# "5 months", "2 years"; into TEXT, empty for none. NOW_EPOCH is now.
+NOW_EPOCH=0
+age_text() {
+    local t="$1" d
+    TEXT=""
+    [[ "$t" =~ ^[0-9]+$ && "$t" -gt 0 && "$NOW_EPOCH" -gt 0 ]] || return 0
+    d=$(((NOW_EPOCH - t) / 86400))
+    ((d >= 0)) || d=0
+    if ((d < 1)); then
+        TEXT="today"
+    elif ((d < 14)); then
+        TEXT="$d day"
+        ((d == 1)) || TEXT+="s"
+    elif ((d < 60)); then
+        TEXT="$((d / 7)) weeks"
+    elif ((d < 365)); then
+        TEXT="$((d / 30)) months"
+    else
+        TEXT="$((d / 365)) year"
+        ((d < 730)) || TEXT+="s"
+    fi
+}
+
+# An age's choice ids, each window it falls in: the last week, month, three
+# months or year, or older; into TEXT.
+AGE_CHOICES=$'ag_w\tin the last week\nag_m\tin the last month\nag_3m\tin the last 3 months\nag_y\tin the last year\nag_old\tover a year ago\nag_none\tnot known'
+age_ids() {
+    local t="$1" d
+    if [[ ! "$t" =~ ^[0-9]+$ || "$t" -le 0 || "$NOW_EPOCH" -le 0 ]]; then
+        TEXT="ag_none"
+        return 0
+    fi
+    d=$(((NOW_EPOCH - t) / 86400))
+    TEXT=""
+    ((d > 7)) || TEXT+="ag_w "
+    ((d > 31)) || TEXT+="ag_m "
+    ((d > 92)) || TEXT+="ag_3m "
+    ((d > 365)) || TEXT+="ag_y "
+    ((d <= 365)) || TEXT+="ag_old"
+    TEXT="${TEXT% }"
 }
 
 # The details screen of a pick list's row. DETAILS_KIND says which list it
@@ -812,7 +878,13 @@ DONE_LABEL=""
 show_model_details() {
     local i="${DETAILS_MAP[$1]:-$1}"
     case "$DETAILS_KIND" in
-        installed) installed_details "$i" ;;
+        installed)
+            if [[ "$i" == b:* ]]; then
+                better_details "${i#b:}"
+            else
+                installed_details "$i"
+            fi
+            ;;
         hf) hf_details "$i" ;;
     esac
 }
@@ -1204,6 +1276,96 @@ update_from_hf() {
     done
 }
 
+# Read the better versions ("better from to kind bytes mlx note").
+load_better() {
+    local kind from to why bytes mlx note
+    B_FROM=() B_TO=() B_KIND=() B_BYTES=() B_MLX=() B_NOTE=()
+    while IFS="$MODELS_FIELD_SEP" read -r kind from to why bytes mlx note || [[ -n "${kind:-}" ]]; do
+        [[ "$kind" == "better" && -n "$from" && -n "$to" ]] || continue
+        B_FROM+=("$from")
+        B_TO+=("$to")
+        B_KIND+=("$why")
+        B_BYTES+=("${bytes:-0}")
+        B_MLX+=("${mlx:-0}")
+        B_NOTE+=("$note")
+    done
+}
+
+# A better version's row: "better", MLX on Apple silicon when it is, the
+# installed model and its replacement, the replacement's size and why.
+better_row_text() {
+    local k="$1" width="$2" mlx=""
+    ROW=""
+    cell "better" 10
+    if [[ "${MODELS_APPLE_SILICON:-0}" == "1" ]]; then
+        [[ "${B_MLX[k]:-0}" != "1" ]] || mlx="MLX"
+        cell "$mlx" 3
+    fi
+    cell "${B_FROM[k]} → ${B_TO[k]}" "$width"
+    size_text "${B_BYTES[k]}"
+    ROW+="  $TEXT · ${B_NOTE[k]}"
+}
+
+better_details() {
+    local k="$1" mlx="no"
+    [[ "${B_MLX[k]:-0}" != "1" ]] || mlx="yes, runs on Ollama's MLX engine for Apple silicon"
+    detail_name "${B_FROM[k]} → ${B_TO[k]}"
+    detail_line "Why" "${B_NOTE[k]}"
+    detail_line "Size" "$(human_size "${B_BYTES[k]}")"
+    detail_line "Memory" "$(fit_text "${B_BYTES[k]}")"
+    detail_line "MLX" "$mlx"
+    detail_line "Replacing" "Downloads ${B_TO[k]} and starts it once to check that it works; only then is ${B_FROM[k]} removed. Ollama deletes it; it doesn't go to the Trash."
+    detail_line "Page" "$(model_page "${B_TO[k]}")"
+}
+
+# Replace installed model $1 with $2: download $2, start it once to check
+# that it works, and only then remove $1. A model that doesn't work is
+# removed again, and $1 stays.
+REPLACED=()
+replace_model() {
+    local from="$1" to="$2" reason="" kind key text verified=false r
+    model_heading "$from → $to"
+    if ! moremole_run_shown "$OLLAMA_CLI" pull "$to"; then
+        record_result "$to" false "" ""
+        printf '\n'
+        return 0
+    fi
+    spin "Starting it once to check that it works..."
+    while IFS="$MODELS_FIELD_SEP" read -r kind key text || [[ -n "${kind:-}" ]]; do
+        case "$kind" in
+            verified) verified=true ;;
+            notice) reason="$text" ;;
+        esac
+    done < <(run_helper hf-verify "$to")
+    unspin
+    if [[ "$verified" != "true" ]]; then
+        "$OLLAMA_CLI" rm "$to" > /dev/null 2>&1 || true
+        record_hf_failure "$from" "kept: $to was removed again because ${reason:-it did not start}"
+        return 0
+    fi
+    log_operation "$MOLE_CURRENT_COMMAND" "REBUILT" "$to" "downloaded to replace $from"
+    # Picked twice (an MLX version and a newer one): the second keeps both.
+    for r in "${REPLACED[@]+"${REPLACED[@]}"}"; do
+        if [[ "$r" == "$from" ]]; then
+            echo -e "${GREEN}${ICON_SUCCESS}${NC} Added $(mole_terminal_safe_text "$to"); $(mole_terminal_safe_text "$from") was already replaced"
+            total_done=$((total_done + 1))
+            printf '\n'
+            return 0
+        fi
+    done
+    "$OLLAMA_CLI" stop "$from" > /dev/null 2>&1 || true
+    if "$OLLAMA_CLI" rm "$from" > /dev/null 2>&1; then
+        REPLACED+=("$from")
+        [[ -z "$(hf_record_repo "$from")" ]] || hf_record_remove "$from"
+        log_operation "$MOLE_CURRENT_COMMAND" "REMOVED" "$from" "replaced by $to"
+        echo -e "${GREEN}${ICON_SUCCESS}${NC} Replaced $(mole_terminal_safe_text "$from") with $(mole_terminal_safe_text "$to"), and it works"
+    else
+        echo -e "${YELLOW}${ICON_WARNING}${NC} Added $(mole_terminal_safe_text "$to"), and it works, but Ollama couldn't remove $(mole_terminal_safe_text "$from")"
+    fi
+    total_done=$((total_done + 1))
+    printf '\n'
+}
+
 # Update: check every model with its registry, then pull the picked ones.
 run_update() {
     spin "Checking models with Ollama's registry..."
@@ -1217,6 +1379,10 @@ run_update() {
         echo -e "${GREEN}${ICON_SUCCESS}${NC} No models installed. Download one with Add Ollama models."
         return 0
     fi
+    # Better versions for this Mac: MLX ones, and newer generations.
+    spin "Looking for better versions for this Mac..."
+    load_better < <(run_helper better)
+    unspin
 
     local -a updates=()
     local i unchecked=0
@@ -1228,7 +1394,7 @@ run_update() {
     done
     local unchecked_note=""
     ((unchecked == 0)) || unchecked_note="${YELLOW}${ICON_WARNING}${NC} Couldn't check $unchecked of ${#M_NAME[@]} models with their registry. Check the internet connection, then try again."
-    if [[ "${MOLE_DRY_RUN:-0}" == "1" || ${#updates[@]} -eq 0 ]] || ! interactive; then
+    if [[ "${MOLE_DRY_RUN:-0}" == "1" || $((${#updates[@]} + ${#B_FROM[@]})) -eq 0 ]] || ! interactive; then
         print_model_list
         if [[ -n "$unchecked_note" ]]; then
             printf '\n'
@@ -1237,27 +1403,52 @@ run_update() {
             printf '\n'
             echo -e "${GREEN}${ICON_SUCCESS}${NC} No updates: every model the registry knows is up to date"
         fi
-        if [[ ${#updates[@]} -gt 0 && "${MOLE_DRY_RUN:-0}" != "1" ]]; then
+        if [[ ${#B_FROM[@]} -gt 0 ]]; then
+            printf '\n%sBetter versions for this Mac:%s\n' "$PURPLE_BOLD" "$NC"
+            for ((i = 0; i < ${#B_FROM[@]}; i++)); do
+                printf '  %s → %s  %s%s · %s%s\n' "$(mole_terminal_safe_text "${B_FROM[i]}")" "$(mole_terminal_safe_text "${B_TO[i]}")" \
+                    "$GRAY" "$(human_size "${B_BYTES[i]}")" "$(mole_terminal_safe_text "${B_NOTE[i]}")" "$NC"
+            done
+        fi
+        if [[ $((${#updates[@]} + ${#B_FROM[@]})) -gt 0 && "${MOLE_DRY_RUN:-0}" != "1" ]]; then
             printf 'Run moremole models in a terminal to choose updates.\n'
         fi
         return 0
     fi
     [[ -z "$unchecked_note" ]] || echo -e "$unchecked_note"
 
-    local -a rows=() names=() repos=()
-    local width
-    width=$(name_width "${M_NAME[@]}")
+    # The list: updates, then better versions ("b:N"), each row's item in
+    # items for the columns, the details and what was picked.
+    local -a rows=() names=() repos=() items=() better_names=()
+    local width k
+    for ((k = 0; k < ${#B_FROM[@]}; k++)); do
+        better_names+=("${B_FROM[k]} → ${B_TO[k]}")
+    done
+    width=$(name_width "${M_NAME[@]}" ${better_names[@]+"${better_names[@]}"})
     model_header "$width"
-    for i in "${updates[@]}"; do
+    for i in ${updates[@]+"${updates[@]}"}; do
         model_row_text "$i" "$width"
         rows+=("$ROW")
         names+=("${M_NAME[i]}")
         repos+=("${M_REPO[i]:-}")
+        items+=("$i")
+    done
+    for ((k = 0; k < ${#B_FROM[@]}; k++)); do
+        better_row_text "$k" "$width"
+        rows+=("$ROW")
+        names+=("")
+        repos+=("")
+        items+=("b:$k")
     done
     local -a sizes_kb=() search=()
-    for i in "${updates[@]}"; do
-        sizes_kb+=("$((${M_SIZE[i]:-0} / 1024))")
-        search+=("${M_NAME[i]}")
+    for i in "${items[@]}"; do
+        if [[ "$i" == b:* ]]; then
+            sizes_kb+=("$((${B_BYTES[${i#b:}]:-0} / 1024))")
+            search+=("${better_names[${i#b:}]} better ${B_KIND[${i#b:}]}")
+        else
+            sizes_kb+=("$((${M_SIZE[i]:-0} / 1024))")
+            search+=("${M_NAME[i]}")
+        fi
     done
     local MOLE_MENU_META_SIZEKB MOLE_MENU_FILTER_NAMES
     MOLE_MENU_META_SIZEKB=$(
@@ -1266,18 +1457,20 @@ run_update() {
     )
     MOLE_MENU_FILTER_NAMES=$(printf '%s\n' "${search[@]}")
     local -a MOLE_MENU_SORT_COLUMNS=() MOLE_MENU_SORT_KEYS=() MOLE_MENU_COL_VALUES=() MOLE_MENU_COL_CHOICES=()
-    installed_columns "${updates[@]}"
+    installed_columns "${items[@]}"
     local MOLE_MENU_SORT_MODE=name MOLE_MENU_SORT_REVERSE=false
     DETAILS_KIND=installed
-    DETAILS_MAP=("${updates[@]}")
+    DETAILS_MAP=("${items[@]}")
     DONE_LABEL=Update
     if ! pick "Select model updates to install" "${rows[@]}"; then
         moremole_note_cancel
         return 0
     fi
-    local -a chosen=() from_hf=()
+    local -a chosen=() from_hf=() replace=()
     for i in "${PICKED[@]}"; do
-        if [[ -n "${repos[i]}" ]]; then
+        if [[ "${items[i]}" == b:* ]]; then
+            replace+=("${items[i]#b:}")
+        elif [[ -n "${repos[i]}" ]]; then
             from_hf+=("${names[i]}"$'\t'"${repos[i]}")
         else
             chosen+=("${names[i]}")
@@ -1292,19 +1485,32 @@ run_update() {
     for entry in "${from_hf[@]+"${from_hf[@]}"}"; do
         printf '  %s%s%s %s %sfrom Hugging Face%s\n' "$GREEN" "$ICON_SUCCESS" "$NC" "$(mole_terminal_safe_text "${entry%%$'\t'*}")" "$GRAY" "$NC"
     done
+    local fit
+    for k in "${replace[@]+"${replace[@]}"}"; do
+        fit=$(fit_text "${B_BYTES[k]}")
+        printf '  %s%s%s Replace %s with %s %s%s%s · %s%s\n' "$GREEN" "$ICON_SUCCESS" "$NC" "$(mole_terminal_safe_text "${B_FROM[k]}")" "$(mole_terminal_safe_text "${B_TO[k]}")" \
+            "$GRAY" "$(human_size "${B_BYTES[k]}")" "${fit:+ · $fit}" "$(mole_terminal_safe_text "${B_NOTE[k]}")" "$NC"
+    done
     printf '\n'
     [[ ${#chosen[@]} -eq 0 ]] || printf '%sOllama downloads only the parts that changed.%s\n' "$GRAY" "$NC"
     [[ ${#from_hf[@]} -eq 0 ]] || printf '%sModels from Hugging Face download again in full, and replace the old version only once the new one starts.%s\n' "$GRAY" "$NC"
-    if ! confirm "Update $((${#chosen[@]} + ${#from_hf[@]})) models"; then
+    [[ ${#replace[@]} -eq 0 ]] || printf "%sEach replacement downloads in full and starts once to check that it works; only then is the old model removed (Ollama deletes it; it doesn't go to the Trash).%s\n" "$GRAY" "$NC"
+    if ! confirm "Update $((${#chosen[@]} + ${#from_hf[@]} + ${#replace[@]})) models"; then
         moremole_note_cancel
         return 0
     fi
     log_operation_session_start "$MOLE_CURRENT_COMMAND"
-    PROGRESS_TOTAL=$((${#chosen[@]} + ${#from_hf[@]}))
+    PROGRESS_TOTAL=$((${#chosen[@]} + ${#from_hf[@]} + ${#replace[@]}))
     [[ ${#chosen[@]} -eq 0 ]] || pull_models "updated" "${chosen[@]}"
     if [[ ${#from_hf[@]} -gt 0 ]]; then
         MOREMOLE_RUN_ERRORS=$(create_temp_file)
         update_from_hf "${from_hf[@]}"
+    fi
+    if [[ ${#replace[@]} -gt 0 ]]; then
+        MOREMOLE_RUN_ERRORS=$(create_temp_file)
+        for k in "${replace[@]}"; do
+            replace_model "${B_FROM[k]}" "${B_TO[k]}"
+        done
     fi
     log_operation_session_end "$MOLE_CURRENT_COMMAND" "$total_done" 0
     turn_off_if_started
@@ -1489,7 +1695,7 @@ month_id() {
 # The month choices for these month ids, newest first, each year a group
 # before its months; into TEXT.
 month_choices() {
-    local id year last_year="" out="" months="" items=""
+    local id year last_year="" out="" months="" month_items=""
     local -a names=(January February March April May June July August September October November December)
     local -a sorted=()
     while IFS= read -r id; do
@@ -1498,15 +1704,15 @@ month_choices() {
     for id in ${sorted[@]+"${sorted[@]}"}; do
         year="${id:1:4}"
         if [[ "$year" != "$last_year" ]]; then
-            [[ -z "$last_year" ]] || out+="${out:+$'\n'}+"$'\t'"$last_year"$'\t'"$months"$'\n'"$items"
+            [[ -z "$last_year" ]] || out+="${out:+$'\n'}+"$'\t'"$last_year"$'\t'"$months"$'\n'"$month_items"
             last_year="$year"
             months=""
-            items=""
+            month_items=""
         fi
         months+="${months:+ }$id"
-        items+="${items:+$'\n'}$id"$'\t'"${names[10#${id:6:2} - 1]} $year"
+        month_items+="${month_items:+$'\n'}$id"$'\t'"${names[10#${id:6:2} - 1]} $year"
     done
-    [[ -z "$last_year" ]] || out+="${out:+$'\n'}+"$'\t'"$last_year"$'\t'"$months"$'\n'"$items"
+    [[ -z "$last_year" ]] || out+="${out:+$'\n'}+"$'\t'"$last_year"$'\t'"$months"$'\n'"$month_items"
     TEXT="$out"
 }
 
@@ -1628,6 +1834,16 @@ installed_columns() {
     local i
     local -a ranks=() status=() mlx=() sizes=()
     for i in "$@"; do
+        if [[ "$i" == b:* ]]; then
+            # A better version to replace a model with.
+            i="${i#b:}"
+            ranks+=(0)
+            status+=(st_better)
+            mlx+=("${B_MLX[i]:-0}")
+            size_ids "${B_BYTES[i]:-0}"
+            sizes+=("$TEXT")
+            continue
+        fi
         status_rank "${M_STATUS[i]}"
         ranks+=("$TEXT")
         case "${M_STATUS[i]}" in
@@ -1644,7 +1860,7 @@ installed_columns() {
     keys="$TEXT"
     sort_keys "${status[@]}"
     vals="$TEXT"
-    present_choices $'st_update\tupdate available\nst_current\tup to date\nst_local\tmade on this Mac\nst_unknown\tcouldn\'t check' "${status[@]}"
+    present_choices $'st_update\tupdate available\nst_better\tbetter version for this Mac\nst_current\tup to date\nst_local\tmade on this Mac\nst_unknown\tcouldn\'t check' "${status[@]}"
     menu_column "Status|num||updates first|updates last" "$keys" "$vals" "$TEXT"
     if [[ "${MODELS_APPLE_SILICON:-0}" == "1" ]]; then
         sort_keys "${mlx[@]}"
@@ -1873,6 +2089,55 @@ pick_library_model() {
     return "$rc"
 }
 
+# A library model's name as family, generation and kind, as the helper's
+# better.go splits it: qwen2.5-coder is "qwen", "2.5" and "-coder"; into
+# GEN_PREFIX, GEN_VERSION and GEN_SUFFIX, false for a name without one.
+model_gen() {
+    [[ "$1" =~ ^([a-z][a-z-]*[a-z-])([0-9]+(\.[0-9]+)*)(-[a-z0-9.-]+)?$ || "$1" =~ ^([a-z])([0-9]+(\.[0-9]+)*)(-[a-z0-9.-]+)?$ ]] || return 1
+    GEN_PREFIX="${BASH_REMATCH[1]}"
+    GEN_VERSION="${BASH_REMATCH[2]}"
+    GEN_SUFFIX="${BASH_REMATCH[4]}"
+}
+
+# Whether generation $1 is newer than $2, part by part: 3.10 is newer
+# than 3.9, and 3.5 than 3.
+gen_newer() {
+    local -a a=() b=()
+    local i x y
+    IFS='.' read -r -a a <<< "$1"
+    IFS='.' read -r -a b <<< "$2"
+    for ((i = 0; i < ${#a[@]} || i < ${#b[@]}; i++)); do
+        x="${a[i]:-}"
+        y="${b[i]:-}"
+        # Equal so far: the one with more parts is newer.
+        [[ -n "$x" ]] || return 1
+        [[ -n "$y" ]] || return 0
+        ((10#$x == 10#$y)) && continue
+        ((10#$x > 10#$y))
+        return
+    done
+    return 1
+}
+
+# The newest generation of library model $1 in the library ("qwen3.8" for
+# qwen3.5), into TEXT; empty when it is the newest.
+newer_generation_name() {
+    local prefix suffix version best="" best_version="" name
+    TEXT=""
+    model_gen "$1" || return 0
+    prefix="$GEN_PREFIX" suffix="$GEN_SUFFIX" version="$GEN_VERSION"
+    for name in "${L_NAME[@]}"; do
+        model_gen "$name" || continue
+        [[ "$GEN_PREFIX" == "$prefix" && "$GEN_SUFFIX" == "$suffix" ]] || continue
+        gen_newer "$GEN_VERSION" "$version" || continue
+        if [[ -z "$best" ]] || gen_newer "$GEN_VERSION" "$best_version"; then
+            best="$name"
+            best_version="$GEN_VERSION"
+        fi
+    done
+    TEXT="$best"
+}
+
 # The lines above a model's versions: who makes it, its pulls and date, its
 # description, what it can do and its page, each fitted to the window.
 model_intro() {
@@ -1895,6 +2160,10 @@ model_intro() {
     parts+="${parts:+ · }$(model_page "${L_NAME[i]}")"
     printf '%s%s%s\n' "$GRAY" "$(truncate_by_display_width "$parts" "$width")" "$NC"
     printf '%s%s%s\n' "$GRAY" "$(truncate_by_display_width "latest: the version ollama pull ${L_NAME[i]} downloads" "$width")" "$NC"
+    newer_generation_name "${L_NAME[i]}"
+    if [[ -n "$TEXT" ]]; then
+        printf '%s%s%s\n' "$YELLOW" "$(truncate_by_display_width "A newer generation is in the library: $TEXT" "$width")" "$NC"
+    fi
     if [[ "$failed" == "true" ]]; then
         printf '%s%s%s\n' "$YELLOW" "$(truncate_by_display_width "Couldn't read its versions page, so its sizes are listed without details." "$width")" "$NC"
     fi
@@ -1906,7 +2175,7 @@ model_intro() {
 versions_screen() {
     local i="$1"
     local name="${L_NAME[i]}" failed=false
-    T_NAME=() T_BYTES=() T_SIZE=() T_CONTEXT=() T_INPUT=() T_MLX=() T_DEFAULT=() T_INSTALLED=()
+    T_NAME=() T_BYTES=() T_SIZE=() T_CONTEXT=() T_INPUT=() T_MLX=() T_DEFAULT=() T_INSTALLED=() T_UPDATED=()
     TAGS_FAILED=()
     spin "Reading the versions of $(mole_terminal_safe_text "$name")..."
     load_tags < <(run_helper tags "$name")
@@ -1917,7 +2186,15 @@ versions_screen() {
     fi
     local -a rows=() search=() sizes_kb=() ranks=() fits=() mlx=()
     local j width words
-    width=$(fit_name_width $((9 + 7 + 11 + 7 + 12 + 5 + 10)) 5 "${T_NAME[@]}")
+    NOW_EPOCH=$("$_DATE_CMD" +%s 2> /dev/null || echo 0)
+    # Context and Input give way to the names in a narrow window; F still
+    # filters by them.
+    VER_SHOW_CI=1
+    width=$(fit_name_width $((9 + 7 + 11 + 9 + 7 + 12 + 5 + 12)) 5 "${T_NAME[@]}")
+    if ((width < 20 && width < $(name_width "${T_NAME[@]}"))); then
+        VER_SHOW_CI=0
+        width=$(fit_name_width $((9 + 7 + 11 + 9 + 5 + 8)) 5 "${T_NAME[@]}")
+    fi
     tag_header "$width"
     for ((j = 0; j < ${#T_NAME[@]}; j++)); do
         tag_row_text "$j" "$width"
@@ -1939,14 +2216,18 @@ versions_screen() {
         fits+=("$TEXT")
         mlx+=("${T_MLX[j]:-0}")
     done
-    local MOLE_MENU_META_SIZEKB MOLE_MENU_FILTER_NAMES MOLE_MENU_INTRO
+    local MOLE_MENU_META_SIZEKB MOLE_MENU_META_EPOCHS MOLE_MENU_FILTER_NAMES MOLE_MENU_INTRO
     MOLE_MENU_META_SIZEKB=$(
         IFS=','
         printf '%s' "${sizes_kb[*]}"
     )
+    MOLE_MENU_META_EPOCHS=$(
+        IFS=','
+        printf '%s' "${T_UPDATED[*]}"
+    )
     MOLE_MENU_FILTER_NAMES=$(printf '%s\n' "${search[@]}")
     MOLE_MENU_INTRO="$(model_intro "$i" "$failed")"$'\n'
-    local -a st=() mem=() sz=() cx=() inp=() pm=() pmid=() vr=() qt=() pm_pairs=()
+    local -a st=() mem=() sz=() cx=() inp=() pm=() pmid=() vr=() qt=() pm_pairs=() ag=()
     local ids v
     for ((j = 0; j < ${#T_NAME[@]}; j++)); do
         case "${ranks[j]}" in
@@ -1968,6 +2249,8 @@ versions_screen() {
         [[ "${T_INPUT[j]}" != *Text* ]] || ids="in_text"
         [[ "${T_INPUT[j]}" != *Image* ]] || ids+="${ids:+ }in_image"
         inp+=("${ids:-in_none}")
+        age_ids "${T_UPDATED[j]:-0}"
+        ag+=("$TEXT")
         tag_parts "${T_NAME[j]}"
         pm+=("${TAG_PARAMS_M:-0}")
         v="${TAG_PARAMS:-unknown}"
@@ -2016,6 +2299,10 @@ versions_screen() {
     vals="$TEXT"
     present_choices "$SIZE_CHOICES" "${sz[@]}"
     menu_column "Size|size" "" "$vals" "$TEXT"
+    sort_keys "${ag[@]}"
+    vals="$TEXT"
+    present_choices "$AGE_CHOICES" "${ag[@]}"
+    menu_column "Updated|date:desc" "" "$vals" "$TEXT"
     sort_keys "${cx[@]}"
     vals="$TEXT"
     for v in $(printf '%s\n' "${cx[@]}" | LC_ALL=C sort -u); do
@@ -2093,9 +2380,69 @@ pause_after_failure() {
 
 # Download the versions picked on a model's screen (indices into T_), after
 # one confirm; true when any downloaded.
+# The MLX version of version $1 at the same size (its plain -mlx one, else
+# the smallest), as an index into T_; empty when there is none.
+mlx_twin_index() {
+    local j="$1" k params best="" best_plain=false plain
+    tag_parts "${T_NAME[j]}"
+    params="$TAG_PARAMS_M"
+    ((params > 0)) || return 0
+    for ((k = 0; k < ${#T_NAME[@]}; k++)); do
+        [[ "${T_MLX[k]}" == "1" ]] || continue
+        tag_parts "${T_NAME[k]}"
+        [[ "$TAG_PARAMS_M" == "$params" ]] || continue
+        plain=false
+        [[ "${T_NAME[k]}" != *-mlx ]] || plain=true
+        if [[ -z "$best" ]] || { [[ "$plain" == true && "$best_plain" != true ]]; } ||
+            { [[ "$plain" == "$best_plain" ]] && ((${T_BYTES[k]:-0} < ${T_BYTES[best]:-0})); }; then
+            best=$k
+            best_plain=$plain
+        fi
+    done
+    printf '%s' "$best"
+}
+
+# On Apple silicon, a picked version that isn't MLX, where the same size
+# has an MLX version, asks which to download. PICKS holds the result;
+# false when cancelled.
+PICKS=()
+offer_mlx_versions() {
+    local j k key fit picked
+    PICKS=()
+    for j in "$@"; do
+        k=""
+        if [[ "${MODELS_APPLE_SILICON:-0}" == "1" && "${T_MLX[j]}" != "1" ]]; then
+            k=$(mlx_twin_index "$j")
+            # Already picked too: nothing to ask.
+            for picked in "$@"; do
+                [[ "$picked" != "$k" ]] || k=""
+            done
+        fi
+        if [[ -z "$k" ]]; then
+            PICKS+=("$j")
+            continue
+        fi
+        fit=$(fit_text "${T_BYTES[k]}")
+        echo -e "${YELLOW}${ICON_WARNING}${NC} $(mole_terminal_safe_text "${T_NAME[j]}") isn't built for Apple silicon; $(mole_terminal_safe_text "${T_NAME[k]}") is ($(human_size "${T_BYTES[k]}")${fit:+, $fit})."
+        echo -ne "${PURPLE}${ICON_ARROW}${NC} ${GREEN}Enter${NC} download the MLX one instead, ${GRAY}N${NC} this one anyway, ${GRAY}ESC${NC} cancel: "
+        if ! IFS= read -r -s -n1 key; then
+            printf '\n'
+            return 1
+        fi
+        printf '\n'
+        case "$key" in
+            "" | $'\n' | $'\r') PICKS+=("$k") ;;
+            n | N) PICKS+=("$j") ;;
+            *) return 1 ;;
+        esac
+    done
+}
+
 download_versions() {
     local j total=0 fit done_before=$total_done failed_before=$total_failed
     local -a names=()
+    offer_mlx_versions "$@" || return 1
+    set -- "${PICKS[@]}"
     echo -e "${PURPLE_BOLD}Download:${NC}"
     for j in "$@"; do
         names+=("${T_NAME[j]}")

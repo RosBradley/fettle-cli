@@ -332,3 +332,30 @@ func TestTagsLinesMarkInstalledAndLeaveOutMLXOnIntel(t *testing.T) {
 		t.Error("recentTags gave the wrong entries")
 	}
 }
+
+func TestEachVersionGetsItsAgeFromTheTagsPage(t *testing.T) {
+	saved := now
+	clock := time.Unix(1790000000, 0)
+	now = func() time.Time { return clock }
+	t.Cleanup(func() { now = saved })
+	tags := parseTags("qwen3.5", tagsFixture(t))
+	if len(tags) == 0 {
+		t.Fatal("no versions")
+	}
+	// The page says how long ago each version changed: 9b a month, 9b-mlx
+	// five months and 122b eight months, a month counting 30 days.
+	want := map[string]int64{"qwen3.5:9b": 30, "qwen3.5:9b-mlx": 150, "qwen3.5:122b": 240}
+	for _, tag := range tags {
+		if days, ok := want[tag.Name]; ok && tag.Updated != clock.Unix()-days*86400 {
+			t.Errorf("%s updated %d days ago, want %d", tag.Name, (clock.Unix()-tag.Updated)/86400, days)
+		}
+	}
+	for _, c := range []struct {
+		count, unit string
+		want        int64
+	}{{"3", "week", 21 * 86400}, {"an", "hour", 3600}, {"a", "year", 365 * 86400}, {"2", "day", 2 * 86400}} {
+		if got := ageSeconds(c.count, c.unit); got != c.want {
+			t.Errorf("%s %s = %d, want %d", c.count, c.unit, got, c.want)
+		}
+	}
+}

@@ -828,3 +828,98 @@ note	Ollama was off, so it is off again" ] || { cat "$results"; return 1; }
 	# on a second line when they need one.
 	[[ "$plain" == *"Enter Download"*"← → Other model"*"S Sort/filter by column"*"F All filters"* ]]
 }
+
+@test "a model's versions say how long ago each changed, and sort and filter by it" {
+	library_models
+	printf 'mlx=1\n' >> "$ROWS_DIR/status"
+	local now
+	now=$(/bin/date +%s)
+	row tags tag gemma3:4b 3300000000 3.3GB 128K "Text, Image" 0 1 1 $((now - 21 * 86400))
+	row tags tag gemma3:12b 8100000000 8.1GB 128K "Text, Image" 0 0 0 $((now - 200 * 86400))
+	row tags tag gemma3:27b 17000000000 17GB 128K "Text, Image" 0 0 0 $((now - 3 * 86400))
+	# Enter opens gemma3; S is on Size, the sort, and Right on Updated: its
+	# first sort is newest first, so 27b leads. Its menu again (two sorts,
+	# Show all, then the windows): "in the last month".
+	printf '%s\n' ENTER CHAR:s RIGHT ENTER ENTER CHAR:s ENTER DOWN DOWN DOWN DOWN ENTER QUIT QUIT > "$KEYS_FILE"
+	run models_env COLUMNS=140 /bin/bash -c '
+		source "$1"
+		eval "$2"
+		main --download
+	' bash "$PROJECT_ROOT/bin/moremole-models.sh" "$SCRIPTED"
+	[ "$status" -eq 0 ] || { echo "$output"; return 1; }
+	local plain
+	plain=$(printf '%s' "$output" | sed $'s/\033\\[[0-9;]*m//g')
+	[[ "$plain" == *"Size"*"Updated"*"Context"* ]] || return 1
+	[[ "$plain" == *"gemma3:27b"*"17GB"*"3 days"*"gemma3:4b"*"3 weeks"*"gemma3:12b"*"6 months"* ]] || return 1
+	[[ "$plain" == *"Updated▼"* ]] || return 1
+	[[ "$plain" == *"in the last week  (1)"*"in the last month  (2)"*"in the last year  (3)"* ]] || return 1
+	[[ "$plain" == *"Filtered: Updated: in the last month"* ]]
+}
+
+@test "Ollama model updates offer better versions for this Mac, and replace a model only once the new one starts" {
+	printf 'mlx=1\n' >> "$ROWS_DIR/status"
+	row list-check model qwen3.5:latest 6600000000 1790848800 current 0 "" 0
+	row list-check model qwen3.5:27b-mlx 18000000000 1790848800 current 0 "" 1
+	row better better qwen3.5:latest qwen3.5:9b-mlx mlx 6100000000 1 "the same model, built for Apple silicon"
+	row better better qwen3.5:27b-mlx qwen3.8:27b-nochat-mlx newer 18000000000 1 "a newer generation: qwen3.8"
+	# The preview lists them.
+	run models_env /bin/bash -c 'source "$1"; main --dry-run' bash "$PROJECT_ROOT/bin/moremole-models.sh" < /dev/null
+	[ "$status" -eq 0 ] || { echo "$output"; return 1; }
+	[[ "$output" == *"Better versions for this Mac:"*"qwen3.5:latest → qwen3.5:9b-mlx"*"6.10GB · the same model, built for Apple silicon"*"qwen3.5:27b-mlx → qwen3.8:27b-nochat-mlx"*"a newer generation: qwen3.8"* ]] || return 1
+
+	# Pick both; the MLX one works and replaces qwen3.5:latest; the newer one
+	# doesn't start, so it is removed again and qwen3.5:27b-mlx stays.
+	printf '%s\n' SPACE DOWN SPACE CHAR:d > "$KEYS_FILE"
+	run models_env /bin/bash -c '
+		source "$1"
+		eval "$2"
+		printf "\n" | main
+	' bash "$PROJECT_ROOT/bin/moremole-models.sh" "$SCRIPTED"
+	[ "$status" -eq 1 ] || { echo "$output"; return 1; }
+	[[ "$output" == *"better      MLX  qwen3.5:latest → qwen3.5:9b-mlx"* ]] || return 1
+	[[ "$output" == *"Replace qwen3.5:latest with qwen3.5:9b-mlx"*"starts once to check that it works; only then is the old model removed"* ]] || return 1
+	[[ "$output" == *"Replaced qwen3.5:latest with qwen3.5:9b-mlx, and it works"* ]] || return 1
+	[[ "$output" == *"qwen3.5:27b-mlx: kept: qwen3.8:27b-nochat-mlx was removed again because its family has no chat template"* ]] || return 1
+	[ "$(cat "$CALLS")" = "ollama pull qwen3.5:9b-mlx
+hf-verify qwen3.5:9b-mlx
+ollama stop qwen3.5:latest
+ollama rm qwen3.5:latest
+ollama pull qwen3.8:27b-nochat-mlx
+hf-verify qwen3.8:27b-nochat-mlx
+ollama rm qwen3.8:27b-nochat-mlx" ] || { cat "$CALLS"; return 1; }
+	local log="$HOME/Library/Logs/mole/operations.log"
+	grep -q "REBUILT qwen3.5:9b-mlx (downloaded to replace qwen3.5:latest)" "$log" || { cat "$log"; return 1; }
+	grep -q "REMOVED qwen3.5:latest (replaced by qwen3.5:9b-mlx)" "$log" || return 1
+	grep -q "FAILED qwen3.5:27b-mlx (kept: qwen3.8:27b-nochat-mlx was removed again" "$log"
+}
+
+@test "downloading a version that isn't MLX offers its MLX version, and a model's screen names a newer generation" {
+	library_models
+	row library model gemma4 "vision" 28.7M 1791843480 0 "e2b,31b" 1 6600000000 "Gemma 4 from Google."
+	printf 'mlx=1\n' >> "$ROWS_DIR/status"
+	row tags tag gemma3:4b 3300000000 3.3GB 128K "Text, Image" 0 1 0
+	row tags tag gemma3:4b-mlx 3500000000 3.5GB 128K "Text, Image" 1 0 0
+	# gemma3 opens with 4b first: Enter downloads it, which asks; Enter takes
+	# the MLX one, then Enter confirms.
+	printf '%s\n' ENTER ENTER QUIT QUIT > "$KEYS_FILE"
+	run models_env /bin/bash -c '
+		source "$1"
+		eval "$2"
+		printf "\n\n" | main --download
+	' bash "$PROJECT_ROOT/bin/moremole-models.sh" "$SCRIPTED"
+	[ "$status" -eq 0 ] || { echo "$output"; return 1; }
+	[[ "$output" == *"A newer generation is in the library: gemma4"* ]] || return 1
+	[[ "$output" == *"gemma3:4b isn't built for Apple silicon; gemma3:4b-mlx is (3.50GB, fits in 17.18GB memory)."* ]] || return 1
+	[ "$(cat "$CALLS")" = "ollama pull gemma3:4b-mlx" ] || { cat "$CALLS"; return 1; }
+
+	# N downloads the one picked.
+	: > "$CALLS"
+	: > "$KEY_STATE"
+	run models_env /bin/bash -c '
+		source "$1"
+		eval "$2"
+		printf "n\n" | main --download
+	' bash "$PROJECT_ROOT/bin/moremole-models.sh" "$SCRIPTED"
+	[ "$status" -eq 0 ] || { echo "$output"; return 1; }
+	[ "$(cat "$CALLS")" = "ollama pull gemma3:4b" ] || { cat "$CALLS"; return 1; }
+}

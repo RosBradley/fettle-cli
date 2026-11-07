@@ -34,6 +34,9 @@ type tagInfo struct {
 	Input    string // "Text, Image"
 	MLX      bool
 	Default  bool // what "model" alone (model:latest) downloads
+	// Updated is about when the version last changed, Unix seconds, from
+	// the page's "3 weeks ago"; 0 when it doesn't say.
+	Updated int64 `json:"updated,omitempty"`
 }
 
 var (
@@ -42,7 +45,19 @@ var (
 	tagBadge = regexp.MustCompile(`rounded-full[^"]*"[^>]*>\s*([^<]+?)\s*<`)
 	tagCell  = regexp.MustCompile(`(?s)class="col-span-2[^"]*"[^>]*>(.*?)</(?:p|div)>`)
 	tagSize  = regexp.MustCompile(`^(\d+(?:\.\d+)?)\s*([KMGT]?B)\b`)
+	tagAge   = regexp.MustCompile(`(?:&nbsp;|\s)·(?:&nbsp;|\s)+(\d+|an?|one)\s+(second|minute|hour|day|week|month|year)s?\s+ago`)
 )
+
+// ageSeconds is how long "3 weeks" is, a month counting 30 days and a year
+// 365, as the page rounds them.
+func ageSeconds(count, unit string) int64 {
+	n, err := strconv.ParseInt(count, 10, 64)
+	if err != nil {
+		n = 1 // "a month", "an hour", "one year"
+	}
+	unitSeconds := map[string]int64{"second": 1, "minute": 60, "hour": 3600, "day": 86400, "week": 7 * 86400, "month": 30 * 86400, "year": 365 * 86400}[unit]
+	return n * unitSeconds
+}
 
 // appleSilicon says whether MLX versions can run here. The helper is built
 // for the Mac it runs on, so its architecture is the Mac's.
@@ -68,6 +83,9 @@ func parseTags(model, page string) []tagInfo {
 		}
 		seen[tag] = true
 		info := tagInfo{Name: model + ":" + tag, SizeText: strings.ReplaceAll(size, " ", ""), Bytes: bytes, Context: cellText(cells[1][1]), Input: cellText(cells[2][1])}
+		if a := tagAge.FindStringSubmatch(block); a != nil {
+			info.Updated = now().Unix() - ageSeconds(a[1], a[2])
+		}
 		for _, b := range tagBadge.FindAllStringSubmatch(block, -1) {
 			switch strings.ToLower(b[1]) {
 			case "mlx":
@@ -197,7 +215,7 @@ func modelTagLines(model string, fetch func(string) (string, error), installed m
 		if installed[t.Name] || (t.Default && installed[model+":latest"]) {
 			isInstalled = "1"
 		}
-		lines = append(lines, row("tag", t.Name, strconv.FormatInt(t.Bytes, 10), t.SizeText, t.Context, t.Input, flag(t.MLX), flag(t.Default), isInstalled))
+		lines = append(lines, row("tag", t.Name, strconv.FormatInt(t.Bytes, 10), t.SizeText, t.Context, t.Input, flag(t.MLX), flag(t.Default), isInstalled, strconv.FormatInt(t.Updated, 10)))
 	}
 	return lines
 }

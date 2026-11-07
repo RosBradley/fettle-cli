@@ -17,7 +17,7 @@ const (
 	cacheFile    = "library-tags.json"
 	cacheMaxAge  = 7 * 24 * time.Hour
 	cacheNoDate  = 24 * time.Hour // for a model whose date the page left out
-	cacheVersion = 1
+	cacheVersion = 2              // 2: each version's date
 )
 
 // cacheDir is where MoreMole keeps what it read. Tests replace it.

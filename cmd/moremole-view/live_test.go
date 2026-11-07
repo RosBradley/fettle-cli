@@ -185,12 +185,12 @@ func TestTheSpinnerStopsWhileTheCommandWaitsForAKey(t *testing.T) {
 	// A list redrawing just after a key is its answer, not work.
 	p.lastKey.Store(start.Add(2 * time.Second).UnixNano())
 	p.noteOutput(start.Add(2*time.Second + 100*time.Millisecond))
-	if p.idle(start.Add(2*time.Second + 200*time.Millisecond)) || !p.waiting {
+	if p.idle(start.Add(2*time.Second+200*time.Millisecond)) || !p.waiting {
 		t.Error("a redraw after a key woke the spinner")
 	}
 	// Output that goes on past the key is work again.
 	p.noteOutput(start.Add(3 * time.Second))
-	if !p.idle(start.Add(3*time.Second + 100*time.Millisecond)) || p.waiting {
+	if !p.idle(start.Add(3*time.Second+100*time.Millisecond)) || p.waiting {
 		t.Error("work after a key did not turn the spinner back on")
 	}
 }

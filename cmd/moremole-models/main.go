@@ -8,6 +8,7 @@
 //	moremole-models-go library         the models on ollama.com/library
 //	moremole-models-go tags MODEL...   the versions of each model, from its tags page
 //	moremole-models-go size NAME...    download size of each model, from the registry
+//	moremole-models-go better          better versions of the installed models for this Mac (better.go)
 //	moremole-models-go hf-list         MLX models on Hugging Face that Ollama's MLX engine runs
 //	moremole-models-go hf-files REPO...  each one's newest commit and download size
 //	moremole-models-go hf-download REPO SHA DIR  download its files, checked, into DIR
@@ -19,11 +20,12 @@
 //
 //	list:     model  name  size  modified  status  loaded  hf-repo  mlx
 //	library:  model  name  capabilities  pulls  updated  installed  sizes  mlx  bytes  description
-//	tags:     tag    name  bytes  size  context  input  mlx  default  installed
+//	tags:     tag    name  bytes  size  context  input  mlx  default  installed  updated
 //	size:     size   name  bytes
 //	hf-list:  hf     repo  family  quant  bytes  downloads  updated  installed  input
 //	hf-files: files  repo  sha  bytes  count  ollama-name
 //	hf-verify: verified name
+//	better:   better installed  suggested  kind  bytes  mlx  note
 //	notice:   notice key   text
 //
 // hf-download prints its progress, and on failure exits 1 with an "Error:"
@@ -71,7 +73,7 @@ func row(fields ...string) string {
 func notice(key, text string) string { return row("notice", key, text) }
 
 func usage(w io.Writer) {
-	_, _ = fmt.Fprintln(w, "Usage: moremole-models-go status|list [--check]|updates|library|tags MODEL...|size NAME...|hf-list|hf-files REPO...|hf-download REPO SHA DIR|hf-verify NAME")
+	_, _ = fmt.Fprintln(w, "Usage: moremole-models-go status|list [--check]|updates|better|library|tags MODEL...|size NAME...|hf-list|hf-files REPO...|hf-download REPO SHA DIR|hf-verify NAME")
 }
 
 func main() {
@@ -94,6 +96,8 @@ func main() {
 		lines = tagsLines(os.Args[2:], fetchTags, newService(), appleSilicon, loadCache().recentTags)
 	case "size":
 		lines = sizeLines(os.Args[2:], fetchManifest)
+	case "better":
+		lines = betterLines(newService(), func() ([]libraryModel, error) { return readLibrary(fetchLibrary) }, newMLXIndex(), loadHFRecord(), memoryBytes(), appleSilicon)
 	case "hf-list":
 		lines = hfListLines(fetchLibrary, newMLXIndex(), newService())
 	case "hf-files":
