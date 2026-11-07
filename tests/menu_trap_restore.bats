@@ -377,25 +377,110 @@ assert 'result=1' in out, out
 assert 'Name▲' in ansi.sub('', err), err
 
 # Up, Right to Size, Enter sorts largest first, as its spec says.
-out, err = run('UP RIGHT ENTER DOWN ENTER', 'size')
+out, err = run('CHAR:s RIGHT ENTER DOWN ENTER', 'size')
 assert 'result=0' in out, out
 screen = ansi.sub('', err)
 assert 'Size▼' in screen and 'Enter Sort, again to reverse' in screen, screen
 assert '\x1b[7mSize' in err, err
 
 # Enter again reverses it: smallest first.
-out, err = run('UP RIGHT ENTER ENTER DOWN ENTER', 'reverse')
+out, err = run('CHAR:s RIGHT ENTER ENTER DOWN ENTER', 'reverse')
 assert 'result=1' in out, out
 assert 'Size▲' in ansi.sub('', err), err
 
 # Left stops at the first column; Enter there reverses Name to Z-A, and
 # Down then Down puts the cursor on the second row, beta.
-out, err = run('UP LEFT LEFT ENTER DOWN DOWN SPACE ENTER', 'name')
+out, err = run('CHAR:s LEFT LEFT ENTER DOWN DOWN SPACE ENTER', 'name')
 assert 'result=0' in out, out
 
 # Space does nothing on the headings; Down goes back and Space selects.
-out, err = run('UP SPACE DOWN SPACE ENTER', 'space')
+out, err = run('CHAR:s SPACE DOWN SPACE ENTER', 'space')
 assert 'result=1' in out, out
+print('ok')
+PY
+    [ "$status" -eq 0 ] || {
+        echo "$output"
+        return 1
+    }
+    [[ "$output" == *"ok"* ]]
+}
+
+@test "lists wrap at both ends, single-pick lists return a row, filter headings narrow the list and a list reopens as it was left" {
+    run env PROJECT_ROOT="$PROJECT_ROOT" python3 <<'PY'
+import os
+import re
+import subprocess
+
+script = r"""
+source "$PROJECT_ROOT/lib/core/common.sh"
+source "$PROJECT_ROOT/lib/ui/menu_paginated.sh"
+enter_alt_screen() { :; }
+leave_alt_screen() { :; }
+stty() { :; }
+drain_pending_input() { :; }
+tput() { if [[ "$1" == cols ]]; then echo "$COLUMNS"; else echo "$LINES"; fi; }
+read -r -a KEYS <<< "$KEY_LIST"
+read_key() {
+    local n
+    n=$(cat "$KEY_STATE" 2> /dev/null || echo 0)
+    echo $((n + 1)) > "$KEY_STATE"
+    echo "${KEYS[n]:-QUIT}"
+}
+MOLE_MENU_COLUMNS_HEADER="Name    MLX"
+MOLE_MENU_SORT_COLUMNS=("Name|text" "MLX|filter")
+MOLE_MENU_SORT_KEYS=($'beta\x1falpha\x1fgamma\x1fdelta' $'1\x1f0\x1f1\x1f0')
+MOLE_MENU_SORT_MODE=col:0
+MOLE_MENU_SINGLE="$SINGLE"
+MOLE_MENU_SIDE_RETURN="$SIDE"
+MOLE_MENU_INTRO="$INTRO"
+MOLE_MENU_SEARCH="$SEARCH"
+MOLE_MENU_START_ITEM="$START"
+rc=0
+paginated_multi_select Pick "beta    MLX" "alpha" "gamma   MLX" "delta" || rc=$?
+echo "rc=$rc result=$MOLE_SELECTION_RESULT action=$MOLE_MENU_ACTION start=$MOLE_MENU_START_ITEM search=$MOLE_MENU_SEARCH filters=$MOLE_MENU_COLUMN_FILTERS order=$MOLE_MENU_VIEW_ORDER"
+"""
+ansi = re.compile(r'\x1b\[[0-?]*[ -/]*[@-~]')
+
+
+def run(keys, tag, **extra):
+    state = os.path.join(os.environ['BATS_TEST_TMPDIR'], 'keys-' + tag)
+    env = dict(os.environ, COLUMNS='60', LINES='16', KEY_STATE=state, KEY_LIST=keys,
+               SINGLE='', SIDE='', INTRO='', SEARCH='', START='')
+    env.update(extra)
+    r = subprocess.run(['/bin/bash', '--noprofile', '--norc', '-c', script],
+                       env=env, capture_output=True, text=True, check=True)
+    return r.stdout, ansi.sub('', r.stderr)
+
+
+# A-Z: alpha(1), beta(0), delta(3), gamma(2). Up on the first row goes to
+# the last, and Down there back to the first.
+out, _ = run('UP ENTER', 'wrap-up')
+assert 'result=2' in out, out
+out, _ = run('UP DOWN ENTER', 'wrap-down')
+assert 'result=1' in out, out
+
+# A single-pick list has no checkboxes; Enter returns the row under the
+# cursor, and Space selects nothing.
+out, err = run('DOWN SPACE ENTER', 'single', SINGLE='true')
+assert 'rc=0 result=0 action=open' in out, out
+assert '○' not in err and '4 of 4' in err and 'Enter Open' in err, err
+
+# Enter on a filter heading shows only its rows, and says so.
+out, err = run('CHAR:s RIGHT ENTER DOWN ENTER', 'filter', SINGLE='true')
+assert 'result=0' in out and 'filters=MLX' in out and 'order=0,2' in out, out
+assert 'MLX only · 2 of 4' in err and 'MLX●' in err and 'Enter Show only MLX' in err, err
+
+# Left and Right return to the caller, with the list's state.
+out, err = run('DOWN DOWN RIGHT', 'side', SIDE='true')
+assert 'rc=0 result= action=next start=3' in out, out
+assert '← → Other row' in err, err
+
+# Intro lines sit above the search line; a reopened list keeps its search
+# and puts the cursor on the row it was on.
+out, err = run('ENTER', 'reopen', SINGLE='true', INTRO='About these rows', SEARCH='a', START='3')
+assert 'result=3' in out and 'search=a' in out, out
+lines = [l for l in err.replace('\r', '\n').split('\n') if l.strip()]
+assert lines[1] == 'About these rows' and lines[2].startswith('/ Search: a'), lines[:4]
 print('ok')
 PY
     [ "$status" -eq 0 ] || {

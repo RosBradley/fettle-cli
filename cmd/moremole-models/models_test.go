@@ -171,7 +171,7 @@ func TestLibraryListsDownloadableModelsAndMarksInstalled(t *testing.T) {
 	}
 
 	s := fakeService(t, `{"models":[{"name":"llama3.1:8b"},{"name":"nomic-embed-text:latest"}]}`, `{"models":[]}`)
-	lines := libraryLines(func() (string, error) { return string(page), nil }, s, nil)
+	lines := libraryLines(func() (string, error) { return string(page), nil }, s, nil, false)
 	var names []string
 	installed, sizes := map[string]string{}, map[string]string{}
 	for _, l := range lines {
@@ -192,11 +192,11 @@ func TestLibraryListsDownloadableModelsAndMarksInstalled(t *testing.T) {
 		t.Errorf("installed marks %v", installed)
 	}
 	// Without an MLX index (an Intel Mac) the MLX count is empty.
-	if f := fields(lines[0]); f[7] != "" || !strings.HasPrefix(f[8], "Llama 3.1 is a new") {
-		t.Errorf("mlx %q, description %q", f[7], f[8])
+	if f := fields(lines[0]); f[7] != "" || f[8] != "0" || !strings.HasPrefix(f[9], "Llama 3.1 is a new") {
+		t.Errorf("mlx %q, bytes %q, description %q", f[7], f[8], f[9])
 	}
 
-	failed := libraryLines(func() (string, error) { return "<html>redesigned</html>", nil }, s, nil)
+	failed := libraryLines(func() (string, error) { return "<html>redesigned</html>", nil }, s, nil, false)
 	if len(failed) != 1 || !strings.Contains(failed[0], "library-failed") {
 		t.Errorf("unreadable page: %q", failed)
 	}
@@ -285,7 +285,7 @@ func TestTagsLinesMarkInstalledAndLeaveOutMLXOnIntel(t *testing.T) {
 	s := fakeService(t, `{"models":[{"name":"qwen3.5:latest"}]}`, `{"models":[]}`)
 	rows := map[string][]string{}
 	var order []string
-	for _, l := range tagsLines([]string{"qwen3.5", "gone", "../x"}, fetch, s, true) {
+	for _, l := range tagsLines([]string{"qwen3.5", "gone", "../x"}, fetch, s, true, nil) {
 		f := fields(l)
 		rows[f[1]] = f
 		order = append(order, f[0]+":"+f[1])
@@ -301,9 +301,32 @@ func TestTagsLinesMarkInstalledAndLeaveOutMLXOnIntel(t *testing.T) {
 	if f := rows["qwen3.5:9b-mlx"]; f[6] != "1" || f[8] != "0" {
 		t.Errorf("9b-mlx row %q", f)
 	}
-	for _, l := range tagsLines([]string{"qwen3.5"}, fetch, s, false) {
+	for _, l := range tagsLines([]string{"qwen3.5"}, fetch, s, false, nil) {
 		if f := fields(l); f[6] == "1" {
 			t.Errorf("an Intel Mac was offered an MLX version: %q", f)
 		}
+	}
+
+	// Versions the cache read recently are used without reading the page.
+	read := 0
+	counting := func(model string) (string, error) { read++; return fetch(model) }
+	cached := func(model string) []tagInfo {
+		if model == "qwen3.5" {
+			return []tagInfo{{Name: "qwen3.5:9b", Bytes: 1, SizeText: "1B", Default: true}}
+		}
+		return nil
+	}
+	lines := tagsLines([]string{"qwen3.5"}, counting, s, true, cached)
+	if read != 0 || len(lines) != 1 || fields(lines[0])[1] != "qwen3.5:9b" || fields(lines[0])[8] != "1" {
+		t.Errorf("cached: read %d pages, rows %q", read, lines)
+	}
+
+	// The cache gives only entries read within its week.
+	c := tagsCache{Models: map[string]cacheEntry{
+		"new": {Fetched: now().Unix(), Tags: []tagInfo{{Name: "new:1b"}}},
+		"old": {Fetched: now().Add(-8 * 24 * time.Hour).Unix(), Tags: []tagInfo{{Name: "old:1b"}}},
+	}}
+	if len(c.recentTags("new")) != 1 || c.recentTags("old") != nil || c.recentTags("none") != nil {
+		t.Error("recentTags gave the wrong entries")
 	}
 }

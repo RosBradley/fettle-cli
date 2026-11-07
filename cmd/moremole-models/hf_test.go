@@ -73,7 +73,7 @@ func TestLibraryCountsMLXVersionsAndReadsAPageAgainOnlyWhenTheModelChanged(t *te
 		return got
 	}
 
-	got := mlxOf(libraryLines(library, s, index()))
+	got := mlxOf(libraryLines(library, s, index(), true))
 	// A page that couldn't be read leaves the count unknown.
 	if want := map[string]string{"llama3.1": "1", "nomic-embed-text": "", "gemma4": "1"}; !reflect.DeepEqual(got, want) {
 		t.Errorf("first look: %v, want %v", got, want)
@@ -82,9 +82,8 @@ func TestLibraryCountsMLXVersionsAndReadsAPageAgainOnlyWhenTheModelChanged(t *te
 	if asked["minimax-m2.7"] != 0 || asked["llama3.1"] != 1 {
 		t.Errorf("asked %v", asked)
 	}
-
 	// Nothing changed: only the unread page is asked for again.
-	got = mlxOf(libraryLines(library, s, index()))
+	got = mlxOf(libraryLines(library, s, index(), true))
 	if got["llama3.1"] != "1" || asked["llama3.1"] != 1 || asked["nomic-embed-text"] != 2 {
 		t.Errorf("second look: %v, asked %v", got, asked)
 	}
@@ -92,16 +91,27 @@ func TestLibraryCountsMLXVersionsAndReadsAPageAgainOnlyWhenTheModelChanged(t *te
 	// A model whose date on the page changed is read again, and so is
 	// everything after a week.
 	changed := strings.Replace(string(page), "Nov 30, 2024 10:34 PM", "Dec 1, 2024 10:34 PM", 1)
-	libraryLines(func() (string, error) { return changed, nil }, s, index())
+	libraryLines(func() (string, error) { return changed, nil }, s, index(), true)
 	if asked["llama3.1"] != 2 || asked["gemma4"] != 1 {
 		t.Errorf("after llama3.1 changed: asked %v", asked)
 	}
 	saved := now
 	now = func() time.Time { return saved().Add(8 * 24 * time.Hour) }
 	t.Cleanup(func() { now = saved })
-	libraryLines(func() (string, error) { return changed, nil }, s, index())
+	libraryLines(func() (string, error) { return changed, nil }, s, index(), true)
 	if asked["gemma4"] != 2 {
 		t.Errorf("a week later: asked %v", asked)
+	}
+
+	// Each row carries the size of what the model's name alone downloads,
+	// its default version (9b, 6.6GB on the page), on an Intel Mac too,
+	// which shows no MLX count.
+	for _, show := range []bool{true, false} {
+		for _, l := range libraryLines(library, s, index(), show) {
+			if f := fields(l); f[1] == "llama3.1" && (f[8] != "6600000000" || (f[7] != "") == !show) {
+				t.Errorf("showMLX=%v: llama3.1 mlx %q, bytes %q", show, f[7], f[8])
+			}
+		}
 	}
 }
 

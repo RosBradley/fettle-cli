@@ -59,8 +59,8 @@ Mole leaves app updates out on purpose. MoreMole brings every source into one li
 For [Ollama](https://ollama.com):
 
 - **Check for updates.** It compares each model with its registry, then downloads only the parts that changed.
-- **Add Ollama models** downloads new models in two steps. First pick models from Ollama's library, with what each can do (tools, vision, thinking), the sizes it comes in, how popular it is and, on Apple silicon, whether it has MLX versions (`/mlx` finds those). Then pick their versions, each with its download size, whether it fits your Mac's memory (fits, tight or too big), its context window, what it reads (text, images), and an **MLX** flag on the versions built for Apple silicon.
-- **Add Hugging Face MLX** adds MLX models from Hugging Face, hundreds more than Ollama's library has. It lists only the families Ollama's MLX engine runs, checks every file against Hugging Face's SHA-256, then starts each model once before naming it, so one that doesn't work is removed again. Ollama model updates checks them on Hugging Face and updates them too.
+- **Add Ollama models** lets you browse Ollama's library: each model's download size, the sizes it comes in, how popular it is and, on Apple silicon, whether it has MLX versions (Enter on the MLX heading shows only those). Enter opens a model's screen: who makes it and the country, what it can do, and its versions, each with its download size, whether it fits your Mac's memory (fits, tight or too big), its context window, what it reads (text, images) and an **MLX** flag. Enter on a version downloads it, and ← → move to the next model.
+- **Add Hugging Face MLX** adds MLX models from Hugging Face, hundreds more than Ollama's library has; Enter opens a model's screen, and Enter there adds it. It lists only the families Ollama's MLX engine runs, checks every file against Hugging Face's SHA-256, then starts each model once before naming it, so one that doesn't work is removed again. Ollama model updates checks them on Hugging Face and updates them too.
 - **Remove** the models you pick. A model in use is unloaded first. The confirm screen says that removed models don't go to the Trash.
 - If Ollama is off, it offers to turn it on, and turns it off again when it's done.
 
@@ -69,7 +69,7 @@ For [Ollama](https://ollama.com):
 Software removal, Slim, Installer files, Software updates and the Ollama model items share one pick list:
 
 - **`/` searches** as you type, matching anywhere in the name.
-- **Lists open A–Z.** S sorts by size, then by date (oldest first), and O flips the order. In lists with column headings, ↑ from the first row moves onto the headings: ← → pick a column, Enter sorts by it and Enter again reverses it.
+- **Lists open A–Z.** ↑ on the first row goes to the last. In lists with column headings, S moves onto the headings: ← → pick a column, Enter sorts by it and Enter again reverses it, and Enter on MLX shows only the MLX models. Other lists keep S for size and date and O to flip the order.
 - **Nothing is selected for you.** That includes Purge, where Mole selected everything older than 7 days.
 - **Rows never wrap.** A long row is cut at the window's edge, so the list stays in place while you scroll.
 - **Details.** In Software updates and the Ollama model items, Enter opens everything about a model, and D goes on: Download, Add, Update or Remove. Each row starts with its status and whether it fits in memory.

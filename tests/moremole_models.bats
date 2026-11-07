@@ -351,72 +351,76 @@ ollama rm llama3.2:latest" ] || { cat "$CALLS"; return 1; }
 }
 
 library_models() {
-	row library model gemma3 "vision" 30.1M 1790000000 1 "1b,4b,27b" 1 "Gemma 3 from Google."
-	row library model llama3.1 "tools" 120.6M 1733006040 0 "8b,70b,405b" 0 "Llama 3.1 from Meta."
+	row library model gemma3 "vision" 30.1M 1790000000 1 "1b,4b,27b" 1 3300000000 "Gemma 3 from Google."
+	row library model llama3.1 "tools" 120.6M 1733006040 0 "8b,70b,405b" 0 4900000000 "Llama 3.1 from Meta."
 }
 
-@test "downloading picks models, then their versions, with size, fit, context, input and MLX" {
+@test "a model's screen lists its versions, Enter downloads one, and Right shows the next model" {
 	library_models
 	printf 'mlx=1\n' >> "$ROWS_DIR/status"
 	row tags tag gemma3:27b 17000000000 17GB 128K "Text, Image" 0 0 0
 	row tags tag gemma3:4b 3300000000 3.3GB 128K "Text, Image" 0 1 1
 	row tags tag gemma3:4b-mlx 3500000000 3.5GB 128K "Text, Image" 1 0 0
 	row tags tag llama3.1:405b 243000000000 243GB 128K Text 0 0 0
-	printf 'gemma3:27b 17000000000\ngemma3:4b-mlx 3500000000\nllama3.1:405b 243000000000\n' > "$ROWS_DIR/sizes"
-	# Models A-Z: gemma3, llama3.1; pick both. Versions smallest first:
-	# gemma3:4b, gemma3:4b-mlx, gemma3:27b, llama3.1:405b; pick the last three.
-	printf '%s\n' SPACE DOWN SPACE CHAR:d DOWN SPACE DOWN SPACE DOWN SPACE CHAR:d > "$KEYS_FILE"
+	# The library A-Z: gemma3, llama3.1. Enter opens gemma3, whose versions
+	# open smallest first: 4b, 4b-mlx, 27b. Down Down Enter downloads 27b.
+	# Right shows llama3.1, where Space and Enter download 405b; Q goes back
+	# to the model, then to the list, then ends.
+	printf '%s\n' ENTER DOWN DOWN ENTER RIGHT SPACE ENTER QUIT QUIT > "$KEYS_FILE"
 	run models_env /bin/bash -c '
 		source "$1"
 		eval "$2"
-		printf "\n" | main --download
+		printf "\n\n" | main --download
 	' bash "$PROJECT_ROOT/bin/moremole-models.sh" "$SCRIPTED"
 	[ "$status" -eq 0 ] || { echo "$output"; return 1; }
-	[ "$(cat "$ROWS_DIR/tags-asked")" = "gemma3 llama3.1" ] || return 1
-	[[ "$output" == *"Select models, then choose their versions; MLX: it has versions for Apple silicon"* ]] || return 1
-	# The list opens A-Z, so Name is the sorted heading, in white with an arrow.
-	[[ "$output" == *"Status     MLX  "*"Name"*"▲"*"Can do"*"Sizes"*"Pulls  Updated"* ]] || return 1
-	[[ "$output" == *"installed  MLX  gemma3"*"vision"*"1b–27b"*"30.1M  2026-09-21"* ]] || return 1
+	# The list: the download size where "Can do" was, and Enter for versions.
+	[[ "$output" == *"Ollama's library; MLX: has versions for Apple silicon"* ]] || return 1
+	[[ "$output" == *"Status     MLX  "*"Name"*"Size  Sizes"*"Pulls  Updated"* ]] || return 1
+	[[ "$output" == *"installed  MLX  gemma3"*"3.30GB  1b–27b"*"30.1M  2026-09-21"* ]] || return 1
+	[[ "$output" == *"Enter Versions"* ]] || return 1
+	# The model's screen: who makes it, its description, then its versions.
+	[[ "$output" == *"Google (United States) · 30.1M pulls · updated "*"Gemma 3 from Google."*"Can do: vision · https://ollama.com/library/gemma3"* ]] || return 1
 	[[ "$output" == *"Status     Memory   Version"*"Size"*"Context"*"Input"*"MLX"* ]] || return 1
-	[[ "$output" == *"Select versions to download; MLX: runs on Apple silicon"* ]] || return 1
 	[[ "$output" == *"installed  fits     gemma3:4b "*"3.3GB"*"128K"*"Text, Image"* ]] || return 1
-	[[ "$output" == *"fits     gemma3:4b-mlx"*"3.5GB"*"MLX"* ]] || return 1
-	[[ "$output" == *"too big  llama3.1:405b"*"243GB"* ]] || return 1
-	[[ "$output" == *"Models to download:"*"gemma3:27b"*"17.00GB · too big for 17.18GB memory"*"gemma3:4b-mlx"*"3.50GB · fits"*"llama3.1:405b"*"243.00GB · too big"* ]] || return 1
-	[[ "$output" == *"D Next"*"D Download"* ]] || return 1
-	[[ "$output" == *"gemma3:27b"*"1 of 3"*"gemma3:4b-mlx"*"2 of 3"*"llama3.1:405b"*"3 of 3"* ]] || return 1
-	[[ "$output" == *"Downloads up to 263.50GB"*"Models downloaded"*"Downloaded"*"3"* ]] || return 1
+	[[ "$output" == *"Enter Download"*"← → Other model"*"Q Back"* ]] || return 1
+	[[ "$output" == *"Download:"*"gemma3:27b"*"17.00GB · too big for 17.18GB memory"*"Download 1 version, up to 17.00GB"* ]] || return 1
+	[[ "$output" == *"Meta (United States) · 120.6M pulls"*"llama3.1:405b"* ]] || return 1
+	[[ "$output" == *"Models downloaded"*"Downloaded"*"2"* ]] || return 1
 	[ "$(cat "$CALLS")" = "ollama pull gemma3:27b
-ollama pull gemma3:4b-mlx
 ollama pull llama3.1:405b" ] || { cat "$CALLS"; return 1; }
+	grep -q "REBUILT gemma3:27b (downloaded)" "$HOME/Library/Logs/mole/operations.log"
 }
 
-@test "/mlx in the library finds only the models with MLX versions" {
+@test "Enter on the MLX heading shows only the models with MLX versions" {
 	library_models
 	printf 'mlx=1\n' >> "$ROWS_DIR/status"
 	row tags tag gemma3:4b-mlx 3500000000 3.5GB 128K "Text, Image" 1 0 0
-	printf '%s\n' CHAR:/ CHAR:m CHAR:l CHAR:x ENTER SPACE CHAR:d QUIT > "$KEYS_FILE"
+	# S goes to the headings, on Name; Left is MLX. Enter shows only gemma3,
+	# Down goes back to the list, and Enter opens it.
+	printf '%s\n' CHAR:s LEFT ENTER DOWN ENTER QUIT QUIT > "$KEYS_FILE"
 	run models_env /bin/bash -c '
 		source "$1"
 		eval "$2"
 		main --download
 	' bash "$PROJECT_ROOT/bin/moremole-models.sh" "$SCRIPTED"
 	[ "$status" -eq 0 ] || { echo "$output"; return 1; }
+	[[ "$output" == *"Enter Show only MLX"* ]] || return 1
+	[[ "$output" == *"MLX only · 1 of 2"* ]] || return 1
 	[ "$(cat "$ROWS_DIR/tags-asked")" = "gemma3" ] || { cat "$ROWS_DIR/tags-asked"; return 1; }
 	[ ! -s "$CALLS" ]
 }
 
-@test "an Intel Mac's version list doesn't mention MLX, and cancelling it downloads nothing" {
+@test "an Intel Mac's lists don't mention MLX, and leaving a model downloads nothing" {
 	library_models
 	row tags tag gemma3:4b 3300000000 3.3GB 128K "Text, Image" 0 1 0
-	printf '%s\n' SPACE CHAR:d QUIT > "$KEYS_FILE"
+	printf '%s\n' ENTER QUIT QUIT > "$KEYS_FILE"
 	run models_env /bin/bash -c '
 		source "$1"
 		eval "$2"
 		main --download
 	' bash "$PROJECT_ROOT/bin/moremole-models.sh" "$SCRIPTED"
 	[ "$status" -eq 0 ] || { echo "$output"; return 1; }
-	[[ "$output" == *"Select versions to download"* ]] || return 1
+	[[ "$output" == *"gemma3:4b"* ]] || return 1
 	[[ "$output" != *"MLX"* ]] || return 1
 	[ ! -s "$CALLS" ]
 }
@@ -424,18 +428,18 @@ ollama pull llama3.1:405b" ] || { cat "$CALLS"; return 1; }
 @test "a model whose versions can't be read still offers its sizes" {
 	library_models
 	row tags notice tags-failed llama3.1
-	printf 'llama3.1:70b 43000000000\n' > "$ROWS_DIR/sizes"
-	# Pick llama3.1; its versions are 8b, 70b, 405b with no sizes, A-Z
-	# within equal sizes: pick 70b.
-	printf '%s\n' DOWN SPACE CHAR:d DOWN SPACE CHAR:d > "$KEYS_FILE"
+	# Down Enter opens llama3.1; its versions are 8b, 70b and 405b with no
+	# sizes, in the page's order: Down Enter downloads 70b.
+	printf '%s\n' DOWN ENTER DOWN ENTER QUIT QUIT > "$KEYS_FILE"
 	run models_env /bin/bash -c '
 		source "$1"
 		eval "$2"
 		printf "\n" | main --download
 	' bash "$PROJECT_ROOT/bin/moremole-models.sh" "$SCRIPTED"
 	[ "$status" -eq 0 ] || { echo "$output"; return 1; }
-	[[ "$output" == *"Couldn't read the versions of llama3.1 at ollama.com/library/llama3.1/tags, so its sizes are listed without details."* ]] || return 1
+	[[ "$output" == *"Couldn't read its versions page, so its sizes are listed without details."* ]] || return 1
 	[[ "$output" == *"llama3.1:8b"*"llama3.1:70b"*"llama3.1:405b"* ]] || return 1
+	[[ "$output" == *"Download 1 version"* && "$output" != *"Download 1 version, up to"* ]] || return 1
 	[ "$(cat "$CALLS")" = "ollama pull llama3.1:70b" ] || { cat "$CALLS"; return 1; }
 }
 
@@ -475,8 +479,9 @@ hf_models() {
 
 @test "a search can hold a slash, as in owner/model" {
 	hf_models
-	# Typing someone/ narrows the list to someone's model; Enter finishes.
-	printf '%s\n' CHAR:/ CHAR:s CHAR:o CHAR:m CHAR:e CHAR:o CHAR:n CHAR:e CHAR:/ CHAR:g ENTER SPACE CHAR:d > "$KEYS_FILE"
+	# Typing someone/ narrows the list to someone's model; Enter finishes,
+	# Enter opens it and Enter adds it, which Esc then cancels.
+	printf '%s\n' CHAR:/ CHAR:s CHAR:o CHAR:m CHAR:e CHAR:o CHAR:n CHAR:e CHAR:/ CHAR:g ENTER ENTER ENTER QUIT QUIT > "$KEYS_FILE"
 	run models_env /bin/bash -c '
 		source "$1"
 		eval "$2"
@@ -484,59 +489,66 @@ hf_models() {
 	' bash "$PROJECT_ROOT/bin/moremole-models.sh" "$SCRIPTED"
 	[ "$status" -eq 0 ] || { echo "$output"; return 1; }
 	[[ "$output" == *"Search: someone/g"*"(1/2"* ]] || return 1
-	[[ "$output" == *"Models to add from Hugging Face:"*"someone/Gemma-4-nochat-bf16"* ]] || return 1
+	[[ "$output" == *"Add from Hugging Face:"*"someone/Gemma-4-nochat-bf16"* ]] || return 1
+	[[ "$(cat "$CALLS")" != *"hf-download"* ]]
 }
 
-@test "S sorts Hugging Face models by downloads and the library by pulls" {
+@test "the headings sort Hugging Face models by downloads and the library by pulls" {
 	hf_models
-	# A-Z, then S for size, date and downloads, most first: Qwen (719,843),
-	# then Gemma (10). O flips it, so the first row is Gemma.
-	printf '%s\n' CHAR:s CHAR:s CHAR:s CHAR:o SPACE CHAR:d > "$KEYS_FILE"
+	# S goes to the headings, on Name; Right Right Right is Downloads. Enter
+	# sorts most first (Qwen), Enter again fewest first, so the first row is
+	# Gemma; Enter opens it and Enter adds it, which Esc cancels.
+	printf '%s\n' CHAR:s RIGHT RIGHT RIGHT ENTER ENTER DOWN ENTER ENTER QUIT QUIT > "$KEYS_FILE"
 	run models_env /bin/bash -c '
 		source "$1"
 		eval "$2"
 		printf "\033" | main --huggingface
 	' bash "$PROJECT_ROOT/bin/moremole-models.sh" "$SCRIPTED"
 	[ "$status" -eq 0 ] || { echo "$output"; return 1; }
-	[[ "$output" == *"S Downloads"* ]] || return 1
-	[[ "$output" == *"Models to add from Hugging Face:"*"someone/Gemma-4-nochat-bf16"* ]] || return 1
-	[[ "$output" != *"Models to add from Hugging Face:"*"mlx-community/Qwen3.5-9B-4bit "*"· as"* ]] || return 1
+	[[ "$output" == *"S Sort"* && "$output" != *"S Downloads"* ]] || return 1
+	[[ "$output" == *"Add from Hugging Face:"*"someone/Gemma-4-nochat-bf16"* ]] || return 1
 
-	# The library: A-Z, then S for date and pulls, most first: llama3.1
-	# (120.6M) before gemma3 (30.1M).
+	# The library: S, then Right Right Right to Pulls (Status, MLX, Name,
+	# Size, Pulls): most first, llama3.1 (120.6M) before gemma3 (30.1M).
 	library_models
 	: > "$KEY_STATE"
-	printf '%s\n' CHAR:s CHAR:s SPACE CHAR:d QUIT > "$KEYS_FILE"
+	printf '%s\n' CHAR:s RIGHT RIGHT ENTER DOWN ENTER QUIT QUIT > "$KEYS_FILE"
 	run models_env /bin/bash -c '
 		source "$1"
 		eval "$2"
 		main --download
 	' bash "$PROJECT_ROOT/bin/moremole-models.sh" "$SCRIPTED"
 	[ "$status" -eq 0 ] || { echo "$output"; return 1; }
-	[[ "$output" == *"S Pulls"* ]] || return 1
+	[[ "$(printf '%s' "$output" | sed $'s/\033\\[[0-9;]*m//g')" == *"Pulls▼"* ]] || return 1
 	[ "$(cat "$ROWS_DIR/tags-asked")" = "llama3.1" ] || { cat "$ROWS_DIR/tags-asked"; return 1; }
 }
 
 @test "adding from Hugging Face downloads, adds, starts and only then names each model" {
 	hf_models
-	# A-Z: mlx-community/..., someone/...; pick both, then confirm.
-	printf '%s\n' SPACE DOWN SPACE CHAR:d > "$KEYS_FILE"
+	# A-Z: mlx-community/..., someone/... Enter opens Qwen, Enter adds it
+	# (confirmed); Right shows Gemma, Enter adds it (confirmed), and it
+	# fails its start, so a key goes back. Q Q leaves.
+	printf '%s\n' ENTER ENTER RIGHT ENTER QUIT QUIT > "$KEYS_FILE"
 	run models_env /bin/bash -c '
 		source "$1"
 		eval "$2"
-		printf "\n" | main --huggingface
+		printf "\n\nx" | main --huggingface
 	' bash "$PROJECT_ROOT/bin/moremole-models.sh" "$SCRIPTED"
 	[ "$status" -eq 1 ] || { echo "$output"; return 1; }
-	[[ "$output" == *"Select MLX models from Hugging Face"* ]] || return 1
+	[[ "$output" == *"MLX models on Hugging Face"* ]] || return 1
 	# Rows are cut to the terminal's 100 columns; the details show the rest.
 	[[ "$output" == *"Status   "*"Name"*"▲"*"Bits"*"Size"*"Can do"*"Downloads  Published"* ]] || return 1
 	[[ "$output" == *"fits     mlx-community/Qwen3.5-9B-4bit"*"4-bit"*"~5.95GB"*"vision"*"719.8K  2026-03-02"* ]] || return 1
-	[[ "$output" == *"Models to add from Hugging Face:"*"mlx-community/Qwen3.5-9B-4bit "*"5.95GB · fits in 17.18GB memory · as hf.co/mlx-community/qwen3.5-9b-4bit"* ]] || return 1
+	# The model's screen: its details, and one row that adds it.
+	[[ "$output" == *"Made by"*"Alibaba Cloud (China)"*"Family"*"Qwen 3.5"* ]] || return 1
+	[[ "$output" == *"Add to Ollama as hf.co/mlx-community/qwen3.5-9b-4bit · 5.95GB"*"Enter Add"* ]] || return 1
+	[[ "$output" == *"Add from Hugging Face:"*"mlx-community/Qwen3.5-9B-4bit "*"5.95GB · fits in 17.18GB memory · as hf.co/mlx-community/qwen3.5-9b-4bit"* ]] || return 1
 	[[ "$output" == *"it needs twice its size free"*"started once to check that it works"* ]] || return 1
 	[[ "$output" == *"Added as hf.co/mlx-community/qwen3.5-9b-4bit:latest, and it works"* ]] || return 1
+	[[ "$output" == *"Press any key to go back."* ]] || return 1
 	[[ "$output" == *"Some models did not finish"*"Added"*"1"*"Not done: hf.co/someone/gemma-4-nochat-bf16:latest: it was removed again because its family has no chat template in Ollama"* ]] || return 1
 	local staging="$HOME/Library/Caches/moremole/models/hf"
-	[ "$(cat "$CALLS")" = "hf-download mlx-community/Qwen3.5-9B-4bit $HF_SHA $staging/mlx-community--Qwen3.5-9B-4bit
+	[ "$(grep -v '^hf-files' "$CALLS")" = "hf-download mlx-community/Qwen3.5-9B-4bit $HF_SHA $staging/mlx-community--Qwen3.5-9B-4bit
 ollama create hf.co/mlx-community/qwen3.5-9b-4bit-moremole-check
 hf-verify hf.co/mlx-community/qwen3.5-9b-4bit-moremole-check
 ollama cp hf.co/mlx-community/qwen3.5-9b-4bit-moremole-check hf.co/mlx-community/qwen3.5-9b-4bit:latest
@@ -558,11 +570,11 @@ ollama rm hf.co/someone/gemma-4-nochat-bf16-moremole-check" ] || { cat "$CALLS";
 	printf 'mlx=1\n' >> "$ROWS_DIR/status"
 	row hf-list hf me/broken-4bit qwen3_5 4-bit 1000000 5 1780000000 0 Text
 	row hf-files files me/broken-4bit "$HF_SHA" 1000000 3 hf.co/me/broken-4bit
-	printf '%s\n' SPACE CHAR:d > "$KEYS_FILE"
+	printf '%s\n' ENTER ENTER QUIT QUIT > "$KEYS_FILE"
 	run models_env /bin/bash -c '
 		source "$1"
 		eval "$2"
-		printf "\n" | main --huggingface
+		printf "\nx" | main --huggingface
 	' bash "$PROJECT_ROOT/bin/moremole-models.sh" "$SCRIPTED"
 	[ "$status" -eq 1 ] || { echo "$output"; return 1; }
 	local part="$HOME/Library/Caches/moremole/models/hf/me--broken-4bit"
@@ -679,9 +691,10 @@ note	Ollama was off, so it is off again" ] || { cat "$results"; return 1; }
 
 @test "the Hugging Face headings sort by Bits, and Enter again reverses it" {
 	hf_models
-	# The list starts on Name; Right is Bits. Enter sorts fewest bits first
-	# (Qwen, 4-bit), Enter again most first, so the first row is Gemma (bf16).
-	printf '%s\n' UP RIGHT ENTER ENTER DOWN SPACE CHAR:d > "$KEYS_FILE"
+	# S goes to the headings, on Name; Right is Bits. Enter sorts fewest bits
+	# first (Qwen, 4-bit), Enter again most first, so the first row is Gemma
+	# (bf16); Enter opens it and Enter adds it, which Esc cancels.
+	printf '%s\n' CHAR:s RIGHT ENTER ENTER DOWN ENTER ENTER QUIT QUIT > "$KEYS_FILE"
 	run models_env /bin/bash -c '
 		source "$1"
 		eval "$2"
@@ -689,7 +702,7 @@ note	Ollama was off, so it is off again" ] || { cat "$results"; return 1; }
 	' bash "$PROJECT_ROOT/bin/moremole-models.sh" "$SCRIPTED"
 	[ "$status" -eq 0 ] || { echo "$output"; return 1; }
 	[[ "$output" == *"Enter Sort, again to reverse"* ]] || return 1
-	[[ "$output" == *"S Bits"* ]] || return 1
-	[[ "$output" == *"Models to add from Hugging Face:"*"someone/Gemma-4-nochat-bf16"* ]] || return 1
-	[[ "$output" != *"Models to add from Hugging Face:"*"mlx-community/Qwen3.5-9B-4bit "*"· as"* ]]
+	[[ "$(printf '%s' "$output" | sed $'s/\033\\[[0-9;]*m//g')" == *"Bits▼"* ]] || return 1
+	[[ "$output" == *"Add from Hugging Face:"*"someone/Gemma-4-nochat-bf16"* ]] || return 1
+	[[ "$output" != *"Add from Hugging Face:"*"mlx-community/Qwen3.5-9B-4bit "*"· as"* ]]
 }

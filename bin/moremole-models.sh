@@ -73,6 +73,7 @@ L_UPDATED=()
 L_INSTALLED=()
 L_SIZES=()
 L_MLX=()
+L_BYTES=()
 L_DESC=()
 # The versions of the models picked for download, from their tags pages.
 T_NAME=()
@@ -131,8 +132,8 @@ Nothing starts selected; you pick. If Ollama is off, it offers to turn
 it on, and turns it off again when done.
 
 Options:
-  --download        Pick models from ollama.com/library, then the versions to download
-  --huggingface     Pick MLX models from Hugging Face to add to Ollama (Apple silicon)
+  --download        Browse ollama.com/library; a model's screen downloads its versions
+  --huggingface     Browse MLX models on Hugging Face and add them to Ollama (Apple silicon)
   --remove          Pick installed models to remove
   -n, --dry-run     List, without downloading or removing anything
   --debug           Show detailed logs
@@ -296,10 +297,11 @@ load_models() {
 }
 
 # Read the library ("model name capabilities pulls updated installed sizes
-# mlx description"), one row per model; mlx is how many MLX versions it has.
+# mlx bytes description"), one row per model; mlx is how many MLX versions it
+# has, and bytes the download size of what its name alone downloads.
 load_library() {
-    local kind name caps pulls updated installed sizes mlx desc
-    while IFS="$MODELS_FIELD_SEP" read -r kind name caps pulls updated installed sizes mlx desc || [[ -n "${kind:-}" ]]; do
+    local kind name caps pulls updated installed sizes mlx bytes desc
+    while IFS="$MODELS_FIELD_SEP" read -r kind name caps pulls updated installed sizes mlx bytes desc || [[ -n "${kind:-}" ]]; do
         case "$kind" in
             notice) add_notice "$name" "$caps" ;;
             model)
@@ -310,6 +312,7 @@ load_library() {
                 L_INSTALLED+=("${installed:-0}")
                 L_SIZES+=("$sizes")
                 L_MLX+=("${mlx:-}")
+                L_BYTES+=("${bytes:-0}")
                 L_DESC+=("$desc")
                 ;;
         esac
@@ -536,7 +539,7 @@ library_header() {
     cell "Status" 9
     [[ "${MODELS_APPLE_SILICON:-0}" != "1" ]] || cell "MLX" 3
     cell "Name" "$1"
-    cell "Can do" 18
+    rcell "Size" 8
     cell "Sizes" 12
     rcell "Pulls" 6
     cell "Updated" 10
@@ -581,8 +584,9 @@ sizes_text() {
 }
 
 # A library model: installed first, and on Apple silicon MLX when it has MLX
-# versions, then name, what it can do, its sizes, pulls and when Ollama last
-# updated it.
+# versions, then name, the download size of what its name alone downloads,
+# its sizes, pulls and when Ollama last updated it. What it can do is on its
+# screen.
 library_row_text() {
     local i="$1" width="$2" mlx="" status=""
     [[ "${L_INSTALLED[i]}" != "1" ]] || status="installed"
@@ -593,8 +597,9 @@ library_row_text() {
         cell "$mlx" 3
     fi
     cell "${L_NAME[i]}" "$width"
-    caps_text "${L_CAPS[i]}"
-    cell "$TEXT" 18
+    TEXT=""
+    [[ ! "${L_BYTES[i]:-0}" =~ ^[1-9][0-9]*$ ]] || size_text "${L_BYTES[i]}"
+    rcell "$TEXT" 8
     sizes_text "${L_SIZES[i]}"
     cell "$TEXT" 12
     pulls_number "${L_PULLS[i]}"
@@ -760,9 +765,52 @@ show_model_details() {
     local i="${DETAILS_MAP[$1]:-$1}"
     case "$DETAILS_KIND" in
         installed) installed_details "$i" ;;
-        library) library_details "$i" ;;
-        tag) tag_details "$i" ;;
         hf) hf_details "$i" ;;
+    esac
+}
+
+# Who makes a model, and the country it's from, for its screen: from a
+# hand-kept list of the families in Ollama's library and Hugging Face's MLX
+# models, by name. Empty when the model isn't on the list, never a guess.
+maker_text() {
+    local name="${1%%:*}"
+    name="${name##*/}"
+    name=$(printf '%s' "$name" | LC_ALL=C tr '[:upper:]' '[:lower:]')
+    case "$name" in
+        llama2 | llama3 | llama3.1 | llama3.2 | llama3.2-vision | llama3.3 | llama4 | codellama | llama-guard3 | llama-guard4) TEXT="Meta (United States)" ;;
+        gemma* | codegemma* | shieldgemma* | embeddinggemma* | medgemma*) TEXT="Google (United States)" ;;
+        qwen* | qwq* | codeqwen*) TEXT="Alibaba Cloud (China)" ;;
+        mistral | mistral-nemo | mistral-small* | mistral-large* | mixtral | codestral | devstral* | magistral | ministral* | mathstral) TEXT="Mistral AI (France)" ;;
+        deepseek*) TEXT="DeepSeek (China)" ;;
+        phi | phi[0-9]* | orca2) TEXT="Microsoft (United States)" ;;
+        granite*) TEXT="IBM (United States)" ;;
+        nemotron*) TEXT="NVIDIA (United States)" ;;
+        command-r* | command-a* | aya* | cohere*) TEXT="Cohere (Canada)" ;;
+        gpt-oss*) TEXT="OpenAI (United States)" ;;
+        olmo* | tulu*) TEXT="Ai2 (United States)" ;;
+        falcon*) TEXT="Technology Innovation Institute (United Arab Emirates)" ;;
+        exaone*) TEXT="LG AI Research (South Korea)" ;;
+        glm* | codegeex*) TEXT="Zhipu AI (China)" ;;
+        kimi*) TEXT="Moonshot AI (China)" ;;
+        yi | yi-coder*) TEXT="01.AI (China)" ;;
+        internlm*) TEXT="Shanghai AI Laboratory (China)" ;;
+        minicpm*) TEXT="OpenBMB (China)" ;;
+        smollm*) TEXT="Hugging Face (United States)" ;;
+        stablelm* | stable-code*) TEXT="Stability AI (United Kingdom)" ;;
+        nomic-embed*) TEXT="Nomic AI (United States)" ;;
+        mxbai*) TEXT="Mixedbread (Germany)" ;;
+        bge*) TEXT="BAAI (China)" ;;
+        snowflake-arctic*) TEXT="Snowflake (United States)" ;;
+        solar*) TEXT="Upstage (South Korea)" ;;
+        lfm*) TEXT="Liquid AI (United States)" ;;
+        cogito*) TEXT="Deep Cogito (United States)" ;;
+        hermes3 | nous-hermes*) TEXT="Nous Research (United States)" ;;
+        ernie*) TEXT="Baidu (China)" ;;
+        hunyuan*) TEXT="Tencent (China)" ;;
+        minimax*) TEXT="MiniMax (China)" ;;
+        seed-oss*) TEXT="ByteDance (China)" ;;
+        sailor*) TEXT="Sea AI Lab (Singapore)" ;;
+        *) TEXT="" ;;
     esac
 }
 
@@ -799,45 +847,6 @@ installed_details() {
     fi
 }
 
-library_details() {
-    local i="$1" mlx="" installed="" pulls=""
-    [[ "${L_INSTALLED[i]}" != "1" ]] || installed="yes"
-    [[ -z "${L_PULLS[i]}" ]] || pulls="${L_PULLS[i]}"
-    if [[ "${MODELS_APPLE_SILICON:-0}" == "1" && "${L_MLX[i]:-}" =~ ^[1-9][0-9]*$ ]]; then
-        mlx="${L_MLX[i]} versions for Apple silicon"
-        [[ "${L_MLX[i]}" != "1" ]] || mlx="1 version for Apple silicon"
-    fi
-    detail_name "${L_NAME[i]}"
-    if [[ -n "${L_DESC[i]}" ]]; then
-        mole_terminal_safe_text "${L_DESC[i]}" | fold -s -w "${MOLE_MENU_DETAILS_WIDTH:-80}"
-        printf '\n\n'
-    fi
-    detail_line "Can do" "${L_CAPS[i]//,/, }"
-    detail_line "Sizes" "${L_SIZES[i]//,/, }"
-    detail_line "Pulls" "$pulls"
-    detail_line "Updated" "$(date_text "${L_UPDATED[i]}")"
-    detail_line "MLX" "$mlx"
-    detail_line "Installed" "$installed"
-    detail_line "Page" "$(model_page "${L_NAME[i]}")"
-    printf '\n%sSelect it, save, then choose which versions to download.%s\n' "$GRAY" "$NC"
-}
-
-tag_details() {
-    local i="$1" mlx="" default="" installed=""
-    [[ "${T_MLX[i]}" != "1" ]] || mlx="yes, runs on Ollama's MLX engine for Apple silicon"
-    [[ "${T_DEFAULT[i]}" != "1" ]] || default="yes, what ollama pull ${T_NAME[i]%%:*} downloads"
-    [[ "${T_INSTALLED[i]}" != "1" ]] || installed="yes"
-    detail_name "${T_NAME[i]}"
-    detail_line "Size" "${T_SIZE[i]:-unknown}"
-    detail_line "Memory" "$(fit_text "${T_BYTES[i]}")"
-    detail_line "Context" "${T_CONTEXT[i]}"
-    detail_line "Input" "${T_INPUT[i]}"
-    detail_line "MLX" "$mlx"
-    detail_line "Default" "$default"
-    detail_line "Installed" "$installed"
-    detail_line "Page" "$(model_page "${T_NAME[i]}")"
-}
-
 # The exact download size of Hugging Face model i, asked once.
 hf_exact_size() {
     local i="$1" kind repo sha bytes count rest
@@ -862,6 +871,9 @@ hf_details() {
     [[ ! "${H_DOWNLOADS[i]}" =~ ^[0-9]+$ ]] || downloads="${H_DOWNLOADS[i]} in the last month"
     [[ "${H_INSTALLED[i]}" != "1" ]] || added="yes"
     detail_name "${H_REPO[i]}"
+    maker_text "${H_FAMILY[i]}"
+    [[ -n "$TEXT" ]] || maker_text "${H_REPO[i]}"
+    detail_line "Made by" "$TEXT"
     family_text "${H_FAMILY[i]}"
     detail_line "Family" "$TEXT"
     detail_line "Quantization" "${H_QUANT[i]}"
@@ -1336,7 +1348,7 @@ pick() {
     PICKED=()
     # Saving with nothing picked picks nothing, never the row under the cursor.
     # Enter shows the row's details.
-    local rc=0 _MOLE_MENU_KEEP_EMPTY=true MOLE_MENU_DETAILS_FN="" MOLE_MENU_DONE_LABEL="${DONE_LABEL:-Save}"
+    local rc=0 _MOLE_MENU_KEEP_EMPTY="${PICK_KEEP_EMPTY:-true}" MOLE_MENU_DETAILS_FN="" MOLE_MENU_DONE_LABEL="${DONE_LABEL:-Save}"
     local MOLE_MENU_COLUMNS_HEADER="$COLUMNS_HEADER"
     [[ -z "$DETAILS_KIND" ]] || MOLE_MENU_DETAILS_FN=show_model_details
     hide_cursor
@@ -1379,54 +1391,309 @@ pick_to_remove() {
     pick "Select models to remove" "$@"
 }
 
-# The library opens A-Z; S sorts by when each model was last updated.
-# Search finds a model by its name, what it can do, or its description.
-pick_models_to_download() {
-    local -a search=()
-    local i
-    local words
+# The lists to browse (Ollama's library and Hugging Face's MLX models) are
+# single-pick: Enter opens a model's screen, which downloads it. These hold
+# each list's sort, search, filters and row, so it opens again as it was
+# left, and the order its rows were in, for Left and Right on a model's
+# screen to move through.
+LIB_SORT_MODE=name
+LIB_SORT_REVERSE=false
+LIB_SEARCH=""
+LIB_FILTERS=""
+LIB_ITEM=""
+LIB_ORDER=""
+HFL_SORT_MODE=name
+HFL_SORT_REVERSE=false
+HFL_SEARCH=""
+HFL_FILTERS=""
+HFL_ITEM=""
+HFL_ORDER=""
+# The versions list on a model's screen keeps its sort and filters from one
+# model to the next, opening smallest first.
+VER_SORT_MODE=size
+VER_SORT_REVERSE=true
+VER_FILTERS=""
+VER_ITEM=""
+# What a model's screen asked for: prev, next, download, add, or back.
+SCREEN_ACTION=""
+# Whether this run has started its operation-log session.
+DOWNLOAD_SESSION=false
+
+# Pick a model from Ollama's library. Search finds a model by its name,
+# what it can do, or its description; on Apple silicon, Enter on the MLX
+# heading shows only the models with MLX versions.
+pick_library_model() {
+    local -a search=() sizes_kb=() pulls=() ranks=() mlx=()
+    local i words
     for ((i = 0; i < ${#L_NAME[@]}; i++)); do
         words="${L_NAME[i]} ${L_CAPS[i]//,/ } ${L_DESC[i]}"
-        [[ ! "${L_MLX[i]:-}" =~ ^[1-9][0-9]*$ ]] || words+=" mlx"
+        if [[ "${L_MLX[i]:-}" =~ ^[1-9][0-9]*$ ]]; then
+            words+=" mlx"
+            mlx+=(1)
+        else
+            mlx+=(0)
+        fi
         search+=("$words")
+        sizes_kb+=("$((${L_BYTES[i]:-0} / 1024))")
+        pulls_number "${L_PULLS[i]}"
+        pulls+=("$TEXT")
+        if [[ "${L_INSTALLED[i]}" == "1" ]]; then ranks+=(0); else ranks+=(1); fi
     done
-    local MOLE_MENU_META_EPOCHS MOLE_MENU_FILTER_NAMES
+    local MOLE_MENU_META_EPOCHS MOLE_MENU_META_SIZEKB MOLE_MENU_META_COUNTS MOLE_MENU_FILTER_NAMES MOLE_MENU_COUNT_LABEL=Pulls
     MOLE_MENU_META_EPOCHS=$(
         IFS=','
         printf '%s' "${L_UPDATED[*]}"
     )
-    MOLE_MENU_FILTER_NAMES=$(printf '%s\n' "${search[@]}")
-    local -a pulls=()
-    for ((i = 0; i < ${#L_NAME[@]}; i++)); do
-        pulls_number "${L_PULLS[i]}"
-        pulls+=("$TEXT")
-    done
-    local MOLE_MENU_META_COUNTS MOLE_MENU_COUNT_LABEL=Pulls
+    MOLE_MENU_META_SIZEKB=$(
+        IFS=','
+        printf '%s' "${sizes_kb[*]}"
+    )
     MOLE_MENU_META_COUNTS=$(
         IFS=','
         printf '%s' "${pulls[*]}"
     )
-    local -a ranks=()
-    for ((i = 0; i < ${#L_NAME[@]}; i++)); do
-        if [[ "${L_INSTALLED[i]}" == "1" ]]; then ranks+=(0); else ranks+=(1); fi
-    done
-    local -a MOLE_MENU_SORT_COLUMNS=("Status|num" "Name|name" "Pulls|count" "Updated|date:desc") MOLE_MENU_SORT_KEYS=()
+    MOLE_MENU_FILTER_NAMES=$(printf '%s\n' "${search[@]}")
+    local -a MOLE_MENU_SORT_COLUMNS=("Status|num") MOLE_MENU_SORT_KEYS=()
     sort_keys "${ranks[@]}"
     MOLE_MENU_SORT_KEYS[0]="$TEXT"
-    local MOLE_MENU_SORT_MODE=name MOLE_MENU_SORT_REVERSE=false
-    local title="Select models, then choose their versions"
-    [[ "${MODELS_APPLE_SILICON:-0}" != "1" ]] || title+="; MLX: it has versions for Apple silicon"
-    DETAILS_KIND=library
-    DETAILS_MAP=()
-    DONE_LABEL=Next
-    pick "$title" "$@"
+    if [[ "${MODELS_APPLE_SILICON:-0}" == "1" ]]; then
+        MOLE_MENU_SORT_COLUMNS+=("MLX|filter")
+        sort_keys "${mlx[@]}"
+        MOLE_MENU_SORT_KEYS[1]="$TEXT"
+    fi
+    MOLE_MENU_SORT_COLUMNS+=("Name|name" "Size|size" "Pulls|count" "Updated|date:desc")
+    local MOLE_MENU_SORT_MODE="$LIB_SORT_MODE" MOLE_MENU_SORT_REVERSE="$LIB_SORT_REVERSE"
+    local MOLE_MENU_SEARCH="$LIB_SEARCH" MOLE_MENU_COLUMN_FILTERS="$LIB_FILTERS" MOLE_MENU_START_ITEM="$LIB_ITEM" MOLE_MENU_VIEW_ORDER=""
+    local MOLE_MENU_SINGLE=true MOLE_MENU_ENTER_LABEL="Versions" MOLE_MENU_CANCEL_LABEL="Done"
+    local title="Ollama's library"
+    [[ "${MODELS_APPLE_SILICON:-0}" != "1" ]] || title+="; MLX: has versions for Apple silicon"
+    DETAILS_KIND=""
+    local rc=0
+    pick "$title" "$@" || rc=$?
+    LIB_SORT_MODE="$MOLE_MENU_SORT_MODE" LIB_SORT_REVERSE="$MOLE_MENU_SORT_REVERSE"
+    LIB_SEARCH="$MOLE_MENU_SEARCH" LIB_FILTERS="$MOLE_MENU_COLUMN_FILTERS"
+    LIB_ITEM="$MOLE_MENU_START_ITEM" LIB_ORDER="$MOLE_MENU_VIEW_ORDER"
+    return "$rc"
 }
 
-# The Hugging Face list opens A-Z; S sorts by size, then by when it was
-# published, then by downloads. Search finds a model by its name, family,
-# quantization, what it reads, vision, or added.
-pick_hf_models() {
-    local -a search=() sizes_kb=() published=()
+# The lines above a model's versions: who makes it, its pulls and date, its
+# description, what it can do and its page, each fitted to the window.
+model_intro() {
+    local i="$1" failed="$2" width line parts=""
+    width=$(($(terminal_cols) - 2))
+    ((width >= 20)) || width=20
+    maker_text "${L_NAME[i]}"
+    [[ -z "$TEXT" ]] || parts="$TEXT"
+    [[ -z "${L_PULLS[i]}" ]] || parts+="${parts:+ · }${L_PULLS[i]} pulls"
+    line=$(date_text "${L_UPDATED[i]}")
+    [[ -z "$line" ]] || parts+="${parts:+ · }updated $line"
+    [[ -z "$parts" ]] || printf '%s%s%s\n' "$GRAY" "$(truncate_by_display_width "$parts" "$width")" "$NC"
+    if [[ -n "${L_DESC[i]}" ]]; then
+        mole_terminal_safe_text "${L_DESC[i]}" | fold -s -w "$width"
+        printf '\n'
+    fi
+    parts=""
+    caps_text "${L_CAPS[i]}"
+    [[ -z "$TEXT" ]] || parts="Can do: ${TEXT// /, }"
+    parts+="${parts:+ · }$(model_page "${L_NAME[i]}")"
+    printf '%s%s%s\n' "$GRAY" "$(truncate_by_display_width "$parts" "$width")" "$NC"
+    if [[ "$failed" == "true" ]]; then
+        printf '%s%s%s\n' "$YELLOW" "$(truncate_by_display_width "Couldn't read its versions page, so its sizes are listed without details." "$width")" "$NC"
+    fi
+}
+
+# A library model's screen: its details, then its versions to download.
+# Enter downloads the version under the cursor, or the ones selected with
+# Space; Left and Right show the previous or next model in the list.
+versions_screen() {
+    local i="$1"
+    local name="${L_NAME[i]}" failed=false
+    T_NAME=() T_BYTES=() T_SIZE=() T_CONTEXT=() T_INPUT=() T_MLX=() T_DEFAULT=() T_INSTALLED=()
+    TAGS_FAILED=()
+    spin "Reading the versions of $(mole_terminal_safe_text "$name")..."
+    load_tags < <(run_helper tags "$name")
+    unspin
+    if [[ ${#T_NAME[@]} -eq 0 ]]; then
+        failed=true
+        add_plain_versions "$i"
+    fi
+    local -a rows=() search=() sizes_kb=() ranks=() fits=() mlx=()
+    local j width words
+    width=$(name_width "${T_NAME[@]}")
+    tag_header "$width"
+    for ((j = 0; j < ${#T_NAME[@]}; j++)); do
+        tag_row_text "$j" "$width"
+        rows+=("$ROW")
+        words="${T_NAME[j]} ${T_INPUT[j]//,/}"
+        [[ "${T_MLX[j]}" != "1" ]] || words+=" mlx"
+        [[ "${T_DEFAULT[j]}" != "1" ]] || words+=" default"
+        [[ "${T_INSTALLED[j]}" != "1" ]] || words+=" installed"
+        search+=("$words")
+        sizes_kb+=("$((${T_BYTES[j]:-0} / 1024))")
+        if [[ "${T_INSTALLED[j]}" == "1" ]]; then
+            ranks+=(0)
+        elif [[ "${T_DEFAULT[j]}" == "1" ]]; then
+            ranks+=(1)
+        else
+            ranks+=(2)
+        fi
+        fit_rank "${T_BYTES[j]}"
+        fits+=("$TEXT")
+        mlx+=("${T_MLX[j]:-0}")
+    done
+    local MOLE_MENU_META_SIZEKB MOLE_MENU_FILTER_NAMES MOLE_MENU_INTRO
+    MOLE_MENU_META_SIZEKB=$(
+        IFS=','
+        printf '%s' "${sizes_kb[*]}"
+    )
+    MOLE_MENU_FILTER_NAMES=$(printf '%s\n' "${search[@]}")
+    MOLE_MENU_INTRO="$(model_intro "$i" "$failed")"$'\n'
+    local -a MOLE_MENU_SORT_COLUMNS=("Status|num" "Memory|num" "Version|name" "Size|size") MOLE_MENU_SORT_KEYS=()
+    sort_keys "${ranks[@]}"
+    MOLE_MENU_SORT_KEYS[0]="$TEXT"
+    sort_keys "${fits[@]}"
+    MOLE_MENU_SORT_KEYS[1]="$TEXT"
+    if [[ "${MODELS_APPLE_SILICON:-0}" == "1" ]]; then
+        MOLE_MENU_SORT_COLUMNS+=("MLX|filter")
+        sort_keys "${mlx[@]}"
+        MOLE_MENU_SORT_KEYS[4]="$TEXT"
+    fi
+    local MOLE_MENU_SORT_MODE="$VER_SORT_MODE" MOLE_MENU_SORT_REVERSE="$VER_SORT_REVERSE"
+    local MOLE_MENU_SEARCH="" MOLE_MENU_COLUMN_FILTERS="$VER_FILTERS" MOLE_MENU_START_ITEM="$VER_ITEM" MOLE_MENU_VIEW_ORDER=""
+    local MOLE_MENU_SIDE_RETURN=true MOLE_MENU_SIDE_LABEL="Other model" MOLE_MENU_ENTER_LABEL="Download" MOLE_MENU_CANCEL_LABEL="Back"
+    local PICK_KEEP_EMPTY=false
+    DETAILS_KIND=""
+    MOLE_MENU_ACTION=""
+    local rc=0
+    pick "$name" "${rows[@]}" || rc=$?
+    VER_SORT_MODE="$MOLE_MENU_SORT_MODE" VER_SORT_REVERSE="$MOLE_MENU_SORT_REVERSE"
+    VER_FILTERS="$MOLE_MENU_COLUMN_FILTERS" VER_ITEM="$MOLE_MENU_START_ITEM"
+    case "$MOLE_MENU_ACTION" in
+        prev | next) SCREEN_ACTION="$MOLE_MENU_ACTION" ;;
+        save) if [[ $rc -eq 0 ]]; then SCREEN_ACTION=download; else SCREEN_ACTION=back; fi ;;
+        *) SCREEN_ACTION=back ;;
+    esac
+}
+
+# The model before or after model $1 in a list's order ($3, the row indices
+# as the list last showed them), going round at the ends.
+neighbor() {
+    local i="$1" way="$2" n pos=-1
+    local -a order=()
+    [[ -z "$3" ]] || IFS=',' read -r -a order <<< "$3"
+    n=${#order[@]}
+    ((n > 0)) || {
+        printf '%s' "$i"
+        return 0
+    }
+    local k
+    for ((k = 0; k < n; k++)); do
+        [[ "${order[k]}" != "$i" ]] || pos=$k
+    done
+    if ((pos < 0)); then
+        printf '%s' "${order[0]}"
+    elif [[ "$way" == "prev" ]]; then
+        printf '%s' "${order[(pos + n - 1) % n]}"
+    else
+        printf '%s' "${order[(pos + 1) % n]}"
+    fi
+}
+
+# Start this run's operation-log session at its first download.
+start_download_session() {
+    [[ "$DOWNLOAD_SESSION" == "true" ]] && return 0
+    DOWNLOAD_SESSION=true
+    log_operation_session_start "$MOLE_CURRENT_COMMAND"
+}
+
+# After a download that failed, wait for a key so its error can be read
+# before the model's screen comes back.
+pause_after_failure() {
+    local failed_before="$1" key
+    ((total_failed > failed_before)) || return 0
+    printf '\n%sPress any key to go back.%s' "$GRAY" "$NC"
+    IFS= read -r -s -n1 key || true
+    printf '\n'
+}
+
+# Download the versions picked on a model's screen (indices into T_), after
+# one confirm; true when any downloaded.
+download_versions() {
+    local j total=0 fit done_before=$total_done failed_before=$total_failed
+    local -a names=()
+    echo -e "${PURPLE_BOLD}Download:${NC}"
+    for j in "$@"; do
+        names+=("${T_NAME[j]}")
+        fit=$(fit_text "${T_BYTES[j]}")
+        printf '  %s%s%s %s %s%s%s%s\n' "$GREEN" "$ICON_SUCCESS" "$NC" "$(mole_terminal_safe_text "${T_NAME[j]}")" \
+            "$GRAY" "$(human_size "${T_BYTES[j]}")" "${fit:+ · $fit}" "$NC"
+        [[ "${T_BYTES[j]}" =~ ^[0-9]+$ ]] && total=$((total + T_BYTES[j]))
+    done
+    local what="${#names[@]} versions"
+    [[ ${#names[@]} -ne 1 ]] || what="1 version"
+    ((total == 0)) || what+=", up to $(bytes_to_human "$total")"
+    confirm "Download $what" || return 1
+    start_download_session
+    PROGRESS_N=0
+    PROGRESS_TOTAL=${#names[@]}
+    pull_models "downloaded" "${names[@]}"
+    pause_after_failure "$failed_before"
+    ((total_done > done_before))
+}
+
+# End a browsing run: the session and summary when anything was tried, else
+# straight back to the menu.
+finish_browsing() {
+    local heading="$1" done_label="$2"
+    if [[ "$DOWNLOAD_SESSION" != "true" ]]; then
+        moremole_note_cancel
+        return 0
+    fi
+    log_operation_session_end "$MOLE_CURRENT_COMMAND" "$total_done" 0
+    turn_off_if_started
+    show_summary "$heading" "$done_label"
+}
+
+# Browse Ollama's library: the list, each model's screen and its downloads,
+# until the list is left.
+browse_library() {
+    local i width
+    local -a rows=()
+    width=$(name_width "${L_NAME[@]}")
+    while true; do
+        library_header "$width"
+        rows=()
+        for ((i = 0; i < ${#L_NAME[@]}; i++)); do
+            library_row_text "$i" "$width"
+            rows+=("$ROW")
+        done
+        pick_library_model "${rows[@]}" || break
+        i="${PICKED[0]}"
+        VER_ITEM=""
+        while true; do
+            versions_screen "$i"
+            case "$SCREEN_ACTION" in
+                prev | next)
+                    i=$(neighbor "$i" "$SCREEN_ACTION" "$LIB_ORDER")
+                    VER_ITEM=""
+                    ;;
+                download)
+                    if download_versions "${PICKED[@]}"; then
+                        L_INSTALLED[i]=1
+                    fi
+                    ;;
+                *) break ;;
+            esac
+        done
+        LIB_ITEM="$i"
+    done
+    finish_browsing "Models downloaded" "Downloaded"
+}
+
+# Pick a model from Hugging Face's list. Search finds a model by its name,
+# family, quantization, what it reads, vision, or added.
+pick_hf_model() {
+    local -a search=() sizes_kb=() published=() ranks=() bits=()
     local i words
     for ((i = 0; i < ${#H_REPO[@]}; i++)); do
         family_text "${H_FAMILY[i]}"
@@ -1440,26 +1707,8 @@ pick_hf_models() {
         else
             published+=("${H_UPDATED[i]:-0}")
         fi
-    done
-    local MOLE_MENU_META_SIZEKB MOLE_MENU_META_EPOCHS MOLE_MENU_FILTER_NAMES
-    MOLE_MENU_META_SIZEKB=$(
-        IFS=','
-        printf '%s' "${sizes_kb[*]}"
-    )
-    MOLE_MENU_META_EPOCHS=$(
-        IFS=','
-        printf '%s' "${published[*]}"
-    )
-    MOLE_MENU_FILTER_NAMES=$(printf '%s\n' "${search[@]}")
-    local MOLE_MENU_META_COUNTS MOLE_MENU_COUNT_LABEL=Downloads
-    MOLE_MENU_META_COUNTS=$(
-        IFS=','
-        printf '%s' "${H_DOWNLOADS[*]}"
-    )
-    # Status: added, then by fit; Bits: fewest first, unquantized by its
-    # width (bf16 is 16), unknown last.
-    local -a ranks=() bits=()
-    for ((i = 0; i < ${#H_REPO[@]}; i++)); do
+        # Status: added, then by fit; Bits: fewest first, unquantized by its
+        # width (bf16 is 16), unknown last.
         if [[ "${H_INSTALLED[i]}" == "1" ]]; then
             ranks+=(0)
         else
@@ -1473,62 +1722,125 @@ pick_hf_models() {
             *) bits+=(99) ;;
         esac
     done
+    local MOLE_MENU_META_SIZEKB MOLE_MENU_META_EPOCHS MOLE_MENU_META_COUNTS MOLE_MENU_FILTER_NAMES MOLE_MENU_COUNT_LABEL=Downloads
+    MOLE_MENU_META_SIZEKB=$(
+        IFS=','
+        printf '%s' "${sizes_kb[*]}"
+    )
+    MOLE_MENU_META_EPOCHS=$(
+        IFS=','
+        printf '%s' "${published[*]}"
+    )
+    MOLE_MENU_META_COUNTS=$(
+        IFS=','
+        printf '%s' "${H_DOWNLOADS[*]}"
+    )
+    MOLE_MENU_FILTER_NAMES=$(printf '%s\n' "${search[@]}")
     local -a MOLE_MENU_SORT_COLUMNS=("Status|num" "Name|name" "Bits|num" "Size|size" "Downloads|count" "Published|date:desc") MOLE_MENU_SORT_KEYS=()
     sort_keys "${ranks[@]}"
     MOLE_MENU_SORT_KEYS[0]="$TEXT"
     sort_keys "${bits[@]}"
     MOLE_MENU_SORT_KEYS[2]="$TEXT"
-    local MOLE_MENU_SORT_MODE=name MOLE_MENU_SORT_REVERSE=false
-    DETAILS_KIND=hf
-    DETAILS_MAP=()
-    DONE_LABEL=Add
-    pick "Select MLX models from Hugging Face" "$@"
+    local MOLE_MENU_SORT_MODE="$HFL_SORT_MODE" MOLE_MENU_SORT_REVERSE="$HFL_SORT_REVERSE"
+    local MOLE_MENU_SEARCH="$HFL_SEARCH" MOLE_MENU_COLUMN_FILTERS="$HFL_FILTERS" MOLE_MENU_START_ITEM="$HFL_ITEM" MOLE_MENU_VIEW_ORDER=""
+    local MOLE_MENU_SINGLE=true MOLE_MENU_ENTER_LABEL="Details" MOLE_MENU_CANCEL_LABEL="Done"
+    DETAILS_KIND=""
+    local rc=0
+    pick "MLX models on Hugging Face" "$@" || rc=$?
+    HFL_SORT_MODE="$MOLE_MENU_SORT_MODE" HFL_SORT_REVERSE="$MOLE_MENU_SORT_REVERSE"
+    HFL_SEARCH="$MOLE_MENU_SEARCH" HFL_FILTERS="$MOLE_MENU_COLUMN_FILTERS"
+    HFL_ITEM="$MOLE_MENU_START_ITEM" HFL_ORDER="$MOLE_MENU_VIEW_ORDER"
+    return "$rc"
 }
 
-# The versions open smallest first; S sorts A-Z. Search finds a version by
-# its name, MLX, what it reads, or default and installed.
-pick_versions_to_download() {
-    local -a search=() sizes_kb=()
-    local i words
-    for ((i = 0; i < ${#T_NAME[@]}; i++)); do
-        words="${T_NAME[i]} ${T_INPUT[i]//,/}"
-        [[ "${T_MLX[i]}" != "1" ]] || words+=" mlx"
-        [[ "${T_DEFAULT[i]}" != "1" ]] || words+=" default"
-        [[ "${T_INSTALLED[i]}" != "1" ]] || words+=" installed"
-        search+=("$words")
-        sizes_kb+=("$((${T_BYTES[i]:-0} / 1024))")
+# A Hugging Face model's screen: its details, with Enter to add it to
+# Ollama, and Left and Right for the previous or next model.
+hf_screen() {
+    local i="$1" name row bytes cols
+    spin "Getting $(mole_terminal_safe_text "${H_REPO[i]}")'s files from Hugging Face..."
+    hf_exact_size "$i"
+    unspin
+    cols=$(terminal_cols)
+    name="hf.co/$(printf '%s' "${H_REPO[i]}" | LC_ALL=C tr '[:upper:]' '[:lower:]')"
+    bytes="${H_BYTES[i]}"
+    [[ "${H_EXACT[i]}" == "-" ]] || bytes="${H_EXACT[i]%% *}"
+    if [[ "${H_INSTALLED[i]}" == "1" ]]; then
+        row="Add again as $name, with Hugging Face's newest files"
+    else
+        row="Add to Ollama as $name"
+    fi
+    [[ ! "$bytes" =~ ^[1-9][0-9]*$ ]] || row+=" · $(bytes_to_human "$bytes")"
+    local MOLE_MENU_INTRO
+    MOLE_MENU_INTRO="$(MOLE_MENU_DETAILS_WIDTH="$cols" hf_details "$i" | sed '1,2d')"$'\n'
+    local -a MOLE_MENU_SORT_COLUMNS=() MOLE_MENU_SORT_KEYS=()
+    local MOLE_MENU_SINGLE=true MOLE_MENU_SIDE_RETURN=true MOLE_MENU_SIDE_LABEL="Other model" MOLE_MENU_ENTER_LABEL="Add" MOLE_MENU_CANCEL_LABEL="Back"
+    local MOLE_MENU_SEARCH="" MOLE_MENU_COLUMN_FILTERS="" MOLE_MENU_START_ITEM="" MOLE_MENU_VIEW_ORDER="" MOLE_MENU_SORT_MODE=name MOLE_MENU_SORT_REVERSE=false
+    COLUMNS_HEADER=""
+    DETAILS_KIND=""
+    MOLE_MENU_ACTION=""
+    local rc=0
+    pick "${H_REPO[i]}" "$row" || rc=$?
+    case "$MOLE_MENU_ACTION" in
+        prev | next) SCREEN_ACTION="$MOLE_MENU_ACTION" ;;
+        open) if [[ $rc -eq 0 ]]; then SCREEN_ACTION=add; else SCREEN_ACTION=back; fi ;;
+        *) SCREEN_ACTION=back ;;
+    esac
+}
+
+# Add Hugging Face model $1 to Ollama, after one confirm; true when added.
+add_hf_model() {
+    local i="$1" fit done_before=$total_done failed_before=$total_failed
+    spin "Getting $(mole_terminal_safe_text "${H_REPO[i]}")'s newest files from Hugging Face..."
+    load_hf_files < <(run_helper hf-files "${H_REPO[i]}")
+    unspin
+    if [[ ${#F_REPO[@]} -eq 0 ]]; then
+        pause_after_failure -1
+        return 1
+    fi
+    fit=$(fit_text "${F_BYTES[0]}")
+    echo -e "${PURPLE_BOLD}Add from Hugging Face:${NC}"
+    printf '  %s%s%s %s %s%s%s · as %s%s\n' "$GREEN" "$ICON_SUCCESS" "$NC" "$(mole_terminal_safe_text "${F_REPO[0]}")" \
+        "$GRAY" "$(human_size "${F_BYTES[0]}")" "${fit:+ · $fit}" "$(mole_terminal_safe_text "${F_NAME[0]}")" "$NC"
+    printf "\n%sEach file is checked against Hugging Face. While it's added it needs twice its size free: the download, then Ollama's copy; the download is deleted once Ollama has it. It's started once to check that it works, and removed again if it doesn't.%s\n" "$GRAY" "$NC"
+    confirm "Add it" || return 1
+    start_download_session
+    MOREMOLE_RUN_ERRORS=$(create_temp_file)
+    PROGRESS_N=0
+    PROGRESS_TOTAL=1
+    hf_install "${F_REPO[0]}" "${F_SHA[0]}" "${F_NAME[0]}" "added"
+    pause_after_failure "$failed_before"
+    ((total_done > done_before))
+}
+
+# Browse Hugging Face's MLX models: the list, each model's screen and the
+# models added, until the list is left.
+browse_hf() {
+    local i width dir
+    local -a rows=()
+    width=$(hf_name_width)
+    while true; do
+        hf_header "$width"
+        rows=()
+        for ((i = 0; i < ${#H_REPO[@]}; i++)); do
+            hf_row_text "$i" "$width"
+            rows+=("$ROW")
+        done
+        pick_hf_model "${rows[@]}" || break
+        i="${PICKED[0]}"
+        while true; do
+            hf_screen "$i"
+            case "$SCREEN_ACTION" in
+                prev | next) i=$(neighbor "$i" "$SCREEN_ACTION" "$HFL_ORDER") ;;
+                add) if add_hf_model "$i"; then H_INSTALLED[i]=1; fi ;;
+                *) break ;;
+            esac
+        done
+        HFL_ITEM="$i"
     done
-    local MOLE_MENU_META_SIZEKB MOLE_MENU_FILTER_NAMES
-    MOLE_MENU_META_SIZEKB=$(
-        IFS=','
-        printf '%s' "${sizes_kb[*]}"
-    )
-    MOLE_MENU_FILTER_NAMES=$(printf '%s\n' "${search[@]}")
-    # Status: installed, then default; Memory: fits first.
-    local -a ranks=() fits=()
-    for ((i = 0; i < ${#T_NAME[@]}; i++)); do
-        if [[ "${T_INSTALLED[i]}" == "1" ]]; then
-            ranks+=(0)
-        elif [[ "${T_DEFAULT[i]}" == "1" ]]; then
-            ranks+=(1)
-        else
-            ranks+=(2)
-        fi
-        fit_rank "${T_BYTES[i]}"
-        fits+=("$TEXT")
+    for dir in "${HF_KEPT[@]+"${HF_KEPT[@]}"}"; do
+        SUMMARY_NOTES+=("The downloaded part is kept in $(mole_terminal_safe_text "$dir"), so trying again continues; delete that folder to free the space instead")
     done
-    local -a MOLE_MENU_SORT_COLUMNS=("Status|num" "Memory|num" "Version|name" "Size|size") MOLE_MENU_SORT_KEYS=()
-    sort_keys "${ranks[@]}"
-    MOLE_MENU_SORT_KEYS[0]="$TEXT"
-    sort_keys "${fits[@]}"
-    MOLE_MENU_SORT_KEYS[1]="$TEXT"
-    local MOLE_MENU_SORT_MODE=size MOLE_MENU_SORT_REVERSE=true
-    local title="Select versions to download"
-    [[ "${MODELS_APPLE_SILICON:-0}" != "1" ]] || title+="; MLX: runs on Apple silicon"
-    DETAILS_KIND=tag
-    DETAILS_MAP=()
-    DONE_LABEL=Download
-    pick "$title" "$@"
+    finish_browsing "Models added" "Added"
 }
 
 # Remove: pick installed models and remove them with `ollama rm`.
@@ -1650,49 +1962,8 @@ run_download() {
         done
         return 0
     else
-        local -a rows=() models=()
-        local i width
-        width=$(name_width "${L_NAME[@]}")
-        library_header "$width"
-        for ((i = 0; i < ${#L_NAME[@]}; i++)); do
-            library_row_text "$i" "$width"
-            rows+=("$ROW")
-        done
-        if ! pick_models_to_download "${rows[@]}"; then
-            moremole_note_cancel
-            return 0
-        fi
-        for i in "${PICKED[@]}"; do
-            models+=("${L_NAME[i]}")
-        done
-
-        # Each model's tags page lists its versions, with what they need.
-        spin "Reading the versions of ${#models[@]} models..."
-        load_tags < <(run_helper tags "${models[@]}")
-        unspin
-        local failed
-        for i in "${PICKED[@]}"; do
-            for failed in "${TAGS_FAILED[@]+"${TAGS_FAILED[@]}"}"; do
-                if [[ "$failed" == "${L_NAME[i]}" ]]; then
-                    echo -e "${YELLOW}${ICON_WARNING}${NC} Couldn't read the versions of $(mole_terminal_safe_text "$failed") at ollama.com/library/$(mole_terminal_safe_text "$failed")/tags, so its sizes are listed without details."
-                    add_plain_versions "$i"
-                fi
-            done
-        done
-        rows=()
-        width=$(name_width "${T_NAME[@]+"${T_NAME[@]}"}")
-        tag_header "$width"
-        for ((i = 0; i < ${#T_NAME[@]}; i++)); do
-            tag_row_text "$i" "$width"
-            rows+=("$ROW")
-        done
-        if ! pick_versions_to_download "${rows[@]}"; then
-            moremole_note_cancel
-            return 0
-        fi
-        for i in "${PICKED[@]}"; do
-            chosen+=("${T_NAME[i]}")
-        done
+        browse_library
+        return 0
     fi
 
     # Sizes come from the registry, which also says whether a typed name exists.
@@ -1766,52 +2037,7 @@ run_huggingface() {
         return 0
     fi
 
-    local -a rows=() repos=()
-    for ((i = 0; i < ${#H_REPO[@]}; i++)); do
-        hf_row_text "$i" "$width"
-        rows+=("$ROW")
-    done
-    if ! pick_hf_models "${rows[@]}"; then
-        moremole_note_cancel
-        return 0
-    fi
-    for i in "${PICKED[@]}"; do
-        repos+=("${H_REPO[i]}")
-    done
-
-    spin "Getting download sizes from Hugging Face..."
-    load_hf_files < <(run_helper hf-files "${repos[@]}")
-    unspin
-    [[ ${#F_REPO[@]} -gt 0 ]] || return 1
-
-    echo -e "${PURPLE_BOLD}Models to add from Hugging Face:${NC}"
-    local j total=0 fit
-    for ((j = 0; j < ${#F_REPO[@]}; j++)); do
-        fit=$(fit_text "${F_BYTES[j]}")
-        printf '  %s%s%s %s %s%s%s · as %s%s\n' "$GREEN" "$ICON_SUCCESS" "$NC" "$(mole_terminal_safe_text "${F_REPO[j]}")" \
-            "$GRAY" "$(human_size "${F_BYTES[j]}")" "${fit:+ · $fit}" "$(mole_terminal_safe_text "${F_NAME[j]}")" "$NC"
-        [[ "${F_BYTES[j]}" =~ ^[0-9]+$ ]] && total=$((total + F_BYTES[j]))
-    done
-    printf '\n%sDownloads up to %s, each file checked against Hugging Face.%s\n' "$GRAY" "$(bytes_to_human "$total")" "$NC"
-    printf "%sWhile a model is added it needs twice its size free: the download, then Ollama's copy. The download is deleted once Ollama has it.%s\n" "$GRAY" "$NC"
-    printf "%sEach model is started once to check that it works; one that doesn't is removed again.%s\n" "$GRAY" "$NC"
-    if ! confirm "Add ${#F_REPO[@]} models"; then
-        moremole_note_cancel
-        return 0
-    fi
-    log_operation_session_start "$MOLE_CURRENT_COMMAND"
-    MOREMOLE_RUN_ERRORS=$(create_temp_file)
-    PROGRESS_TOTAL=${#F_REPO[@]}
-    for ((j = 0; j < ${#F_REPO[@]}; j++)); do
-        hf_install "${F_REPO[j]}" "${F_SHA[j]}" "${F_NAME[j]}" "added"
-    done
-    log_operation_session_end "$MOLE_CURRENT_COMMAND" "$total_done" 0
-    local dir
-    for dir in "${HF_KEPT[@]+"${HF_KEPT[@]}"}"; do
-        SUMMARY_NOTES+=("The downloaded part is kept in $(mole_terminal_safe_text "$dir"), so trying again continues; delete that folder to free the space instead")
-    done
-    turn_off_if_started
-    show_summary "Models added" "Added"
+    browse_hf
 }
 
 main() {

@@ -73,7 +73,7 @@ setup() {
 		bin/clean.sh:1 bin/completion.sh:2 bin/installer.sh:1 bin/purge.sh:1 \
 		bin/slim.sh:2 bin/touchid.sh:3 bin/uninstall.sh:1 \
 		lib/uninstall/batch.sh:1 lib/manage/whitelist.sh:1 bin/moremole-updates.sh:2 \
-		bin/moremole-models.sh:11; do
+		bin/moremole-models.sh:8; do
 		file="${entry%:*}"
 		want="${entry##*:}"
 		got=$(grep -v '^[[:space:]]*#' "$PROJECT_ROOT/$file" | grep -c 'moremole_note_cancel' || true)

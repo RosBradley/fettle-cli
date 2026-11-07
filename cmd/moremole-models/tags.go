@@ -141,7 +141,9 @@ var fetchTags = func(model string) (string, error) {
 // tagsLines lists the versions of each model, in the order the models were
 // given and each page lists them. MLX versions are left out on an Intel Mac,
 // which can't run them. A page that can't be read gives a notice instead.
-func tagsLines(models []string, fetch func(string) (string, error), s service, mlxOK bool) []string {
+// cached gives a model's versions as the cache last read them, nil when it
+// has none recent enough; then the page is read.
+func tagsLines(models []string, fetch func(string) (string, error), s service, mlxOK bool, cached func(string) []tagInfo) []string {
 	results := make([][]string, len(models))
 	jobs := make(chan int)
 	var wg sync.WaitGroup
@@ -154,7 +156,7 @@ func tagsLines(models []string, fetch func(string) (string, error), s service, m
 	for range min(tagsWorkers, len(models)) {
 		wg.Go(func() {
 			for i := range jobs {
-				results[i] = modelTagLines(models[i], fetch, installed, mlxOK)
+				results[i] = modelTagLines(models[i], fetch, installed, mlxOK, cached)
 			}
 		})
 	}
@@ -170,14 +172,18 @@ func tagsLines(models []string, fetch func(string) (string, error), s service, m
 	return lines
 }
 
-func modelTagLines(model string, fetch func(string) (string, error), installed map[string]bool, mlxOK bool) []string {
+func modelTagLines(model string, fetch func(string) (string, error), installed map[string]bool, mlxOK bool, cached func(string) []tagInfo) []string {
 	if !libraryName.MatchString(model) {
 		return []string{notice("tags-failed", model)}
 	}
-	page, err := fetch(model)
 	var tags []tagInfo
-	if err == nil {
-		tags = parseTags(model, page)
+	if cached != nil {
+		tags = cached(model)
+	}
+	if len(tags) == 0 {
+		if page, err := fetch(model); err == nil {
+			tags = parseTags(model, page)
+		}
 	}
 	if len(tags) == 0 {
 		return []string{notice("tags-failed", model)}

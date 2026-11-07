@@ -129,10 +129,12 @@ func libraryFailed(err error) string {
 // libraryLines lists one row per model that can be downloaded, with the
 // size tags it comes in (8b,70b), or none for a model with only "latest".
 // Models that only run on Ollama's servers are left out. A model is marked
-// installed when any of its versions is. With an MLX index (Apple silicon),
-// each row says how many MLX versions the model has; it is empty when its
-// tags page couldn't be read, and on an Intel Mac.
-func libraryLines(fetch func() (string, error), s service, mlx *mlxIndex) []string {
+// installed when any of its versions is. The index reads each model's tags
+// page into the cache, which gives each row the download size of the
+// version the model's name alone downloads (0 when unknown) and, with
+// showMLX (Apple silicon), how many MLX versions the model has; that is
+// empty when its tags page couldn't be read, and on an Intel Mac.
+func libraryLines(fetch func() (string, error), s service, mlx *mlxIndex, showMLX bool) []string {
 	models, err := readLibrary(fetch)
 	if err != nil {
 		return []string{libraryFailed(err)}
@@ -161,13 +163,14 @@ func libraryLines(fetch func() (string, error), s service, mlx *mlxIndex) []stri
 		if installed[m.Name] {
 			isInstalled = "1"
 		}
-		mlxVersions := ""
+		mlxVersions, bytes := "", int64(0)
 		if mlx != nil {
-			if n := mlx.count(m.Name); n >= 0 {
+			if n := mlx.count(m.Name); n >= 0 && showMLX {
 				mlxVersions = strconv.Itoa(n)
 			}
+			bytes = mlx.defaultBytes(m.Name)
 		}
-		lines = append(lines, row("model", m.Name, strings.Join(m.Capabilities, ","), m.Pulls, updated, isInstalled, strings.Join(m.Sizes, ","), mlxVersions, m.Description))
+		lines = append(lines, row("model", m.Name, strings.Join(m.Capabilities, ","), m.Pulls, updated, isInstalled, strings.Join(m.Sizes, ","), mlxVersions, strconv.FormatInt(bytes, 10), m.Description))
 	}
 	return lines
 }

@@ -96,6 +96,23 @@ func (x *mlxIndex) count(name string) int {
 	return e.mlxCount()
 }
 
+// defaultBytes is the download size of what the model's name alone
+// downloads: its default version, else its latest tag; 0 when unknown.
+func (x *mlxIndex) defaultBytes(name string) int64 {
+	tags := x.cache.Models[name].Tags
+	for _, t := range tags {
+		if t.Default {
+			return t.Bytes
+		}
+	}
+	for _, t := range tags {
+		if t.Name == name+":latest" {
+			return t.Bytes
+		}
+	}
+	return 0
+}
+
 // families lists the model families of the library's MLX versions, reading
 // from the registry the families not yet cached.
 func (x *mlxIndex) families() map[string]bool {

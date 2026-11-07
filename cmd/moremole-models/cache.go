@@ -97,6 +97,20 @@ func (e cacheEntry) fresh(updated int64) bool {
 	return e.Updated == updated
 }
 
+// recentTags gives a model's versions from the cache when they were read
+// within the cache's week, so a model's screen opens without reading its
+// page again; the library list reads again those whose model changed.
+func (c tagsCache) recentTags(model string) []tagInfo {
+	e, ok := c.Models[model]
+	if !ok {
+		return nil
+	}
+	if age := now().Sub(time.Unix(e.Fetched, 0)); age < 0 || age > cacheMaxAge {
+		return nil
+	}
+	return e.Tags
+}
+
 func (e cacheEntry) mlxCount() int {
 	n := 0
 	for _, t := range e.Tags {

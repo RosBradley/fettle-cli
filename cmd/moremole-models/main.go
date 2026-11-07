@@ -18,7 +18,7 @@
 // shell read:
 //
 //	list:     model  name  size  modified  status  loaded  hf-repo
-//	library:  model  name  capabilities  pulls  updated  installed  sizes  mlx  description
+//	library:  model  name  capabilities  pulls  updated  installed  sizes  mlx  bytes  description
 //	tags:     tag    name  bytes  size  context  input  mlx  default  installed
 //	size:     size   name  bytes
 //	hf-list:  hf     repo  family  quant  bytes  downloads  updated  installed  input
@@ -37,7 +37,8 @@
 // Unix seconds; sizes are bytes, 0 when unknown. In library, sizes are the
 // size tags a model comes in (8b,70b) and installed is 1 when any version
 // is installed, and on Apple silicon mlx is how many MLX versions it has
-// (empty when unknown). hf-repo is the Hugging Face model a model was added
+// (empty when unknown). bytes is the download size of the version the
+// model's name alone downloads, from its tags page, 0 when unknown. hf-repo is the Hugging Face model a model was added
 // from by MoreMole, whose status then compares it with Hugging Face. In tags, size is as the page shows it ("6.6GB - 7.6GB"),
 // mlx is 1 for a version built for Apple's MLX engine (left out on Intel),
 // and default is 1 for the version the model's name alone downloads. A tags page that can't be read gives the
@@ -87,13 +88,9 @@ func main() {
 	case "updates":
 		lines = updatesLines(findOllama(), newService(), fetchManifest, loadHFRecord(), checkHFModel)
 	case "library":
-		var mlx *mlxIndex
-		if appleSilicon {
-			mlx = newMLXIndex()
-		}
-		lines = libraryLines(fetchLibrary, newService(), mlx)
+		lines = libraryLines(fetchLibrary, newService(), newMLXIndex(), appleSilicon)
 	case "tags":
-		lines = tagsLines(os.Args[2:], fetchTags, newService(), appleSilicon)
+		lines = tagsLines(os.Args[2:], fetchTags, newService(), appleSilicon, loadCache().recentTags)
 	case "size":
 		lines = sizeLines(os.Args[2:], fetchManifest)
 	case "hf-list":
