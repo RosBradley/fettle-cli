@@ -331,3 +331,76 @@ PY
     }
     [[ "$output" == *"ok"* ]]
 }
+
+@test "Up from the first row reaches the headings, where Enter sorts by a column and Enter again reverses it" {
+    run env PROJECT_ROOT="$PROJECT_ROOT" python3 <<'PY'
+import os
+import re
+import subprocess
+
+script = r"""
+source "$PROJECT_ROOT/lib/core/common.sh"
+source "$PROJECT_ROOT/lib/ui/menu_paginated.sh"
+enter_alt_screen() { :; }
+leave_alt_screen() { :; }
+stty() { :; }
+drain_pending_input() { :; }
+tput() { if [[ "$1" == cols ]]; then echo "$COLUMNS"; else echo "$LINES"; fi; }
+read -r -a KEYS <<< "$KEY_LIST"
+read_key() {
+    local n
+    n=$(cat "$KEY_STATE" 2> /dev/null || echo 0)
+    echo $((n + 1)) > "$KEY_STATE"
+    echo "${KEYS[n]:-QUIT}"
+}
+MOLE_MENU_COLUMNS_HEADER="Name    Size"
+MOLE_MENU_SORT_COLUMNS=("Name|text" "Size|num:desc")
+MOLE_MENU_SORT_KEYS=($'beta\x1falpha\x1fgamma' $'300\x1f100\x1f200')
+MOLE_MENU_SORT_MODE=col:0
+paginated_multi_select Pick "beta    300" "alpha   100" "gamma   200" || echo "rc=$?"
+echo "result=$MOLE_SELECTION_RESULT"
+"""
+ansi = re.compile(r'\x1b\[[0-?]*[ -/]*[@-~]')
+
+
+def run(keys, tag):
+    state = os.path.join(os.environ['BATS_TEST_TMPDIR'], 'keys-' + tag)
+    env = dict(os.environ, COLUMNS='60', LINES='14', KEY_STATE=state, KEY_LIST=keys)
+    r = subprocess.run(['/bin/bash', '--noprofile', '--norc', '-c', script],
+                       env=env, capture_output=True, text=True, check=True)
+    return r.stdout, r.stderr
+
+
+# Enter on the list picks the row under the cursor: the first row, A-Z.
+out, err = run('ENTER', 'plain')
+assert 'result=1' in out, out
+assert 'Name▲' in ansi.sub('', err), err
+
+# Up, Right to Size, Enter sorts largest first, as its spec says.
+out, err = run('UP RIGHT ENTER DOWN ENTER', 'size')
+assert 'result=0' in out, out
+screen = ansi.sub('', err)
+assert 'Size▼' in screen and 'Enter Sort, again to reverse' in screen, screen
+assert '\x1b[7mSize' in err, err
+
+# Enter again reverses it: smallest first.
+out, err = run('UP RIGHT ENTER ENTER DOWN ENTER', 'reverse')
+assert 'result=1' in out, out
+assert 'Size▲' in ansi.sub('', err), err
+
+# Left stops at the first column; Enter there reverses Name to Z-A, and
+# Down then Down puts the cursor on the second row, beta.
+out, err = run('UP LEFT LEFT ENTER DOWN DOWN SPACE ENTER', 'name')
+assert 'result=0' in out, out
+
+# Space does nothing on the headings; Down goes back and Space selects.
+out, err = run('UP SPACE DOWN SPACE ENTER', 'space')
+assert 'result=1' in out, out
+print('ok')
+PY
+    [ "$status" -eq 0 ] || {
+        echo "$output"
+        return 1
+    }
+    [[ "$output" == *"ok"* ]]
+}

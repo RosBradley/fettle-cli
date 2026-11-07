@@ -175,14 +175,79 @@ paginated_multi_select() {
         has_sort_controls=true
     fi
 
+    # MoreMole: a caller with a heading line can name its sortable columns in
+    # MOLE_MENU_SORT_COLUMNS, one "Label|mode" each, left to right. The mode
+    # is one of this menu's own sorts (name, size, date, count), or num or
+    # text with the column's keys, one per item joined by the unit separator,
+    # at the same place in MOLE_MENU_SORT_KEYS. ":asc" or ":desc" after the
+    # mode is the order the column's first Enter sorts in. Up from the first
+    # row moves into the heading line: Left and Right pick a column, Enter
+    # sorts by it and Enter again reverses, Down goes back to the list.
+    local -a sort_col_label=() sort_col_pos=() sort_col_mode=() sort_col_type=() sort_col_first=() sort_col_keys=()
+    local sort_col_count=0 header_focus=false header_col=0
+    if [[ -n "$column_header" ]]; then
+        local _spec _label _mode _dir _from=0 _rest _prefix _s=0 _k
+        local -a _keys=()
+        for _spec in ${MOLE_MENU_SORT_COLUMNS[@]+"${MOLE_MENU_SORT_COLUMNS[@]}"}; do
+            _label="${_spec%%|*}"
+            _mode="${_spec#*|}"
+            _dir=""
+            if [[ "$_mode" == *:* ]]; then
+                _dir="${_mode#*:}"
+                _mode="${_mode%%:*}"
+            fi
+            _rest="${column_header:_from}"
+            _prefix="${_rest%%"$_label"*}"
+            if [[ -n "$_label" && "$_prefix" != "$_rest" ]]; then
+                sort_col_label+=("$_label")
+                sort_col_pos+=($((_from + ${#_prefix})))
+                _from=$((_from + ${#_prefix} + ${#_label}))
+                case "$_mode" in
+                    num | text)
+                        sort_col_mode+=("col:$sort_col_count")
+                        sort_col_type+=("$_mode")
+                        _keys=()
+                        IFS=$'\x1f' read -r -a _keys <<< "${MOLE_MENU_SORT_KEYS[_s]:-}"
+                        for ((_k = 0; _k < total_items; _k++)); do
+                            sort_col_keys[sort_col_count * total_items + _k]="${_keys[_k]:-}"
+                        done
+                        ;;
+                    *)
+                        sort_col_mode+=("$_mode")
+                        sort_col_type+=("")
+                        ;;
+                esac
+                sort_col_first+=("$_dir")
+                sort_col_count=$((sort_col_count + 1))
+            fi
+            _s=$((_s + 1))
+        done
+    fi
+    ((sort_col_count == 0)) || has_sort_controls=true
+
     sort_mode_available() {
         case "$1" in
             date) [[ "$has_epoch_metadata" == "true" ]] ;;
             size) [[ "$has_size_metadata" == "true" ]] ;;
             count) [[ "$has_count_metadata" == "true" ]] ;;
             name) return 0 ;;
+            col:*) [[ "${1#col:}" =~ ^[0-9]+$ && ${1#col:} -lt $sort_col_count && -n "${sort_col_type[${1#col:}]}" ]] ;;
             *) return 1 ;;
         esac
+    }
+
+    # Whether a sort, with sort_reverse as it is, runs from small to large:
+    # dates oldest first, sizes and counts largest first, the rest A-Z.
+    sort_runs_ascending() {
+        local ascending=true
+        case "$1" in
+            size | count) ascending=false ;;
+        esac
+        if [[ "$sort_reverse" == "true" ]]; then
+            [[ "$ascending" != "true" ]]
+        else
+            [[ "$ascending" == "true" ]]
+        fi
     }
 
     normalize_sort_mode() {
@@ -200,6 +265,16 @@ paginated_multi_select() {
 
     cycle_sort_mode() {
         local candidate
+        # MoreMole: a list sorted only by its columns steps through them.
+        if [[ "$has_metadata" == "false" && $sort_col_count -gt 0 ]]; then
+            local c next=0
+            for ((c = 0; c < sort_col_count; c++)); do
+                [[ "${sort_col_mode[c]}" != "$sort_mode" ]] || next=$(((c + 1) % sort_col_count))
+            done
+            sort_mode="${sort_col_mode[next]}"
+            sort_mode_available "$sort_mode" || sort_mode="name"
+            return 0
+        fi
         # Date, count, name, size, and round again; a list without a count
         # goes date, name, size as before.
         case "$sort_mode" in
@@ -221,7 +296,9 @@ paginated_multi_select() {
 
     # App names alone support name sorting, even before size/date metadata is
     # available. Generic callers without metadata retain their input order.
-    if [[ "$has_metadata" == "false" ]]; then
+    if [[ "$sort_mode" == col:* ]] && sort_mode_available "$sort_mode"; then
+        : # MoreMole: a column sort the caller asked for
+    elif [[ "$has_metadata" == "false" ]]; then
         sort_mode="name"
     else
         normalize_sort_mode
@@ -406,7 +483,16 @@ paginated_multi_select() {
 
         # Build sort key once; filtering should reuse this cached order.
         local sort_key
-        if [[ "$sort_mode" == "date" ]]; then
+        if [[ "$sort_mode" == col:* ]]; then
+            # MoreMole: a column's own keys, small to large unless reversed.
+            if [[ "${sort_col_type[${sort_mode#col:}]}" == "num" ]]; then
+                sort_key="-k1,1n"
+                [[ "$sort_reverse" == "true" ]] && sort_key="-k1,1nr"
+            else
+                sort_key="-k1,1f"
+                [[ "$sort_reverse" == "true" ]] && sort_key="-k1,1fr"
+            fi
+        elif [[ "$sort_mode" == "date" ]]; then
             # Date: ascending by default (oldest first)
             sort_key="-k1,1n"
             [[ "$sort_reverse" == "true" ]] && sort_key="-k1,1nr"
@@ -429,6 +515,11 @@ paginated_multi_select() {
                     date) k="${epochs[id]:-0}" ;;
                     size) k="${sizekb[id]:-0}" ;;
                     count) k="${count_meta[id]:-0}" ;;
+                    col:*)
+                        k="${sort_col_keys[${sort_mode#col:} * total_items + id]:-}"
+                        k="${k//$'\t'/ }"
+                        [[ "${sort_col_type[${sort_mode#col:}]}" != "num" || "$k" =~ ^-?[0-9]+$ ]] || k=0
+                        ;;
                     name | *)
                         # Full names, not the truncated, padded display row.
                         k="${filter_targets_lower[id]}"
@@ -635,10 +726,71 @@ paginated_multi_select() {
             printf '%b' "\r\033[2K${GRAY}Search: press / and type${NC}\n" >&2
         fi
         if [[ -n "$column_header" ]]; then
-            local _pm_row="$column_header"
-            _pm_fit_row
-            printf "\r\033[2K    ${GRAY}%s${NC}\n" "$_pm_row" >&2
+            if ((sort_col_count > 0)); then
+                printf "\r\033[2K    ${GRAY}%s${NC}\n" "$(_pm_column_header_text)" >&2
+            else
+                local _pm_row="$column_header"
+                _pm_fit_row
+                printf "\r\033[2K    ${GRAY}%s${NC}\n" "$_pm_row" >&2
+            fi
         fi
+    }
+
+    # MoreMole: the heading line with the sorted column in white and an
+    # arrow after it (up for small to large), and the column under the cursor
+    # in reverse, cut to the row width like the rows.
+    _pm_column_header_text() {
+        local plain="$column_header" limit=$((row_width > 1 ? row_width - 1 : 0))
+        ((limit == 0 || ${#plain} <= limit)) || plain="${plain:0:limit}"
+        local out="" prev=0 c pos label end arrow
+        for ((c = 0; c < sort_col_count; c++)); do
+            pos=${sort_col_pos[c]}
+            label="${sort_col_label[c]}"
+            end=$((pos + ${#label}))
+            ((end <= ${#plain})) || continue
+            out+="${plain:prev:pos-prev}"
+            if [[ "$header_focus" == true && $c -eq $header_col ]]; then
+                out+="${NC}"$'\033[7m'"${label}${NC}${GRAY}"
+            elif [[ "${sort_col_mode[c]}" == "$sort_mode" ]]; then
+                out+="${NC}${label}${GRAY}"
+            else
+                out+="$label"
+            fi
+            prev=$end
+            if [[ "${sort_col_mode[c]}" == "$sort_mode" ]]; then
+                arrow="▼"
+                sort_runs_ascending "$sort_mode" && arrow="▲"
+                out+="$arrow"
+                [[ "${plain:end:1}" != " " ]] || prev=$((end + 1))
+            fi
+        done
+        out+="${plain:prev}"
+        printf '%s' "$out"
+    }
+
+    # MoreMole: Enter on a heading sorts by its column, and reverses a column
+    # already sorted by; a new column starts in the order its spec names.
+    _pm_sort_by_column() {
+        local c="$1" mode first
+        mode="${sort_col_mode[c]}"
+        sort_mode_available "$mode" || return 0
+        if [[ "$sort_mode" == "$mode" ]]; then
+            if [[ "$sort_reverse" == "true" ]]; then sort_reverse=false; else sort_reverse=true; fi
+        else
+            sort_mode="$mode"
+            sort_reverse=false
+            first="${sort_col_first[c]}"
+            if [[ -n "$first" ]]; then
+                if sort_runs_ascending "$mode"; then
+                    [[ "$first" != "desc" ]] || sort_reverse=true
+                else
+                    [[ "$first" != "asc" ]] || sort_reverse=true
+                fi
+            fi
+        fi
+        rebuild_view
+        cursor_pos=0
+        top_index=0
     }
 
     # Handle filter character input (reduces code duplication)
@@ -669,6 +821,7 @@ paginated_multi_select() {
             name) sort_label="Name" ;;
             size) sort_label="Size" ;;
             count) sort_label="$count_label" ;;
+            col:*) sort_label="${sort_col_label[${sort_mode#col:}]}" ;;
         esac
         local sort_status="${sort_label}"
 
@@ -687,7 +840,7 @@ paginated_multi_select() {
 
         local reverse_arrow="↑"
         [[ "$sort_reverse" == "true" ]] && reverse_arrow="↓"
-        if [[ "$sort_mode" == "name" ]]; then
+        if [[ "$sort_mode" == "name" || ("$sort_mode" == col:* && "${sort_col_type[${sort_mode#col:}]}" == "text") ]]; then
             reverse_arrow="A-Z"
             [[ "$sort_reverse" == "true" ]] && reverse_arrow="Z-A"
         fi
@@ -703,6 +856,10 @@ paginated_multi_select() {
             local -a _segs_filter=("${GRAY}Enter Apply${NC}" "${GRAY}Backspace${NC}" "${GRAY}Ctrl+U Clear${NC}" "${GRAY}Esc Clear${NC}")
             controls=("${_segs_filter[@]}")
             optional_controls=("${GRAY}Ctrl+U Clear${NC}" "${GRAY}Backspace${NC}")
+        elif [[ "$header_focus" == true ]]; then
+            # MoreMole: the cursor is on the heading line.
+            controls=("${GRAY}← → Column${NC}" "${GRAY}Enter Sort, again to reverse${NC}" "${GRAY}${ICON_NAV_DOWN} Back to the list${NC}" "$cancel_label")
+            optional_controls=("$cancel_label")
         else
             local -a _segs=("$nav" "$space_select")
             [[ "$select_all_enabled" == true ]] && _segs+=("$select_all")
@@ -775,7 +932,7 @@ paginated_multi_select() {
         for ((i = start_idx; i <= end_idx; i++)); do
             [[ $i -lt 0 ]] && continue
             local is_current=false
-            [[ $((i - start_idx)) -eq $cursor_pos ]] && is_current=true
+            [[ $((i - start_idx)) -eq $cursor_pos && "$header_focus" != true ]] && is_current=true
             render_item $((i - start_idx)) $is_current
         done
 
@@ -828,6 +985,48 @@ paginated_multi_select() {
                 fi
                 ;;
         esac
+
+        # MoreMole: Up from the first row moves into the heading line.
+        if [[ "$key" == "UP" && "$header_focus" != true && $sort_col_count -gt 0 && $cursor_pos -eq 0 && $top_index -eq 0 ]]; then
+            header_focus=true
+            header_col=0
+            local _c
+            for ((_c = 0; _c < sort_col_count; _c++)); do
+                [[ "${sort_col_mode[_c]}" != "$sort_mode" ]] || header_col=$_c
+            done
+            need_full_redraw=true
+            continue
+        fi
+        if [[ "$header_focus" == true ]]; then
+            case "$key" in
+                LEFT | RIGHT)
+                    if [[ "$key" == "LEFT" ]]; then
+                        ((header_col == 0)) || header_col=$((header_col - 1))
+                    else
+                        ((header_col >= sort_col_count - 1)) || header_col=$((header_col + 1))
+                    fi
+                    draw_header
+                    printf "\033[%d;1H" "$((items_per_page + list_top + 1))" >&2
+                    continue
+                    ;;
+                ENTER)
+                    _pm_sort_by_column "$header_col"
+                    need_full_redraw=true
+                    continue
+                    ;;
+                DOWN)
+                    header_focus=false
+                    need_full_redraw=true
+                    continue
+                    ;;
+                UP | SPACE) continue ;;
+                *)
+                    # Any other key leaves the heading line and works as usual.
+                    header_focus=false
+                    need_full_redraw=true
+                    ;;
+            esac
+        fi
 
         if [[ -n "$details_fn" && -z "${MOLE_READ_KEY_FORCE_CHAR:-}" ]]; then
             case "$key" in

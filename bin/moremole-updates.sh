@@ -450,6 +450,22 @@ select_updates() {
     local _MOLE_MENU_KEEP_EMPTY=true MOLE_MENU_DETAILS_FN=update_details MOLE_MENU_DONE_LABEL=Update
     local MOLE_MENU_COLUMNS_HEADER
     MOLE_MENU_COLUMNS_HEADER=$(update_header_text)
+    # Up from the first row reaches the headings: Source and Name sort the
+    # list, and S steps between them. It opens A-Z by name, as it was built.
+    local -a sort_sources=() sort_names=() MOLE_MENU_SORT_COLUMNS=("Source|text" "Name|text") MOLE_MENU_SORT_KEYS=()
+    for ((i = 0; i < ${#U_KIND[@]}; i++)); do
+        sort_sources+=("$(kind_short "${U_KIND[i]}")")
+        sort_names+=("${U_NAME[i]}")
+    done
+    MOLE_MENU_SORT_KEYS[0]=$(
+        IFS=$'\x1f'
+        printf '%s' "${sort_sources[*]}"
+    )
+    MOLE_MENU_SORT_KEYS[1]=$(
+        IFS=$'\x1f'
+        printf '%s' "${sort_names[*]}"
+    )
+    local MOLE_MENU_SORT_MODE=col:1 MOLE_MENU_SORT_REVERSE=false
 
     MOLE_SELECTION_RESULT=""
     local rc=0

@@ -1185,6 +1185,23 @@ run_update() {
         names+=("${M_NAME[i]}")
         repos+=("${M_REPO[i]:-}")
     done
+    local -a sizes_kb=() ranks=() search=()
+    for i in "${updates[@]}"; do
+        sizes_kb+=("$((${M_SIZE[i]:-0} / 1024))")
+        status_rank "${M_STATUS[i]}"
+        ranks+=("$TEXT")
+        search+=("${M_NAME[i]}")
+    done
+    local MOLE_MENU_META_SIZEKB MOLE_MENU_FILTER_NAMES
+    MOLE_MENU_META_SIZEKB=$(
+        IFS=','
+        printf '%s' "${sizes_kb[*]}"
+    )
+    MOLE_MENU_FILTER_NAMES=$(printf '%s\n' "${search[@]}")
+    local -a MOLE_MENU_SORT_COLUMNS=("Status|num" "Name|name" "Size|size") MOLE_MENU_SORT_KEYS=()
+    sort_keys "${ranks[@]}"
+    MOLE_MENU_SORT_KEYS[0]="$TEXT"
+    local MOLE_MENU_SORT_MODE=name MOLE_MENU_SORT_REVERSE=false
     DETAILS_KIND=installed
     DETAILS_MAP=("${updates[@]}")
     DONE_LABEL=Update
@@ -1278,8 +1295,39 @@ write_install_results() {
     done
 }
 
+# Join the arguments with the unit separator into TEXT: one column's sort
+# keys for a pick list's MOLE_MENU_SORT_KEYS.
+sort_keys() {
+    local IFS=$'\x1f'
+    TEXT="$*"
+}
+
+# Sort ranks, small first: an installed model's status, updates first; a
+# download's fit in memory, fits first.
+status_rank() {
+    case "$1" in
+        update) TEXT=0 ;;
+        unknown) TEXT=1 ;;
+        local) TEXT=2 ;;
+        current) TEXT=3 ;;
+        *) TEXT=4 ;;
+    esac
+}
+
+fit_rank() {
+    fit_word "$1"
+    case "$TEXT" in
+        fits) TEXT=0 ;;
+        tight) TEXT=1 ;;
+        "too big") TEXT=2 ;;
+        *) TEXT=3 ;;
+    esac
+}
+
 # Show a pick list; PICKED holds the picked indices. Callers set the list's
-# MOLE_MENU_* options as locals.
+# MOLE_MENU_* options as locals. Lists with a heading line also name their
+# sortable columns (MOLE_MENU_SORT_COLUMNS, MOLE_MENU_SORT_KEYS), which
+# Up from the first row reaches.
 PICKED=()
 pick() {
     local title="$1"
@@ -1316,6 +1364,14 @@ pick_to_remove() {
         printf '%s' "${epochs[*]}"
     )
     MOLE_MENU_FILTER_NAMES=$(printf '%s\n' "${M_NAME[@]}")
+    local -a ranks=()
+    for ((i = 0; i < ${#M_NAME[@]}; i++)); do
+        status_rank "${M_STATUS[i]}"
+        ranks+=("$TEXT")
+    done
+    local -a MOLE_MENU_SORT_COLUMNS=("Status|num" "Name|name" "Size|size") MOLE_MENU_SORT_KEYS=()
+    sort_keys "${ranks[@]}"
+    MOLE_MENU_SORT_KEYS[0]="$TEXT"
     local MOLE_MENU_SORT_MODE=name MOLE_MENU_SORT_REVERSE=false _MOLE_MENU_SELECT_ALL=true
     DETAILS_KIND=installed
     DETAILS_MAP=()
@@ -1350,6 +1406,13 @@ pick_models_to_download() {
         IFS=','
         printf '%s' "${pulls[*]}"
     )
+    local -a ranks=()
+    for ((i = 0; i < ${#L_NAME[@]}; i++)); do
+        if [[ "${L_INSTALLED[i]}" == "1" ]]; then ranks+=(0); else ranks+=(1); fi
+    done
+    local -a MOLE_MENU_SORT_COLUMNS=("Status|num" "Name|name" "Pulls|count" "Updated|date:desc") MOLE_MENU_SORT_KEYS=()
+    sort_keys "${ranks[@]}"
+    MOLE_MENU_SORT_KEYS[0]="$TEXT"
     local MOLE_MENU_SORT_MODE=name MOLE_MENU_SORT_REVERSE=false
     local title="Select models, then choose their versions"
     [[ "${MODELS_APPLE_SILICON:-0}" != "1" ]] || title+="; MLX: it has versions for Apple silicon"
@@ -1393,6 +1456,28 @@ pick_hf_models() {
         IFS=','
         printf '%s' "${H_DOWNLOADS[*]}"
     )
+    # Status: added, then by fit; Bits: fewest first, unquantized by its
+    # width (bf16 is 16), unknown last.
+    local -a ranks=() bits=()
+    for ((i = 0; i < ${#H_REPO[@]}; i++)); do
+        if [[ "${H_INSTALLED[i]}" == "1" ]]; then
+            ranks+=(0)
+        else
+            fit_rank "${H_BYTES[i]}"
+            ranks+=($((TEXT + 1)))
+        fi
+        case "${H_QUANT[i]}" in
+            [0-9]-bit | [0-9][0-9]-bit) bits+=("${H_QUANT[i]%-bit}") ;;
+            bf16 | fp16) bits+=(16) ;;
+            fp32) bits+=(32) ;;
+            *) bits+=(99) ;;
+        esac
+    done
+    local -a MOLE_MENU_SORT_COLUMNS=("Status|num" "Name|name" "Bits|num" "Size|size" "Downloads|count" "Published|date:desc") MOLE_MENU_SORT_KEYS=()
+    sort_keys "${ranks[@]}"
+    MOLE_MENU_SORT_KEYS[0]="$TEXT"
+    sort_keys "${bits[@]}"
+    MOLE_MENU_SORT_KEYS[2]="$TEXT"
     local MOLE_MENU_SORT_MODE=name MOLE_MENU_SORT_REVERSE=false
     DETAILS_KIND=hf
     DETAILS_MAP=()
@@ -1419,6 +1504,24 @@ pick_versions_to_download() {
         printf '%s' "${sizes_kb[*]}"
     )
     MOLE_MENU_FILTER_NAMES=$(printf '%s\n' "${search[@]}")
+    # Status: installed, then default; Memory: fits first.
+    local -a ranks=() fits=()
+    for ((i = 0; i < ${#T_NAME[@]}; i++)); do
+        if [[ "${T_INSTALLED[i]}" == "1" ]]; then
+            ranks+=(0)
+        elif [[ "${T_DEFAULT[i]}" == "1" ]]; then
+            ranks+=(1)
+        else
+            ranks+=(2)
+        fi
+        fit_rank "${T_BYTES[i]}"
+        fits+=("$TEXT")
+    done
+    local -a MOLE_MENU_SORT_COLUMNS=("Status|num" "Memory|num" "Version|name" "Size|size") MOLE_MENU_SORT_KEYS=()
+    sort_keys "${ranks[@]}"
+    MOLE_MENU_SORT_KEYS[0]="$TEXT"
+    sort_keys "${fits[@]}"
+    MOLE_MENU_SORT_KEYS[1]="$TEXT"
     local MOLE_MENU_SORT_MODE=size MOLE_MENU_SORT_REVERSE=true
     local title="Select versions to download"
     [[ "${MODELS_APPLE_SILICON:-0}" != "1" ]] || title+="; MLX: runs on Apple silicon"

@@ -374,7 +374,8 @@ library_models() {
 	[ "$status" -eq 0 ] || { echo "$output"; return 1; }
 	[ "$(cat "$ROWS_DIR/tags-asked")" = "gemma3 llama3.1" ] || return 1
 	[[ "$output" == *"Select models, then choose their versions; MLX: it has versions for Apple silicon"* ]] || return 1
-	[[ "$output" == *"Status     MLX  Name"*"Can do"*"Sizes"*"Pulls  Updated"* ]] || return 1
+	# The list opens A-Z, so Name is the sorted heading, in white with an arrow.
+	[[ "$output" == *"Status     MLX  "*"Name"*"▲"*"Can do"*"Sizes"*"Pulls  Updated"* ]] || return 1
 	[[ "$output" == *"installed  MLX  gemma3"*"vision"*"1b–27b"*"30.1M  2026-09-21"* ]] || return 1
 	[[ "$output" == *"Status     Memory   Version"*"Size"*"Context"*"Input"*"MLX"* ]] || return 1
 	[[ "$output" == *"Select versions to download; MLX: runs on Apple silicon"* ]] || return 1
@@ -528,7 +529,7 @@ hf_models() {
 	[ "$status" -eq 1 ] || { echo "$output"; return 1; }
 	[[ "$output" == *"Select MLX models from Hugging Face"* ]] || return 1
 	# Rows are cut to the terminal's 100 columns; the details show the rest.
-	[[ "$output" == *"Status   Name"*"Bits"*"Size"*"Can do"*"Downloads  Published"* ]] || return 1
+	[[ "$output" == *"Status   "*"Name"*"▲"*"Bits"*"Size"*"Can do"*"Downloads  Published"* ]] || return 1
 	[[ "$output" == *"fits     mlx-community/Qwen3.5-9B-4bit"*"4-bit"*"~5.95GB"*"vision"*"719.8K  2026-03-02"* ]] || return 1
 	[[ "$output" == *"Models to add from Hugging Face:"*"mlx-community/Qwen3.5-9B-4bit "*"5.95GB · fits in 17.18GB memory · as hf.co/mlx-community/qwen3.5-9b-4bit"* ]] || return 1
 	[[ "$output" == *"it needs twice its size free"*"started once to check that it works"* ]] || return 1
@@ -674,4 +675,21 @@ note	Ollama was off, so it is off again" ] || { cat "$results"; return 1; }
 	grep -q "\[updates\] REBUILT gemma3:4b (updated)" "$log" || { cat "$log"; return 1; }
 	grep -q "\[updates\] FAILED broken:latest" "$log" || return 1
 	grep -q "\[updates\] REBUILT hf.co/me/m-4bit:latest (updated from Hugging Face me/M-4bit" "$log"
+}
+
+@test "the Hugging Face headings sort by Bits, and Enter again reverses it" {
+	hf_models
+	# The list starts on Name; Right is Bits. Enter sorts fewest bits first
+	# (Qwen, 4-bit), Enter again most first, so the first row is Gemma (bf16).
+	printf '%s\n' UP RIGHT ENTER ENTER DOWN SPACE CHAR:d > "$KEYS_FILE"
+	run models_env /bin/bash -c '
+		source "$1"
+		eval "$2"
+		printf "\033" | main --huggingface
+	' bash "$PROJECT_ROOT/bin/moremole-models.sh" "$SCRIPTED"
+	[ "$status" -eq 0 ] || { echo "$output"; return 1; }
+	[[ "$output" == *"Enter Sort, again to reverse"* ]] || return 1
+	[[ "$output" == *"S Bits"* ]] || return 1
+	[[ "$output" == *"Models to add from Hugging Face:"*"someone/Gemma-4-nochat-bf16"* ]] || return 1
+	[[ "$output" != *"Models to add from Hugging Face:"*"mlx-community/Qwen3.5-9B-4bit "*"· as"* ]]
 }

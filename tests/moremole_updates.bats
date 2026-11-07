@@ -557,3 +557,36 @@ models --install-updates hf.co/me/m-4bit:latest llama3.2:latest" ] || { cat "$CA
 	[[ "$output" == *"updated=0 failed=2"* ]] || { echo "$output"; return 1; }
 	grep -q "FAILED llama3.2:latest (the model update stopped before reaching it)" "$HOME/Library/Logs/mole/operations.log"
 }
+
+@test "the headings sort the list: Up, then Source and Enter, lists App Store first" {
+	full_scan_rows
+	# A-Z the list starts on Name; Left picks Source. App Store (Xcode, 7)
+	# sorts first, ahead of CLI tool, Homebrew, macOS, Own updater and To
+	# Homebrew.
+	printf '%s\n' UP LEFT ENTER DOWN SPACE CHAR:d > "$BATS_TEST_TMPDIR/keys"
+	run updates_env COLUMNS=100 KEYS_FILE="$BATS_TEST_TMPDIR/keys" KEY_STATE="$BATS_TEST_TMPDIR/key-state" /bin/bash -c '
+		source "$1"
+		enter_alt_screen() { :; }
+		leave_alt_screen() { :; }
+		stty() { :; }
+		tput() { if [[ "$1" == cols ]]; then echo 100; else echo 30; fi; }
+		drain_pending_input() { :; }
+		read_key() {
+			local index key
+			index=$(cat "$KEY_STATE" 2>/dev/null || echo 0)
+			index=$((index + 1))
+			printf "%s\n" "$index" > "$KEY_STATE"
+			key=$(sed -n "${index}p" "$KEYS_FILE")
+			printf "%s\n" "${key:-QUIT}"
+		}
+		for source in brew store apps macos; do
+			load_update_rows < "$ROWS_DIR/$source"
+		done
+		order_update_rows
+		select_updates || exit 1
+		printf "RESULT=%s\n" "$MOLE_SELECTION_RESULT"
+	' bash "$PROJECT_ROOT/bin/moremole-updates.sh"
+	[ "$status" -eq 0 ] || { echo "$output"; return 1; }
+	[[ "$output" == *"RESULT=7"* ]] || { echo "$output" | tail -5; return 1; }
+	[[ "$output" == *"S Source"* ]]
+}

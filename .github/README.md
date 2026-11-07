@@ -69,7 +69,7 @@ For [Ollama](https://ollama.com):
 Software removal, Slim, Installer files, Software updates and the Ollama model items share one pick list:
 
 - **`/` searches** as you type, matching anywhere in the name.
-- **Lists open A–Z.** S sorts by size, then by date (oldest first), and O flips the order.
+- **Lists open A–Z.** S sorts by size, then by date (oldest first), and O flips the order. In lists with column headings, ↑ from the first row moves onto the headings: ← → pick a column, Enter sorts by it and Enter again reverses it.
 - **Nothing is selected for you.** That includes Purge, where Mole selected everything older than 7 days.
 - **Rows never wrap.** A long row is cut at the window's edge, so the list stays in place while you scroll.
 - **Details.** In Software updates and the Ollama model items, Enter opens everything about a model, and D goes on: Download, Add, Update or Remove. Each row starts with its status and whether it fits in memory.
