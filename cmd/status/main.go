@@ -223,7 +223,7 @@ func (m model) View() string {
 			parts = append(parts, mole)
 		}
 		parts = append(parts, cardContent)
-		parts = append(parts, "", renderStatusFooter(m.refreshEvery())) // moremole
+		parts = append(parts, "", renderStatusFooter(m.refreshEvery(), termWidth)) // moremole
 		return lipgloss.JoinVertical(lipgloss.Left, parts...)
 	}
 

@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 )
 
 const (
@@ -205,25 +206,53 @@ func nextRefreshInterval(current time.Duration) time.Duration {
 	return refreshIntervals[(i+1)%len(refreshIntervals)]
 }
 
-// pinFooterToBottom puts the frame's last line, the keys, on the window's
-// last row, where Analyze and the command screen keep theirs; the blank lines
-// go between the cards and the keys instead of under the keys. A frame as tall
-// as the window is left as it is.
+// statusFooterRows is how many rows renderStatusFooter takes: a divider and
+// the keys.
+const statusFooterRows = 2
+
+// barKeyStyle is the gray the command screen and the menu draw their bottom
+// bar in (256-color 244).
+var barKeyStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("244"))
+
+// pinFooterToBottom puts the frame's last rows, the divider and the keys, at
+// the bottom of the window, where the command screen, the menu and Analyze
+// keep theirs; the blank lines go between the cards and the divider instead
+// of under the keys. A frame as tall as the window is left as it is.
 func pinFooterToBottom(view string, height int) string {
 	lines := lipgloss.Height(view)
-	if height <= 0 || lines >= height {
-		return view
-	}
-	last := strings.LastIndex(view, "\n")
-	if last < 0 {
+	if height <= 0 || lines >= height || lines <= statusFooterRows {
 		return padViewToHeight(view, height)
 	}
-	return view[:last] + strings.Repeat("\n", height-lines+1) + view[last+1:]
+	cut := len(view)
+	for range statusFooterRows {
+		cut = strings.LastIndex(view[:cut], "\n")
+	}
+	return view[:cut] + strings.Repeat("\n", height-lines+1) + view[cut+1:]
 }
 
-// renderStatusFooter lists the keys, with the current time between refreshes.
-func renderStatusFooter(refresh time.Duration) string {
-	return subtleStyle.Render(fmt.Sprintf("R refresh %gs  ·  C cores  ·  K cat  ·  Q quit", refresh.Seconds()))
+// renderStatusFooter is the bottom bar, styled as the command screen's: a
+// gray divider across the window, then the keys in gray, joined by "|", with
+// the current time between refreshes. A narrow window drops K, then C, as
+// the command screen drops its optional keys, before cutting what is left.
+func renderStatusFooter(refresh time.Duration, width int) string {
+	width = max(width, 1)
+	keys := []string{fmt.Sprintf("R Refresh %gs", refresh.Seconds()), "C CPU cores", "K Cat", "Q Quit"}
+	join := func() string {
+		parts := make([]string, len(keys))
+		for i, k := range keys {
+			parts[i] = barKeyStyle.Render(k)
+		}
+		return strings.Join(parts, "  |  ")
+	}
+	bar := join()
+	for _, optional := range []string{"K Cat", "C CPU cores"} {
+		if ansi.StringWidth(bar) <= width {
+			break
+		}
+		keys = slices.DeleteFunc(keys, func(k string) bool { return k == optional })
+		bar = join()
+	}
+	return barKeyStyle.Render(strings.Repeat("─", width)) + "\n" + ansi.Truncate(bar, width, "…")
 }
 
 // refreshMode makes a fast refresh also sample processes when refreshes come

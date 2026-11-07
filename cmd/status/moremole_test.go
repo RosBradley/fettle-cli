@@ -243,10 +243,21 @@ func TestRefreshIntervalSetsTheWaitAndShowsInTheFooter(t *testing.T) {
 	if delay := m.schedule.recordCompletion(collectionResult{mode: collectionFast}, m.refreshEvery()); delay != 5*time.Second {
 		t.Errorf("wait = %v, want 5s", delay)
 	}
-	if footer := stripANSI(renderStatusFooter(500 * time.Millisecond)); footer != "R refresh 0.5s  ·  C cores  ·  K cat  ·  Q quit" {
+	if footer := stripANSI(renderStatusFooter(500*time.Millisecond, 60)); footer != strings.Repeat("─", 60)+"\nR Refresh 0.5s  |  C CPU cores  |  K Cat  |  Q Quit" {
 		t.Errorf("footer = %q", footer)
 	}
-	if !strings.Contains(stripANSI(m.View()), "R refresh 5s") {
+	// A narrow window drops K, then C, and only then cuts the keys, rather
+	// than wrapping them.
+	for width, want := range map[int]string{
+		40: "R Refresh 1s  |  C CPU cores  |  Q Quit",
+		30: "R Refresh 1s  |  Q Quit",
+		20: "R Refresh 1s  |  Q …",
+	} {
+		if footer := stripANSI(renderStatusFooter(time.Second, width)); footer != strings.Repeat("─", width)+"\n"+want {
+			t.Errorf("%d columns: footer = %q", width, footer)
+		}
+	}
+	if !strings.Contains(stripANSI(m.View()), "R Refresh 5s") {
 		t.Error("the frame does not show the footer")
 	}
 }
@@ -283,10 +294,13 @@ func TestKeysSitOnTheWindowsLastRow(t *testing.T) {
 			t.Errorf("%dx%d: %d rows, want %d", size.width, size.height, len(lines), size.height)
 			continue
 		}
-		if last := stripANSI(lines[len(lines)-1]); !strings.HasPrefix(last, "R refresh") {
+		if last := stripANSI(lines[len(lines)-1]); !strings.HasPrefix(last, "R Refresh") {
 			t.Errorf("%dx%d: last row %q, want the keys", size.width, size.height, last)
 		}
-		if strings.Count(stripANSI(view), "R refresh") != 1 {
+		if divider := stripANSI(lines[len(lines)-2]); divider != strings.Repeat("─", size.width) {
+			t.Errorf("%dx%d: row above the keys %q, want a divider across the window", size.width, size.height, divider)
+		}
+		if strings.Count(stripANSI(view), "R Refresh") != 1 {
 			t.Errorf("%dx%d: the keys show more than once", size.width, size.height)
 		}
 	}

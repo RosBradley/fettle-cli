@@ -147,7 +147,7 @@ They're saved in `~/.config/mole/my_commands`, one per line as name, a Tab, then
 ## Status
 
 - The bars stretch to fill the window; make the window wider for longer bars.
-- **R** changes how often Status refreshes: 0.5, 1, 2, 5 or 10 seconds, starting at 1. It remembers your choice. The window's bottom row shows the current setting and the keys.
+- **R** changes how often Status refreshes: 0.5, 1, 2, 5 or 10 seconds, starting at 1. It remembers your choice. The bottom of the window, under a divider as on the command screen, shows the current setting and the keys: R Refresh, C CPU cores, K Cat and Q Quit.
 - **C** (Mole's own key) cycles through 2, 4, 8 and all CPU cores and remembers your choice; a window too short for all of them shows fewer.
 - The GPU card shows total GPU use, updated with every refresh like CPU use, plus the chip and its GPU core count. macOS reports GPU use for the GPU as a whole, not for each GPU core.
 
