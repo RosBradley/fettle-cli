@@ -511,6 +511,42 @@ name_width() {
     printf '%s' "$width"
 }
 
+# The name column's width in a list whose other columns take $1 cells: the
+# longest name ($3...), cut to the room the window leaves after the row's
+# $2 leading cells (arrow and checkbox), and at least 12.
+fit_name_width() {
+    local others="$1" lead="$2" room longest
+    shift 2
+    longest=$(name_width "$@")
+    room=$(($(terminal_cols) - lead - others - 1))
+    ((room >= 12)) || room=12
+    ((room <= longest)) || room=$longest
+    printf '%s' "$room"
+}
+
+# Whether the library shows its Sizes column: it goes first when the window
+# is too narrow for the rest, so the dates stay whole.
+LIB_SHOW_SIZES=1
+
+# The library's name width (LIB_NAME_W), after its other columns: Status 9,
+# MLX 3 on Apple silicon, Size 8, Sizes 12, Pulls 6, Updated 10, two spaces
+# between, and $1 leading cells. A window too narrow for a 16-cell name
+# drops the Sizes column (LIB_SHOW_SIZES).
+LIB_NAME_W=12
+library_fit() {
+    local lead="$1" others=45 cells=6
+    if [[ "${MODELS_APPLE_SILICON:-0}" == "1" ]]; then
+        others=$((others + 3))
+        cells=$((cells + 1))
+    fi
+    LIB_SHOW_SIZES=1
+    LIB_NAME_W=$(fit_name_width "$((others + 2 * (cells - 1)))" "$lead" "${L_NAME[@]}")
+    if ((LIB_NAME_W < 16 && LIB_NAME_W < $(name_width "${L_NAME[@]}"))); then
+        LIB_SHOW_SIZES=0
+        LIB_NAME_W=$(fit_name_width "$((others - 12 + 2 * (cells - 2)))" "$lead" "${L_NAME[@]}")
+    fi
+}
+
 # An installed model: its status first, on Apple silicon MLX when Ollama runs
 # it on its MLX engine, then name, size, and whether it's in use or came from
 # Hugging Face.
@@ -549,7 +585,7 @@ library_header() {
     [[ "${MODELS_APPLE_SILICON:-0}" != "1" ]] || cell "MLX" 3
     cell "Name" "$1"
     rcell "Size" 8
-    cell "Sizes" 12
+    [[ "$LIB_SHOW_SIZES" != "1" ]] || cell "Sizes" 12
     rcell "Pulls" 6
     cell "Updated" 10
     COLUMNS_HEADER="$ROW"
@@ -609,8 +645,10 @@ library_row_text() {
     TEXT=""
     [[ ! "${L_BYTES[i]:-0}" =~ ^[1-9][0-9]*$ ]] || size_text "${L_BYTES[i]}"
     rcell "$TEXT" 8
-    sizes_text "${L_SIZES[i]}"
-    cell "$TEXT" 12
+    if [[ "$LIB_SHOW_SIZES" == "1" ]]; then
+        sizes_text "${L_SIZES[i]}"
+        cell "$TEXT" 12
+    fi
     pulls_number "${L_PULLS[i]}"
     count_text "$TEXT"
     [[ "$TEXT" != "0" ]] || TEXT=""
@@ -1556,7 +1594,7 @@ versions_screen() {
     fi
     local -a rows=() search=() sizes_kb=() ranks=() fits=() mlx=()
     local j width words
-    width=$(name_width "${T_NAME[@]}")
+    width=$(fit_name_width $((9 + 7 + 11 + 7 + 12 + 5 + 10)) 5 "${T_NAME[@]}")
     tag_header "$width"
     for ((j = 0; j < ${#T_NAME[@]}; j++)); do
         tag_row_text "$j" "$width"
@@ -1696,7 +1734,8 @@ finish_browsing() {
 browse_library() {
     local i width
     local -a rows=()
-    width=$(name_width "${L_NAME[@]}")
+    library_fit 2
+    width=$LIB_NAME_W
     while true; do
         library_header "$width"
         rows=()
@@ -1989,7 +2028,8 @@ run_download() {
         chosen=("$typed")
     elif [[ "${MOLE_DRY_RUN:-0}" == "1" ]] || ! interactive; then
         local i width
-        width=$(name_width "${L_NAME[@]}")
+        library_fit 2
+        width=$LIB_NAME_W
         library_header "$width"
         echo -e "${PURPLE_BOLD}${#L_NAME[@]} models in Ollama's library${NC}"
         printf '  %s%s%s\n' "$GRAY" "$COLUMNS_HEADER" "$NC"

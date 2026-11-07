@@ -735,3 +735,19 @@ note	Ollama was off, so it is off again" ] || { cat "$results"; return 1; }
 	[[ "$output" == *"qwen3.5:35b-mlx"*"Runs on"*"Ollama's MLX engine, for Apple silicon"* ]] || return 1
 	[ ! -s "$CALLS" ]
 }
+
+@test "in a narrow window the library cuts long names, not the dates" {
+	printf 'mlx=1\n' >> "$ROWS_DIR/status"
+	row library model snowflake-arctic-embed2-with-a-very-long-name "embedding" 1.2M 1790000000 0 "568m" 0 1200000000 "Arctic Embed."
+	row library model gemma3 "vision" 30.1M 1790000000 1 "1b,4b,27b" 1 3300000000 "Gemma 3 from Google."
+	printf '%s\n' QUIT > "$KEYS_FILE"
+	run models_env COLUMNS=88 /bin/bash -c '
+		source "$1"
+		eval "$2"
+		main --download
+	' bash "$PROJECT_ROOT/bin/moremole-models.sh" "$SCRIPTED"
+	[ "$status" -eq 0 ] || { echo "$output"; return 1; }
+	[[ "$output" == *"Pulls  Updated"* ]] || return 1
+	[[ "$output" == *"snowflake-arctic-embed..."*"1.20GB  568m"*"1.2M  2026-09-21"* ]] || return 1
+	[[ "$output" == *"gemma3"*"3.30GB  1b–27b"*"30.1M  2026-09-21"* ]]
+}

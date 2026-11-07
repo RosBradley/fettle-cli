@@ -714,13 +714,26 @@ paginated_multi_select() {
     _pm_row_bytes() {
         local LC_ALL=C
         _pm_bytes=${#1}
+        # Three-byte characters led by 0xE2 (dashes, arrows, dots, boxes) are
+        # one cell wide, though the width helper counts every three-byte
+        # character as two, as for CJK.
+        local _pm_rest="${1//$'\xe2'??/}"
+        _pm_narrow3=$(((_pm_bytes - ${#_pm_rest}) / 3))
+    }
+    _pm_row_chars() {
+        local LC_ALL=en_US.UTF-8
+        _pm_chars=${#1}
     }
     _pm_fit_row() {
         ((row_width > 0)) || return 0
-        local _pm_bytes=0
+        local _pm_bytes=0 _pm_narrow3=0 _pm_chars=0
         _pm_row_bytes "$_pm_row"
         ((_pm_bytes > row_width)) || return 0
         [[ "$_pm_row" != *$'\033'* ]] || return 0
+        # Its width without a fork: one cell a character, plus one more for
+        # each wide (CJK) character, counted as the width helper does.
+        _pm_row_chars "$_pm_row"
+        (((_pm_chars + (_pm_bytes - _pm_chars - 2 * _pm_narrow3) / 2) > row_width)) || return 0
         _pm_row=$(truncate_by_display_width "$_pm_row" "$row_width")
     }
 
@@ -1059,6 +1072,8 @@ paginated_multi_select() {
         # The arrow, checkbox and spaces before a row, and the last column,
         # which some terminals wrap at.
         row_width=$((cols - 5))
+        # A single-pick list has no checkbox, so its rows get two more cells.
+        [[ "$single_mode" != true ]] || row_width=$((cols - 3))
         ((row_width >= 10)) || row_width=10
 
         printf "\033[H" >&2
