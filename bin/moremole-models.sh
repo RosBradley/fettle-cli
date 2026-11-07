@@ -1574,6 +1574,41 @@ label_choices() {
     done
 }
 
+# A version's tag in parts, for filtering a model's many versions: its
+# parameters ("8b", "35b-a3b"; TAG_PARAMS, and TAG_PARAMS_M in millions),
+# its quantization ("q4_K_M", "bf16", "mlx"; TAG_QUANT) and the rest of its
+# words ("instruct", "text", "distill-llama"; TAG_VARIANT, "" for none).
+tag_parts() {
+    local tag="${1#*:}" word
+    local -a words=()
+    TAG_PARAMS="" TAG_PARAMS_M=0 TAG_QUANT="" TAG_VARIANT=""
+    IFS='-' read -r -a words <<< "$tag"
+    for word in ${words[@]+"${words[@]}"}; do
+        case "$word" in
+            [0-9]*[bBmM] | e[0-9]*[bB] | [0-9]*x[0-9]*[bB])
+                if [[ -z "$TAG_PARAMS" ]]; then
+                    TAG_PARAMS="$word"
+                    param_millions "$word"
+                    TAG_PARAMS_M=$TEXT
+                    continue
+                fi
+                ;;
+            a[0-9]*[bB])
+                # The active parameters of a mixture of experts: 35b-a3b.
+                if [[ -n "$TAG_PARAMS" ]]; then
+                    TAG_PARAMS+="-$word"
+                    continue
+                fi
+                ;;
+            q[0-9] | q[0-9]_* | fp16 | bf16 | fp32 | fp8 | int4 | int8 | mxfp4 | mxfp8 | nvfp4 | qat | mlx)
+                TAG_QUANT+="${TAG_QUANT:+-}$word"
+                continue
+                ;;
+        esac
+        TAG_VARIANT+="${TAG_VARIANT:+-}$word"
+    done
+}
+
 # The columns of a list of installed models (M_ indices): Status, updates
 # first; on Apple silicon MLX; Name; Size. Each filters by its values.
 # Callers declare the MOLE_MENU_* column arrays local.
@@ -1899,7 +1934,7 @@ versions_screen() {
     )
     MOLE_MENU_FILTER_NAMES=$(printf '%s\n' "${search[@]}")
     MOLE_MENU_INTRO="$(model_intro "$i" "$failed")"$'\n'
-    local -a st=() mem=() sz=() cx=() inp=()
+    local -a st=() mem=() sz=() cx=() inp=() pm=() pmid=() vr=() qt=() pm_pairs=()
     local ids v
     for ((j = 0; j < ${#T_NAME[@]}; j++)); do
         case "${ranks[j]}" in
@@ -1921,6 +1956,15 @@ versions_screen() {
         [[ "${T_INPUT[j]}" != *Text* ]] || ids="in_text"
         [[ "${T_INPUT[j]}" != *Image* ]] || ids+="${ids:+ }in_image"
         inp+=("${ids:-in_none}")
+        tag_parts "${T_NAME[j]}"
+        pm+=("${TAG_PARAMS_M:-0}")
+        v="${TAG_PARAMS:-unknown}"
+        pmid+=("pm_${v//[^A-Za-z0-9]/_}")
+        pm_pairs+=("$TAG_PARAMS_M"$'\t'"pm_${v//[^A-Za-z0-9]/_}"$'\t'"$v")
+        v="${TAG_VARIANT:-standard}"
+        vr+=("vr_${v//[^A-Za-z0-9]/_}"$'\t'"$v")
+        v="${TAG_QUANT:-default}"
+        qt+=("qt_${v//[^A-Za-z0-9]/_}"$'\t'"$v")
     done
     local -a MOLE_MENU_SORT_COLUMNS=() MOLE_MENU_SORT_KEYS=() MOLE_MENU_COL_VALUES=() MOLE_MENU_COL_CHOICES=()
     local keys vals cx_lines=""
@@ -1937,6 +1981,25 @@ versions_screen() {
     present_choices $'fits\tfits\ntight\ttight\ntoobig\ttoo big\nmemunknown\tunknown' "${mem[@]}"
     menu_column "Memory|num||fits first|too big first" "$keys" "$vals" "$TEXT"
     menu_column "Version|name" "" "" ""
+    # From F: the parts of the versions' tags, each to sort or filter by.
+    local pm_lines="" vr_lines="" qt_lines="" pair
+    pm_lines=$(printf '%s\n' "${pm_pairs[@]+"${pm_pairs[@]}"}" | LC_ALL=C sort -t $'\t' -k1,1n -u | cut -f2- | awk -F '\t' '!seen[$1]++')
+    sort_keys "${pm[@]}"
+    keys="$TEXT"
+    sort_keys "${pmid[@]}"
+    menu_column "Parameters|num|hidden|smallest first|largest first" "$keys" "$TEXT" "$pm_lines"
+    vals=""
+    for pair in "${vr[@]+"${vr[@]}"}"; do
+        vals+="${vals:+$'\x1f'}${pair%%$'\t'*}"
+    done
+    vr_lines=$(printf '%s\n' "${vr[@]+"${vr[@]}"}" | LC_ALL=C sort -t $'\t' -k2,2f -u | awk -F '\t' '!seen[$1]++')
+    menu_column "Variant|none|hidden" "" "$vals" "$vr_lines"
+    vals=""
+    for pair in "${qt[@]+"${qt[@]}"}"; do
+        vals+="${vals:+$'\x1f'}${pair%%$'\t'*}"
+    done
+    qt_lines=$(printf '%s\n' "${qt[@]+"${qt[@]}"}" | LC_ALL=C sort -t $'\t' -k2,2f -u | awk -F '\t' '!seen[$1]++')
+    menu_column "Quantization|none|hidden" "" "$vals" "$qt_lines"
     sort_keys "${sz[@]}"
     vals="$TEXT"
     present_choices "$SIZE_CHOICES" "${sz[@]}"

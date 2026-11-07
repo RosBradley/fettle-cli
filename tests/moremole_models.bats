@@ -784,3 +784,25 @@ note	Ollama was off, so it is off again" ] || { cat "$results"; return 1; }
 	[[ "$output" == *"Sort: newest first"*"2026  (1)"*"September 2026  (1)"*"2024  (1)"*"November 2024  (1)"* ]] || return 1
 	[[ "$output" == *"Google  (1)"*"Meta  (1)"* ]]
 }
+
+@test "a model's versions filter by their parameters, variant and quantization from F" {
+	library_models
+	printf 'mlx=1\n' >> "$ROWS_DIR/status"
+	row tags tag gemma3:4b 3300000000 3.3GB 128K "Text, Image" 0 1 1
+	row tags tag gemma3:4b-it-q8_0 5000000000 5.0GB 128K "Text, Image" 0 0 0
+	row tags tag gemma3:4b-it-qat 4000000000 4.0GB 128K "Text, Image" 0 0 0
+	row tags tag gemma3:27b-it-q8_0 29000000000 29GB 128K "Text, Image" 0 0 0
+	# Enter opens gemma3; F lists the fields, the tag's parts after Version. The
+	# Quantization menu (Show all, default, q8_0, qat): q8_0 shows two.
+	printf '%s\n' ENTER CHAR:f DOWN DOWN DOWN DOWN DOWN ENTER DOWN DOWN ENTER QUIT QUIT > "$KEYS_FILE"
+	run models_env COLUMNS=140 /bin/bash -c '
+		source "$1"
+		eval "$2"
+		main --download
+	' bash "$PROJECT_ROOT/bin/moremole-models.sh" "$SCRIPTED"
+	[ "$status" -eq 0 ] || { echo "$output"; return 1; }
+	[[ "$output" == *"Filter or sort by"*"Version"*"Parameters"*"Variant"*"Quantization"* ]] || return 1
+	[[ "$output" == *"Show all  (4)"*"default  (1)"*"q8_0  (2)"*"qat  (1)"* ]] || return 1
+	[[ "$output" == *"Filtered: Quantization: q8_0 · 0/4 selected"* || "$output" == *"Filtered: Quantization: q8_0"*"0/4 selected"* ]] || return 1
+	[ ! -s "$CALLS" ]
+}

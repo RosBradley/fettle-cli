@@ -1194,16 +1194,43 @@ paginated_multi_select() {
             # Start on the first choice, or on the sort when there are none ticked.
         fi
         ((${#e_kind[@]} > 0)) || return 0
+        # Choices under a group (a year's months) sit indented below it.
+        local -a e_indent=()
+        local in_group=false
+        for ((i = 0; i < ${#e_kind[@]}; i++)); do
+            case "${e_kind[i]}" in
+                group)
+                    in_group=true
+                    e_indent+=("")
+                    ;;
+                choice) if [[ "$in_group" == true ]]; then e_indent+=("    "); else e_indent+=(""); fi ;;
+                *) e_indent+=("") ;;
+            esac
+        done
         cols=$(_pm_get_terminal_width)
+        # A menu longer than the window scrolls: it shows what fits under
+        # its title, with the cursor's entry always in view.
+        local rows top=0 shown line_count
+        rows=$(_pm_get_terminal_height)
+        # Title, the more lines above and below, the divider and the keys.
+        shown=$((rows - 7))
+        ((shown >= 3)) || shown=3
         while true; do
+            ((pos >= top)) || top=$pos
+            ((pos < top + shown)) || top=$((pos - shown + 1))
             printf "\033[2J\033[H" >&2
-            printf "${PURPLE_BOLD}%s${NC}  ${GRAY}%s${NC}\n\n" "${sort_col_label[c]}" "$title" >&2
-            for ((i = 0; i < ${#e_kind[@]}; i++)); do
+            local where=""
+            ((${#e_kind[@]} <= shown)) || where="  ${GRAY}$((pos + 1)) of ${#e_kind[@]}${NC}"
+            printf "${PURPLE_BOLD}%s${NC}  ${GRAY}%s${NC}%b\n" "${sort_col_label[c]}" "$title" "$where" >&2
+            if ((top > 0)); then printf "  ${GRAY}%s${NC}\n" "${ICON_NAV_UP} more" >&2; else printf "\n" >&2; fi
+            line_count=0
+            for ((i = top; i < ${#e_kind[@]} && line_count < shown; i++)); do
                 kind="${e_kind[i]}"
-                if [[ "$kind" == "all" && $i -gt 0 ]]; then
+                if [[ "$kind" == "all" && $i -gt 0 && $i -gt $top ]]; then
                     printf "  ${GRAY}%s${NC}\n" "$(printf '%*s' 30 '' | tr ' ' '-')" >&2
                 fi
-                mark="  "
+                line_count=$((line_count + 1))
+                mark="${e_indent[i]}"
                 case "$kind" in
                     choice)
                         mark="$ICON_EMPTY "
@@ -1217,17 +1244,22 @@ paginated_multi_select() {
                         done
                         [[ $n -eq 0 ]] || mark="$ICON_SOLID "
                         ;;
+                    *) mark="  " ;;
                 esac
+                mark="${e_indent[i]}$mark"
                 label="${e_text[i]}"
                 [[ -z "${e_count[i]}" ]] || label+="  (${e_count[i]})"
                 ((${#label} <= cols - 8)) || label="${label:0:cols-11}..."
                 if [[ $i -eq $pos ]]; then
                     printf "${CYAN}${ICON_ARROW} %s%s${NC}\n" "$mark" "$label" >&2
+                elif [[ "$kind" == "group" ]]; then
+                    printf "  %s${NC:+$'\033[1m'}%s${NC}\n" "$mark" "$label" >&2
                 else
                     printf "  %s%s\n" "$mark" "$label" >&2
                 fi
             done
-            printf '\n%b\n' "${GRAY}${ICON_NAV_UP}${ICON_NAV_DOWN}${NC} ${GRAY}|${NC} ${GRAY}Space Tick${NC} ${GRAY}|${NC} ${GRAY}Enter Apply${NC} ${GRAY}|${NC} ${GRAY}Esc Back${NC}" >&2
+            if ((i < ${#e_kind[@]})); then printf "  ${GRAY}%s${NC}\n" "${ICON_NAV_DOWN} more" >&2; else printf "\n" >&2; fi
+            printf '%b\n' "${GRAY}${ICON_NAV_UP}${ICON_NAV_DOWN}${NC} ${GRAY}|${NC} ${GRAY}Space Tick${NC} ${GRAY}|${NC} ${GRAY}Enter Apply${NC} ${GRAY}|${NC} ${GRAY}Esc Back${NC}" >&2
             while ! key=$(read_key 1); do :; done
             drain_pending_input
             case "$key" in

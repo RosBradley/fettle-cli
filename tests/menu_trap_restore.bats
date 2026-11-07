@@ -566,3 +566,67 @@ PY
     }
     [[ "$output" == *"ok"* ]]
 }
+
+@test "a column menu longer than the window scrolls with the cursor, its months indented under their years" {
+    run env PROJECT_ROOT="$PROJECT_ROOT" python3 <<'PY'
+import os
+import re
+import subprocess
+
+script = r"""
+source "$PROJECT_ROOT/lib/core/common.sh"
+source "$PROJECT_ROOT/lib/ui/menu_paginated.sh"
+enter_alt_screen() { :; }
+leave_alt_screen() { :; }
+stty() { :; }
+drain_pending_input() { :; }
+tput() { if [[ "$1" == cols ]]; then echo "$COLUMNS"; else echo "$LINES"; fi; }
+read -r -a KEYS <<< "$KEY_LIST"
+read_key() {
+    local n
+    n=$(cat "$KEY_STATE" 2> /dev/null || echo 0)
+    echo $((n + 1)) > "$KEY_STATE"
+    echo "${KEYS[n]:-QUIT}"
+}
+choices="" vals="" items=()
+for y in 2026 2025; do
+    ids=""
+    for m in 12 11 10 09 08 07 06 05 04 03 02 01; do ids+="${ids:+ }m$y-$m"; done
+    choices+="${choices:+$'\n'}+"$'\t'"$y"$'\t'"$ids"
+    for m in 12 11 10 09 08 07 06 05 04 03 02 01; do
+        choices+=$'\n'"m$y-$m"$'\t'"Month $m of $y"
+        items+=("row $y-$m")
+        vals+="${vals:+$'\x1f'}m$y-$m"
+    done
+done
+MOLE_MENU_COLUMNS_HEADER="Row       Month"
+MOLE_MENU_SORT_COLUMNS=("Row|text" "Month|none")
+MOLE_MENU_SORT_KEYS=("" "")
+MOLE_MENU_COL_VALUES=("" "$vals")
+MOLE_MENU_COL_CHOICES=("" "$choices")
+MOLE_MENU_SINGLE=true
+paginated_multi_select Pick "${items[@]}" || echo "rc=$?"
+echo "filters=$MOLE_MENU_COLUMN_FILTERS"
+"""
+ansi = re.compile(r'\x1b\[[0-?]*[ -/]*[@-~]')
+keys = 'CHAR:s RIGHT ENTER ' + 'DOWN ' * 20 + 'ENTER QUIT'
+env = dict(os.environ, COLUMNS='80', LINES='14', KEY_STATE=os.path.join(os.environ['BATS_TEST_TMPDIR'], 'keys'), KEY_LIST=keys)
+r = subprocess.run(['/bin/bash', '--noprofile', '--norc', '-c', script], env=env, capture_output=True, text=True, check=True)
+err = ansi.sub('', r.stderr)
+# The last frame of the menu: no taller than the window, the cursor's entry
+# in it, more above and below, the months indented.
+menu = [f for f in ansi.sub('', r.stderr).split('Month  Pick') if 'Esc Back' in f][-1]
+menu = menu[:menu.index('Esc Back') + len('Esc Back')]
+lines = menu.split('\n')
+assert len(lines) <= 14, (len(lines), lines)
+assert '21 of 27' in menu and '↑ more' in menu and '↓ more' in menu, menu
+assert '➤     ○ Month 07 of 2025' in menu and '○ 2025  (12)' in menu, menu
+assert 'filters=Month=m2025-07' in r.stdout, r.stdout
+print('ok')
+PY
+    [ "$status" -eq 0 ] || {
+        echo "$output"
+        return 1
+    }
+    [[ "$output" == *"ok"* ]]
+}
