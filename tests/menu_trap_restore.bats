@@ -332,7 +332,7 @@ PY
     [[ "$output" == *"ok"* ]]
 }
 
-@test "Up from the first row reaches the headings, where Enter sorts by a column and Enter again reverses it" {
+@test "S reaches the headings, where Enter opens a column's menu to sort by it either way" {
     run env PROJECT_ROOT="$PROJECT_ROOT" python3 <<'PY'
 import os
 import re
@@ -378,21 +378,22 @@ assert 'Name▲' in ansi.sub('', err), err
 # Until S is used, the heading line says how to sort.
 assert 'S: sort by a column' in ansi.sub('', err), err
 
-# Up, Right to Size, Enter sorts largest first, as its spec says.
-out, err = run('CHAR:s RIGHT ENTER DOWN ENTER', 'size')
+# S, Right to Size, Enter opens its menu; its first sort is largest first,
+# as its spec says. Enter on the list then picks the first row.
+out, err = run('CHAR:s RIGHT ENTER ENTER ENTER', 'size')
 assert 'result=0' in out, out
 screen = ansi.sub('', err)
-assert 'Size▼' in screen and 'Enter Sort, again to reverse' in screen, screen
+assert 'Size▼' in screen and 'Enter Sort or filter' in screen and 'Sort: highest first' in screen and 'Then sort: highest first' in screen, screen
 assert '\x1b[7mSize' in err, err
 
-# Enter again reverses it: smallest first.
-out, err = run('CHAR:s RIGHT ENTER ENTER DOWN ENTER', 'reverse')
+# Its second sort is smallest first.
+out, err = run('CHAR:s RIGHT ENTER DOWN ENTER ENTER', 'reverse')
 assert 'result=1' in out, out
 assert 'Size▲' in ansi.sub('', err), err
 
-# Left stops at the first column; Enter there reverses Name to Z-A, and
-# Down then Down puts the cursor on the second row, beta.
-out, err = run('CHAR:s LEFT LEFT ENTER DOWN DOWN SPACE ENTER', 'name')
+# Left stops at the first column; its menu's second sort is Z to A, and
+# Down puts the cursor on the second row, beta.
+out, err = run('CHAR:s LEFT LEFT ENTER DOWN ENTER DOWN SPACE ENTER', 'name')
 assert 'result=0' in out, out
 
 # Space does nothing on the headings; Down goes back and Space selects.
@@ -467,10 +468,11 @@ out, err = run('DOWN SPACE ENTER', 'single', SINGLE='true')
 assert 'rc=0 result=0 action=open' in out, out
 assert '○' not in err and '4 of 4' in err and 'Enter Open' in err, err
 
-# Enter on a filter heading shows only its rows, and says so.
-out, err = run('CHAR:s RIGHT ENTER DOWN ENTER', 'filter', SINGLE='true')
-assert 'result=0' in out and 'filters=MLX' in out and 'order=0,2' in out and 'headings=true' in out, out
-assert 'MLX only · 2 of 4' in err and 'MLX●' in err and 'Enter Show only MLX' in err, err
+# The filter heading's menu: Show all, MLX, not MLX. Enter on MLX shows
+# only its rows, and the title says so.
+out, err = run('CHAR:s RIGHT ENTER DOWN ENTER ENTER', 'filter', SINGLE='true')
+assert 'result=0' in out and 'filters=MLX=1' in out and 'order=0,2' in out and 'headings=true' in out, out
+assert 'Filtered: MLX · 2 of 4' in err and 'MLX●' in err and 'not MLX  (2)' in err, err
 
 # Left and Right return to the caller, with the list's state.
 out, err = run('DOWN DOWN RIGHT', 'side', SIDE='true')
@@ -484,6 +486,78 @@ assert 'result=3' in out and 'search=a' in out and 'headings=true' in out, out
 assert 'S: sort by a column' not in err, err
 lines = [l for l in err.replace('\r', '\n').split('\n') if l.strip()]
 assert lines[1] == 'About these rows' and lines[2].startswith('/ Search: a'), lines[:4]
+print('ok')
+PY
+    [ "$status" -eq 0 ] || {
+        echo "$output"
+        return 1
+    }
+    [[ "$output" == *"ok"* ]]
+}
+
+@test "heading menus sort by a second column, tick choices with their counts, filter hidden fields from F, and X clears" {
+    run env PROJECT_ROOT="$PROJECT_ROOT" python3 <<'PY'
+import os
+import re
+import subprocess
+
+script = r"""
+source "$PROJECT_ROOT/lib/core/common.sh"
+source "$PROJECT_ROOT/lib/ui/menu_paginated.sh"
+enter_alt_screen() { :; }
+leave_alt_screen() { :; }
+stty() { :; }
+drain_pending_input() { :; }
+tput() { if [[ "$1" == cols ]]; then echo "$COLUMNS"; else echo "$LINES"; fi; }
+read -r -a KEYS <<< "$KEY_LIST"
+read_key() {
+    local n
+    n=$(cat "$KEY_STATE" 2> /dev/null || echo 0)
+    echo $((n + 1)) > "$KEY_STATE"
+    echo "${KEYS[n]:-QUIT}"
+}
+MOLE_MENU_COLUMNS_HEADER="Name    Pulls   Month"
+MOLE_MENU_SORT_COLUMNS=("Name|text" "Pulls|num" "Month|none" "Maker|none|hidden")
+MOLE_MENU_SORT_KEYS=($'alpha\x1fbeta\x1fgamma\x1fdelta\x1feps\x1fzeta' $'10\x1f20\x1f20\x1f30\x1f10\x1f30')
+MOLE_MENU_COL_VALUES=("" "" $'m2026-11\x1fm2026-10\x1fm2025-03\x1fm2026-11\x1fm2025-03\x1fm2026-10' $'mk_a\x1fmk_b\x1fmk_a\x1fmk_b\x1fmk_a\x1fmk_a')
+MOLE_MENU_COL_CHOICES=("" "" $'+\t2026\tm2026-11 m2026-10\nm2026-11\tNovember 2026\nm2026-10\tOctober 2026\n+\t2025\tm2025-03\nm2025-03\tMarch 2025' $'mk_a\tAcme\nmk_b\tBolt')
+MOLE_MENU_SORT_MODE=col:0
+MOLE_MENU_SINGLE=true
+paginated_multi_select Pick "alpha   10      Nov" "beta    20      Oct" "gamma   20      Mar" "delta   30      Nov" "eps     10      Mar" "zeta    30      Oct" || echo "rc=$?"
+echo "result=$MOLE_SELECTION_RESULT order=$MOLE_MENU_VIEW_ORDER filters=$MOLE_MENU_COLUMN_FILTERS sort2=$MOLE_MENU_SORT2_MODE"
+"""
+ansi = re.compile(r'\x1b\[[0-?]*[ -/]*[@-~]')
+
+
+def run(keys, tag):
+    state = os.path.join(os.environ['BATS_TEST_TMPDIR'], 'keys-' + tag)
+    env = dict(os.environ, COLUMNS='120', LINES='24', KEY_STATE=state, KEY_LIST=keys)
+    r = subprocess.run(['/bin/bash', '--noprofile', '--norc', '-c', script],
+                       env=env, capture_output=True, text=True, check=True)
+    return r.stdout, ansi.sub('', r.stderr)
+
+
+# Pulls highest first, then Name A to Z second: 30 (delta, zeta), 20 (beta,
+# gamma), 10 (alpha, eps).
+out, err = run('CHAR:s RIGHT ENTER DOWN ENTER CHAR:s LEFT ENTER DOWN DOWN ENTER ENTER', 'then')
+assert 'result=3' in out and 'order=3,5,1,2,0,4' in out and 'sort2=col:0' in out, out
+assert 'Then sort: A to Z' in err and 'Pulls▼' in err and 'Name▲²' in err, err
+
+# F lists every field, the hidden Maker too: Acme (4 rows) only. Then the
+# Month heading's menu counts the rows Acme leaves, by year and month;
+# Space on 2026 ticks both its months, and Enter shows them.
+keys = 'CHAR:f DOWN DOWN DOWN ENTER DOWN ENTER CHAR:s RIGHT RIGHT ENTER DOWN SPACE ENTER'
+out, err = run(keys + ' ENTER', 'filters')
+assert 'result=0' in out and 'order=0,5' in out, out
+assert 'filters=Month=m2026-11 m2026-10;Maker=mk_a' in out, out
+assert 'Filter or sort by' in err and 'Maker' in err and 'Acme  (4)' in err and 'Bolt  (2)' in err, err
+assert '2026  (2)' in err and 'November 2026  (1)' in err and 'March 2025  (2)' in err, err
+assert 'Filtered: Month: November 2026, October 2026 · Maker: Acme · 2 of 6' in err, err
+assert 'X Clear filters' in err, err
+
+# X clears every filter.
+out, err = run(keys + ' CHAR:x ENTER', 'clear')
+assert 'result=0' in out and 'order=0,1,3,4,2,5' in out and 'filters= ' in out, out
 print('ok')
 PY
     [ "$status" -eq 0 ] || {

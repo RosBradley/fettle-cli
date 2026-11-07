@@ -821,9 +821,12 @@ show_model_details() {
 # hand-kept list of the families in Ollama's library and Hugging Face's MLX
 # models, by name. Empty when the model isn't on the list, never a guess.
 maker_text() {
-    local name="${1%%:*}"
+    local name="${1%%:*}" nocase=false
     name="${name##*/}"
-    name=$(printf '%s' "$name" | LC_ALL=C tr '[:upper:]' '[:lower:]')
+    # Matched without regard to case, and without a fork: lists of
+    # thousands of models ask for each.
+    shopt -q nocasematch && nocase=true
+    shopt -s nocasematch
     case "$name" in
         llama2 | llama3 | llama3.1 | llama3.2 | llama3.2-vision | llama3.3 | llama4 | codellama | llama-guard3 | llama-guard4) TEXT="Meta (United States)" ;;
         gemma* | codegemma* | shieldgemma* | embeddinggemma* | medgemma*) TEXT="Google (United States)" ;;
@@ -860,6 +863,7 @@ maker_text() {
         sailor*) TEXT="Sea AI Lab (Singapore)" ;;
         *) TEXT="" ;;
     esac
+    [[ "$nocase" == true ]] || shopt -u nocasematch
 }
 
 date_text() {
@@ -1261,7 +1265,7 @@ run_update() {
         printf '%s' "${sizes_kb[*]}"
     )
     MOLE_MENU_FILTER_NAMES=$(printf '%s\n' "${search[@]}")
-    local -a MOLE_MENU_SORT_COLUMNS=() MOLE_MENU_SORT_KEYS=()
+    local -a MOLE_MENU_SORT_COLUMNS=() MOLE_MENU_SORT_KEYS=() MOLE_MENU_COL_VALUES=() MOLE_MENU_COL_CHOICES=()
     installed_columns "${updates[@]}"
     local MOLE_MENU_SORT_MODE=name MOLE_MENU_SORT_REVERSE=false
     DETAILS_KIND=installed
@@ -1386,28 +1390,224 @@ fit_rank() {
     esac
 }
 
-# The sortable columns of a list of installed models (M_ indices): Status,
-# updates first; on Apple silicon MLX, where Enter shows only MLX models;
-# Name and Size. Callers declare MOLE_MENU_SORT_COLUMNS and
-# MOLE_MENU_SORT_KEYS local.
+# The columns of a pick list being built, as the menu reads them (see
+# lib/ui/menu_paginated.sh): menu_column adds one, with its spec, its sort
+# keys, each item's choice ids and its choices, any of the last three empty.
+# Callers declare MOLE_MENU_SORT_COLUMNS, MOLE_MENU_SORT_KEYS,
+# MOLE_MENU_COL_VALUES and MOLE_MENU_COL_CHOICES local.
+menu_column() {
+    local i=${#MOLE_MENU_SORT_COLUMNS[@]}
+    MOLE_MENU_SORT_COLUMNS+=("$1")
+    MOLE_MENU_SORT_KEYS[i]="$2"
+    MOLE_MENU_COL_VALUES[i]="$3"
+    MOLE_MENU_COL_CHOICES[i]="$4"
+}
+
+# Keep, of the choice lines in $1 ("id<TAB>label", or a group
+# "+<TAB>label<TAB>ids"), those some item has, the items' ids being the
+# rest of the arguments; into TEXT.
+present_choices() {
+    local lines="$1" line id ids keep
+    shift
+    local all=" $* "
+    TEXT=""
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        [[ -n "$line" ]] || continue
+        keep=false
+        if [[ "$line" == "+"$'\t'* ]]; then
+            ids="${line##*$'\t'}"
+            for id in $ids; do
+                [[ "$all" != *" $id "* ]] || keep=true
+            done
+        else
+            id="${line%%$'\t'*}"
+            [[ "$all" != *" $id "* ]] || keep=true
+        fi
+        [[ "$keep" != true ]] || TEXT+="${TEXT:+$'\n'}$line"
+    done <<< "$lines"
+}
+
+# A download size's choice ids, into TEXT: "fit" when it fits this Mac's
+# memory, and its range.
+SIZE_CHOICES=$'fit\tfits this Mac\nsz1\tunder 1GB\nsz4\t1-4GB\nsz8\t4-8GB\nsz16\t8-16GB\nsz32\t16-32GB\nsz99\t32GB or more\nszu\tsize unknown'
+size_ids() {
+    local bytes="$1" ids=""
+    if [[ ! "$bytes" =~ ^[1-9][0-9]*$ ]]; then
+        TEXT="szu"
+        return 0
+    fi
+    fit_word "$bytes"
+    [[ "$TEXT" != "fits" ]] || ids="fit "
+    if ((bytes < 1000000000)); then
+        ids+="sz1"
+    elif ((bytes < 4000000000)); then
+        ids+="sz4"
+    elif ((bytes < 8000000000)); then
+        ids+="sz8"
+    elif ((bytes < 16000000000)); then
+        ids+="sz16"
+    elif ((bytes < 32000000000)); then
+        ids+="sz32"
+    else
+        ids+="sz99"
+    fi
+    TEXT="$ids"
+}
+
+# A count's range, into TEXT: pulls on Ollama's library, or a month's
+# downloads on Hugging Face (the second argument "month").
+PULLS_CHOICES=$'pl4\t10M or more\npl3\t1M-10M\npl2\t100K-1M\npl1\tunder 100K'
+DOWNLOADS_CHOICES=$'dl4\t100K or more\ndl3\t10K-100K\ndl2\t1K-10K\ndl1\tunder 1K'
+count_ids() {
+    local n="$1" kind="${2:-}"
+    [[ "$n" =~ ^[0-9]+$ ]] || n=0
+    if [[ "$kind" == "month" ]]; then
+        if ((n >= 100000)); then TEXT=dl4; elif ((n >= 10000)); then TEXT=dl3; elif ((n >= 1000)); then TEXT=dl2; else TEXT=dl1; fi
+    else
+        if ((n >= 10000000)); then TEXT=pl4; elif ((n >= 1000000)); then TEXT=pl3; elif ((n >= 100000)); then TEXT=pl2; else TEXT=pl1; fi
+    fi
+}
+
+# A date's month id ("m2026-11"), into TEXT; empty for none.
+month_id() {
+    date_cell_text "$1"
+    [[ -z "$TEXT" ]] || TEXT="m${TEXT:0:7}"
+}
+
+# The month choices for these month ids, newest first, each year a group
+# before its months; into TEXT.
+month_choices() {
+    local id year last_year="" out="" months="" items=""
+    local -a names=(January February March April May June July August September October November December)
+    local -a sorted=()
+    while IFS= read -r id; do
+        [[ -z "$id" ]] || sorted+=("$id")
+    done < <(printf '%s\n' "$@" | LC_ALL=C sort -ru)
+    for id in ${sorted[@]+"${sorted[@]}"}; do
+        year="${id:1:4}"
+        if [[ "$year" != "$last_year" ]]; then
+            [[ -z "$last_year" ]] || out+="${out:+$'\n'}+"$'\t'"$last_year"$'\t'"$months"$'\n'"$items"
+            last_year="$year"
+            months=""
+            items=""
+        fi
+        months+="${months:+ }$id"
+        items+="${items:+$'\n'}$id"$'\t'"${names[10#${id:6:2} - 1]} $year"
+    done
+    [[ -z "$last_year" ]] || out+="${out:+$'\n'}+"$'\t'"$last_year"$'\t'"$months"$'\n'"$items"
+    TEXT="$out"
+}
+
+# A size tag's parameters in millions: 270m is 270, 1.5b is 1500, e2b
+# (Gemma's effective size) is 2000, 8x7b is 56000; 0 when it can't be read.
+param_millions() {
+    local t="${1#e}" n unit mult=1 whole frac=0
+    TEXT=0
+    if [[ "$t" =~ ^([0-9]+)x(.+)$ ]]; then
+        mult="${BASH_REMATCH[1]}"
+        t="${BASH_REMATCH[2]}"
+    fi
+    unit="${t: -1}"
+    n="${t%?}"
+    [[ "$n" =~ ^([0-9]+)(\.([0-9]+))?$ ]] || return 0
+    whole="${BASH_REMATCH[1]}"
+    [[ -z "${BASH_REMATCH[3]}" ]] || frac="${BASH_REMATCH[3]:0:1}"
+    case "$unit" in
+        m | M) TEXT=$((10#$whole * mult)) ;;
+        b | B) TEXT=$(((10#$whole * 1000 + 10#$frac * 100) * mult)) ;;
+        *) TEXT=0 ;;
+    esac
+}
+
+# A library model's sizes as choice ids ("has a version of up to 8b"...)
+# and its smallest size in millions, for sorting: into TEXT and PARAMS_MIN.
+SIZES_CHOICES=$'le3\tup to 3b\nle8\tup to 8b\nle14\tup to 14b\nle32\tup to 32b\nle70\tup to 70b\ngt70\tover 70b'
+PARAMS_MIN=0
+sizes_ids() {
+    local size min=0 max=0 ids="" t
+    local -a sizes=()
+    [[ -z "$1" ]] || IFS=',' read -r -a sizes <<< "$1"
+    for size in ${sizes[@]+"${sizes[@]}"}; do
+        param_millions "$size"
+        ((TEXT > 0)) || continue
+        ((min == 0 || TEXT < min)) && min=$TEXT
+        ((TEXT > max)) && max=$TEXT
+    done
+    PARAMS_MIN=$min
+    if ((min > 0)); then
+        for t in 3 8 14 32 70; do
+            ((min > t * 1000)) || ids+="${ids:+ }le$t"
+        done
+        ((max <= 70000)) || ids+="${ids:+ }gt70"
+    fi
+    TEXT="$ids"
+}
+
+# Who makes a model and its country, as two choice ids for the hidden Maker
+# and Country fields; into MAKER_ID and COUNTRY_ID, with their labels in
+# MAKER_LABEL and COUNTRY_LABEL. Empty when the model isn't on the list.
+maker_ids() {
+    maker_text "$1"
+    MAKER_LABEL="${TEXT% (*}"
+    COUNTRY_LABEL=""
+    [[ "$TEXT" != *"("*")" ]] || COUNTRY_LABEL="${TEXT##*(}"
+    COUNTRY_LABEL="${COUNTRY_LABEL%)}"
+    [[ -n "$TEXT" ]] || MAKER_LABEL=""
+    MAKER_ID="mk_${MAKER_LABEL//[^A-Za-z0-9]/_}"
+    COUNTRY_ID="ct_${COUNTRY_LABEL//[^A-Za-z0-9]/_}"
+    [[ -n "$MAKER_LABEL" ]] || MAKER_ID="mk_none"
+    [[ -n "$COUNTRY_LABEL" ]] || COUNTRY_ID="ct_none"
+}
+
+# The choices of ids whose labels are kept in parallel arrays: unique, in
+# label order, "not on the list" last; into TEXT. $1 is the label for none.
+label_choices() {
+    local none="$1" i
+    shift
+    local -a pairs=("$@")
+    TEXT=$(printf '%s\n' "${pairs[@]}" | LC_ALL=C sort -t $'\t' -k2,2f -u | grep -v '_none'$'\t' || true)
+    for i in "${pairs[@]}"; do
+        if [[ "$i" == *"_none"$'\t'* ]]; then
+            TEXT+="${TEXT:+$'\n'}${i%%$'\t'*}"$'\t'"$none"
+            break
+        fi
+    done
+}
+
+# The columns of a list of installed models (M_ indices): Status, updates
+# first; on Apple silicon MLX; Name; Size. Each filters by its values.
+# Callers declare the MOLE_MENU_* column arrays local.
 installed_columns() {
     local i
-    local -a ranks=() mlx=()
+    local -a ranks=() status=() mlx=() sizes=()
     for i in "$@"; do
         status_rank "${M_STATUS[i]}"
         ranks+=("$TEXT")
+        case "${M_STATUS[i]}" in
+            update | current | local) status+=("st_${M_STATUS[i]}") ;;
+            *) status+=(st_unknown) ;;
+        esac
         mlx+=("${M_MLX[i]:-0}")
+        size_ids "${M_SIZE[i]}"
+        sizes+=("$TEXT")
     done
-    MOLE_MENU_SORT_COLUMNS=("Status|num")
-    MOLE_MENU_SORT_KEYS=()
+    MOLE_MENU_SORT_COLUMNS=() MOLE_MENU_SORT_KEYS=() MOLE_MENU_COL_VALUES=() MOLE_MENU_COL_CHOICES=()
+    local keys vals
     sort_keys "${ranks[@]}"
-    MOLE_MENU_SORT_KEYS[0]="$TEXT"
+    keys="$TEXT"
+    sort_keys "${status[@]}"
+    vals="$TEXT"
+    present_choices $'st_update\tupdate available\nst_current\tup to date\nst_local\tmade on this Mac\nst_unknown\tcouldn\'t check' "${status[@]}"
+    menu_column "Status|num||updates first|updates last" "$keys" "$vals" "$TEXT"
     if [[ "${MODELS_APPLE_SILICON:-0}" == "1" ]]; then
-        MOLE_MENU_SORT_COLUMNS+=("MLX|filter")
         sort_keys "${mlx[@]}"
-        MOLE_MENU_SORT_KEYS[1]="$TEXT"
+        menu_column "MLX|filter" "$TEXT" "" ""
     fi
-    MOLE_MENU_SORT_COLUMNS+=("Name|name" "Size|size")
+    menu_column "Name|name" "" "" ""
+    sort_keys "${sizes[@]}"
+    vals="$TEXT"
+    present_choices "$SIZE_CHOICES" "${sizes[@]}"
+    menu_column "Size|size" "" "$vals" "$TEXT"
 }
 
 # Show a pick list; PICKED holds the picked indices. Callers set the list's
@@ -1450,7 +1650,7 @@ pick_to_remove() {
         printf '%s' "${epochs[*]}"
     )
     MOLE_MENU_FILTER_NAMES=$(printf '%s\n' "${M_NAME[@]}")
-    local -a MOLE_MENU_SORT_COLUMNS=() MOLE_MENU_SORT_KEYS=() all=()
+    local -a MOLE_MENU_SORT_COLUMNS=() MOLE_MENU_SORT_KEYS=() MOLE_MENU_COL_VALUES=() MOLE_MENU_COL_CHOICES=() all=()
     for ((i = 0; i < ${#M_NAME[@]}; i++)); do
         all+=("$i")
     done
@@ -1474,6 +1674,8 @@ LIB_FILTERS=""
 LIB_ITEM=""
 LIB_ORDER=""
 LIB_HEADINGS=""
+LIB_SORT2=""
+LIB_SORT2_REVERSE=false
 HFL_SORT_MODE=name
 HFL_SORT_REVERSE=false
 HFL_SEARCH=""
@@ -1481,6 +1683,8 @@ HFL_FILTERS=""
 HFL_ITEM=""
 HFL_ORDER=""
 HFL_HEADINGS=""
+HFL_SORT2=""
+HFL_SORT2_REVERSE=false
 # The versions list on a model's screen keeps its sort and filters from one
 # model to the next, opening smallest first.
 VER_SORT_MODE=size
@@ -1488,6 +1692,8 @@ VER_SORT_REVERSE=true
 VER_FILTERS=""
 VER_ITEM=""
 VER_HEADINGS=""
+VER_SORT2=""
+VER_SORT2_REVERSE=false
 # What a model's screen asked for: prev, next, download, add, or back.
 SCREEN_ACTION=""
 # Whether this run has started its operation-log session.
@@ -1497,6 +1703,10 @@ DOWNLOAD_SESSION=false
 # what it can do, or its description; on Apple silicon, Enter on the MLX
 # heading shows only the models with MLX versions.
 pick_library_model() {
+    # The rows wait in an array: every function called with them still in
+    # the arguments copies them all, which made a long list slow to build.
+    local -a list_rows=("$@")
+    set --
     local -a search=() sizes_kb=() pulls=() ranks=() mlx=()
     local i words
     for ((i = 0; i < ${#L_NAME[@]}; i++)); do
@@ -1527,24 +1737,90 @@ pick_library_model() {
         printf '%s' "${pulls[*]}"
     )
     MOLE_MENU_FILTER_NAMES=$(printf '%s\n' "${search[@]}")
-    local -a MOLE_MENU_SORT_COLUMNS=("Status|num") MOLE_MENU_SORT_KEYS=()
+    # Each column's values to filter by, and the fields without a column:
+    # what it can do, who makes it, and the country.
+    local -a st=() sz=() params=() szs=() pl=() mo=() caps=() makers=() countries=() maker_pairs=() country_pairs=()
+    local cap ids
+    for ((i = 0; i < ${#L_NAME[@]}; i++)); do
+        if [[ "${L_INSTALLED[i]}" == "1" ]]; then st+=(inst); else st+=(notinst); fi
+        size_ids "${L_BYTES[i]:-0}"
+        sz+=("$TEXT")
+        sizes_ids "${L_SIZES[i]}"
+        szs+=("$TEXT")
+        if ((PARAMS_MIN > 0)); then params+=("$PARAMS_MIN"); else params+=(999999999); fi
+        count_ids "${pulls[i]}"
+        pl+=("$TEXT")
+        month_id "${L_UPDATED[i]}"
+        mo+=("$TEXT")
+        ids=""
+        for cap in ${L_CAPS[i]//,/ }; do
+            ids+="${ids:+ }cap_$cap"
+        done
+        caps+=("$ids")
+        maker_ids "${L_NAME[i]}"
+        makers+=("$MAKER_ID")
+        countries+=("$COUNTRY_ID")
+        maker_pairs+=("$MAKER_ID"$'\t'"$MAKER_LABEL")
+        country_pairs+=("$COUNTRY_ID"$'\t'"$COUNTRY_LABEL")
+    done
+    local -a MOLE_MENU_SORT_COLUMNS=() MOLE_MENU_SORT_KEYS=() MOLE_MENU_COL_VALUES=() MOLE_MENU_COL_CHOICES=()
+    local keys vals
     sort_keys "${ranks[@]}"
-    MOLE_MENU_SORT_KEYS[0]="$TEXT"
+    keys="$TEXT"
+    sort_keys "${st[@]}"
+    vals="$TEXT"
+    present_choices $'inst\tinstalled\nnotinst\tnot installed' "${st[@]}"
+    menu_column "Status|num||installed first|installed last" "$keys" "$vals" "$TEXT"
     if [[ "${MODELS_APPLE_SILICON:-0}" == "1" ]]; then
-        MOLE_MENU_SORT_COLUMNS+=("MLX|filter")
         sort_keys "${mlx[@]}"
-        MOLE_MENU_SORT_KEYS[1]="$TEXT"
+        menu_column "MLX|filter" "$TEXT" "" ""
     fi
-    MOLE_MENU_SORT_COLUMNS+=("Name|name" "Size|size" "Pulls|count" "Updated|date:desc")
+    menu_column "Name|name" "" "" ""
+    sort_keys "${sz[@]}"
+    vals="$TEXT"
+    present_choices "$SIZE_CHOICES" "${sz[@]}"
+    menu_column "Size|size" "" "$vals" "$TEXT"
+    sort_keys "${params[@]}"
+    keys="$TEXT"
+    sort_keys "${szs[@]}"
+    vals="$TEXT"
+    present_choices "$SIZES_CHOICES" "${szs[@]}"
+    menu_column "Sizes|num||smallest version first|largest first" "$keys" "$vals" "$TEXT"
+    sort_keys "${pl[@]}"
+    vals="$TEXT"
+    present_choices "$PULLS_CHOICES" "${pl[@]}"
+    menu_column "Pulls|count" "" "$vals" "$TEXT"
+    sort_keys "${mo[@]}"
+    vals="$TEXT"
+    month_choices "${mo[@]}"
+    menu_column "Updated|date:desc" "" "$vals" "$TEXT"
+    sort_keys "${caps[@]}"
+    vals="$TEXT"
+    local cap_lines=""
+    for cap in $(printf '%s\n' ${caps[@]+${caps[@]}} | LC_ALL=C sort -u); do
+        caps_text "${cap#cap_}"
+        cap_lines+="${cap_lines:+$'\n'}$cap"$'\t'"$TEXT"
+    done
+    menu_column "Can do|none|hidden" "" "$vals" "$cap_lines"
+    sort_keys "${makers[@]}"
+    vals="$TEXT"
+    label_choices "Not on MoreMole's list" "${maker_pairs[@]}"
+    menu_column "Maker|none|hidden" "" "$vals" "$TEXT"
+    sort_keys "${countries[@]}"
+    vals="$TEXT"
+    label_choices "Not on MoreMole's list" "${country_pairs[@]}"
+    menu_column "Country|none|hidden" "" "$vals" "$TEXT"
     local MOLE_MENU_SORT_MODE="$LIB_SORT_MODE" MOLE_MENU_SORT_REVERSE="$LIB_SORT_REVERSE"
+    local MOLE_MENU_SORT2_MODE="$LIB_SORT2" MOLE_MENU_SORT2_REVERSE="$LIB_SORT2_REVERSE"
     local MOLE_MENU_SEARCH="$LIB_SEARCH" MOLE_MENU_COLUMN_FILTERS="$LIB_FILTERS" MOLE_MENU_START_ITEM="$LIB_ITEM" MOLE_MENU_VIEW_ORDER="" MOLE_MENU_HEADINGS_USED="$LIB_HEADINGS"
     local MOLE_MENU_SINGLE=true MOLE_MENU_ENTER_LABEL="Versions" MOLE_MENU_CANCEL_LABEL="Done"
     local title="Ollama's library"
     [[ "${MODELS_APPLE_SILICON:-0}" != "1" ]] || title+="; MLX: has versions for Apple silicon"
     DETAILS_KIND=""
     local rc=0
-    pick "$title" "$@" || rc=$?
+    pick "$title" "${list_rows[@]}" || rc=$?
     LIB_SORT_MODE="$MOLE_MENU_SORT_MODE" LIB_SORT_REVERSE="$MOLE_MENU_SORT_REVERSE"
+    LIB_SORT2="$MOLE_MENU_SORT2_MODE" LIB_SORT2_REVERSE="$MOLE_MENU_SORT2_REVERSE"
     LIB_SEARCH="$MOLE_MENU_SEARCH" LIB_FILTERS="$MOLE_MENU_COLUMN_FILTERS"
     LIB_ITEM="$MOLE_MENU_START_ITEM" LIB_ORDER="$MOLE_MENU_VIEW_ORDER" LIB_HEADINGS="$MOLE_MENU_HEADINGS_USED"
     return "$rc"
@@ -1623,17 +1899,65 @@ versions_screen() {
     )
     MOLE_MENU_FILTER_NAMES=$(printf '%s\n' "${search[@]}")
     MOLE_MENU_INTRO="$(model_intro "$i" "$failed")"$'\n'
-    local -a MOLE_MENU_SORT_COLUMNS=("Status|num" "Memory|num" "Version|name" "Size|size") MOLE_MENU_SORT_KEYS=()
+    local -a st=() mem=() sz=() cx=() inp=()
+    local ids v
+    for ((j = 0; j < ${#T_NAME[@]}; j++)); do
+        case "${ranks[j]}" in
+            0) st+=(inst) ;;
+            1) st+=(latest) ;;
+            *) st+=(other) ;;
+        esac
+        case "${fits[j]}" in
+            0) mem+=(fits) ;;
+            1) mem+=(tight) ;;
+            2) mem+=(toobig) ;;
+            *) mem+=(memunknown) ;;
+        esac
+        size_ids "${T_BYTES[j]:-0}"
+        sz+=("$TEXT")
+        v="${T_CONTEXT[j]:-}"
+        cx+=("cx_${v:-none}")
+        ids=""
+        [[ "${T_INPUT[j]}" != *Text* ]] || ids="in_text"
+        [[ "${T_INPUT[j]}" != *Image* ]] || ids+="${ids:+ }in_image"
+        inp+=("${ids:-in_none}")
+    done
+    local -a MOLE_MENU_SORT_COLUMNS=() MOLE_MENU_SORT_KEYS=() MOLE_MENU_COL_VALUES=() MOLE_MENU_COL_CHOICES=()
+    local keys vals cx_lines=""
     sort_keys "${ranks[@]}"
-    MOLE_MENU_SORT_KEYS[0]="$TEXT"
+    keys="$TEXT"
+    sort_keys "${st[@]}"
+    vals="$TEXT"
+    present_choices $'inst\tinstalled\nlatest\tlatest\nother\tthe others' "${st[@]}"
+    menu_column "Status|num||installed, latest first|installed, latest last" "$keys" "$vals" "$TEXT"
     sort_keys "${fits[@]}"
-    MOLE_MENU_SORT_KEYS[1]="$TEXT"
+    keys="$TEXT"
+    sort_keys "${mem[@]}"
+    vals="$TEXT"
+    present_choices $'fits\tfits\ntight\ttight\ntoobig\ttoo big\nmemunknown\tunknown' "${mem[@]}"
+    menu_column "Memory|num||fits first|too big first" "$keys" "$vals" "$TEXT"
+    menu_column "Version|name" "" "" ""
+    sort_keys "${sz[@]}"
+    vals="$TEXT"
+    present_choices "$SIZE_CHOICES" "${sz[@]}"
+    menu_column "Size|size" "" "$vals" "$TEXT"
+    sort_keys "${cx[@]}"
+    vals="$TEXT"
+    for v in $(printf '%s\n' "${cx[@]}" | LC_ALL=C sort -u); do
+        cx_lines+="${cx_lines:+$'\n'}$v"$'\t'"${v#cx_}"
+    done
+    cx_lines="${cx_lines//cx_none$'\t'none/cx_none$'\t'unknown}"
+    menu_column "Context|none" "" "$vals" "$cx_lines"
+    sort_keys "${inp[@]}"
+    vals="$TEXT"
+    present_choices $'in_text\ttext\nin_image\timages\nin_none\tunknown' "${inp[@]}"
+    menu_column "Input|none" "" "$vals" "$TEXT"
     if [[ "${MODELS_APPLE_SILICON:-0}" == "1" ]]; then
-        MOLE_MENU_SORT_COLUMNS+=("MLX|filter")
         sort_keys "${mlx[@]}"
-        MOLE_MENU_SORT_KEYS[4]="$TEXT"
+        menu_column "MLX|filter" "$TEXT" "" ""
     fi
     local MOLE_MENU_SORT_MODE="$VER_SORT_MODE" MOLE_MENU_SORT_REVERSE="$VER_SORT_REVERSE"
+    local MOLE_MENU_SORT2_MODE="$VER_SORT2" MOLE_MENU_SORT2_REVERSE="$VER_SORT2_REVERSE"
     local MOLE_MENU_SEARCH="" MOLE_MENU_COLUMN_FILTERS="$VER_FILTERS" MOLE_MENU_START_ITEM="$VER_ITEM" MOLE_MENU_VIEW_ORDER="" MOLE_MENU_HEADINGS_USED="$VER_HEADINGS"
     local MOLE_MENU_SIDE_RETURN=true MOLE_MENU_SIDE_LABEL="Other model" MOLE_MENU_ENTER_LABEL="Download" MOLE_MENU_CANCEL_LABEL="Back"
     local PICK_KEEP_EMPTY=false
@@ -1642,6 +1966,7 @@ versions_screen() {
     local rc=0
     pick "$name" "${rows[@]}" || rc=$?
     VER_SORT_MODE="$MOLE_MENU_SORT_MODE" VER_SORT_REVERSE="$MOLE_MENU_SORT_REVERSE"
+    VER_SORT2="$MOLE_MENU_SORT2_MODE" VER_SORT2_REVERSE="$MOLE_MENU_SORT2_REVERSE"
     VER_FILTERS="$MOLE_MENU_COLUMN_FILTERS" VER_ITEM="$MOLE_MENU_START_ITEM" VER_HEADINGS="$MOLE_MENU_HEADINGS_USED"
     case "$MOLE_MENU_ACTION" in
         prev | next) SCREEN_ACTION="$MOLE_MENU_ACTION" ;;
@@ -1769,6 +2094,9 @@ browse_library() {
 # Pick a model from Hugging Face's list. Search finds a model by its name,
 # family, quantization, what it reads, vision, or added.
 pick_hf_model() {
+    # The rows wait in an array, as in pick_library_model.
+    local -a list_rows=("$@")
+    set --
     local -a search=() sizes_kb=() published=() ranks=() bits=()
     local i words
     for ((i = 0; i < ${#H_REPO[@]}; i++)); do
@@ -1812,18 +2140,92 @@ pick_hf_model() {
         printf '%s' "${H_DOWNLOADS[*]}"
     )
     MOLE_MENU_FILTER_NAMES=$(printf '%s\n' "${search[@]}")
-    local -a MOLE_MENU_SORT_COLUMNS=("Status|num" "Name|name" "Bits|num" "Size|size" "Downloads|count" "Published|date:desc") MOLE_MENU_SORT_KEYS=()
+    local -a st=() bt=() sz=() vis=() dl=() mo=() fam=() makers=() countries=() maker_pairs=() country_pairs=() fam_pairs=()
+    for ((i = 0; i < ${#H_REPO[@]}; i++)); do
+        case "${ranks[i]}" in
+            0) st+=(added) ;;
+            1) st+=(fits) ;;
+            2) st+=(tight) ;;
+            3) st+=(toobig) ;;
+            *) st+=(fitunknown) ;;
+        esac
+        bt+=("bits_${bits[i]}")
+        size_ids "${H_BYTES[i]:-0}"
+        sz+=("$TEXT")
+        if [[ "${H_INPUT[i]}" == *Image* ]]; then vis+=(vision); else vis+=(textonly); fi
+        count_ids "${H_DOWNLOADS[i]}" month
+        dl+=("$TEXT")
+        month_id "${published[i]}"
+        mo+=("$TEXT")
+        fam+=("fam_${H_FAMILY[i]:-none}")
+        family_text "${H_FAMILY[i]}"
+        fam_pairs+=("fam_${H_FAMILY[i]:-none}"$'\t'"${TEXT:-unknown}")
+        maker_ids "${H_FAMILY[i]}"
+        [[ "$MAKER_ID" != "mk_none" ]] || maker_ids "${H_REPO[i]}"
+        makers+=("$MAKER_ID")
+        countries+=("$COUNTRY_ID")
+        maker_pairs+=("$MAKER_ID"$'\t'"$MAKER_LABEL")
+        country_pairs+=("$COUNTRY_ID"$'\t'"$COUNTRY_LABEL")
+    done
+    local -a MOLE_MENU_SORT_COLUMNS=() MOLE_MENU_SORT_KEYS=() MOLE_MENU_COL_VALUES=() MOLE_MENU_COL_CHOICES=()
+    local keys vals b bit_lines=""
     sort_keys "${ranks[@]}"
-    MOLE_MENU_SORT_KEYS[0]="$TEXT"
+    keys="$TEXT"
+    sort_keys "${st[@]}"
+    vals="$TEXT"
+    present_choices $'added\tadded\nfits\tfits\ntight\ttight\ntoobig\ttoo big\nfitunknown\tsize unknown' "${st[@]}"
+    menu_column "Status|num||added, then what fits|too big first" "$keys" "$vals" "$TEXT"
+    menu_column "Name|name" "" "" ""
     sort_keys "${bits[@]}"
-    MOLE_MENU_SORT_KEYS[2]="$TEXT"
+    keys="$TEXT"
+    sort_keys "${bt[@]}"
+    vals="$TEXT"
+    for b in $(printf '%s\n' "${bits[@]}" | LC_ALL=C sort -nu); do
+        case "$b" in
+            16) bit_lines+="${bit_lines:+$'\n'}bits_16"$'\t'"16-bit (bf16, fp16)" ;;
+            32) bit_lines+="${bit_lines:+$'\n'}bits_32"$'\t'"32-bit (fp32)" ;;
+            99) bit_lines+="${bit_lines:+$'\n'}bits_99"$'\t'"unknown" ;;
+            *) bit_lines+="${bit_lines:+$'\n'}bits_$b"$'\t'"$b-bit" ;;
+        esac
+    done
+    menu_column "Bits|num||fewest first|most first" "$keys" "$vals" "$bit_lines"
+    sort_keys "${sz[@]}"
+    vals="$TEXT"
+    present_choices "$SIZE_CHOICES" "${sz[@]}"
+    menu_column "Size|size" "" "$vals" "$TEXT"
+    sort_keys "${vis[@]}"
+    vals="$TEXT"
+    present_choices $'vision\treads images (vision)\ntextonly\ttext only' "${vis[@]}"
+    menu_column "Can do|none" "" "$vals" "$TEXT"
+    sort_keys "${dl[@]}"
+    vals="$TEXT"
+    present_choices "$DOWNLOADS_CHOICES" "${dl[@]}"
+    menu_column "Downloads|count" "" "$vals" "$TEXT"
+    sort_keys "${mo[@]}"
+    vals="$TEXT"
+    month_choices "${mo[@]}"
+    menu_column "Published|date:desc" "" "$vals" "$TEXT"
+    sort_keys "${fam[@]}"
+    vals="$TEXT"
+    label_choices "unknown" "${fam_pairs[@]}"
+    menu_column "Family|none|hidden" "" "$vals" "$TEXT"
+    sort_keys "${makers[@]}"
+    vals="$TEXT"
+    label_choices "Not on MoreMole's list" "${maker_pairs[@]}"
+    menu_column "Maker|none|hidden" "" "$vals" "$TEXT"
+    sort_keys "${countries[@]}"
+    vals="$TEXT"
+    label_choices "Not on MoreMole's list" "${country_pairs[@]}"
+    menu_column "Country|none|hidden" "" "$vals" "$TEXT"
     local MOLE_MENU_SORT_MODE="$HFL_SORT_MODE" MOLE_MENU_SORT_REVERSE="$HFL_SORT_REVERSE"
+    local MOLE_MENU_SORT2_MODE="$HFL_SORT2" MOLE_MENU_SORT2_REVERSE="$HFL_SORT2_REVERSE"
     local MOLE_MENU_SEARCH="$HFL_SEARCH" MOLE_MENU_COLUMN_FILTERS="$HFL_FILTERS" MOLE_MENU_START_ITEM="$HFL_ITEM" MOLE_MENU_VIEW_ORDER="" MOLE_MENU_HEADINGS_USED="$HFL_HEADINGS"
     local MOLE_MENU_SINGLE=true MOLE_MENU_ENTER_LABEL="Details" MOLE_MENU_CANCEL_LABEL="Done"
     DETAILS_KIND=""
     local rc=0
-    pick "MLX models on Hugging Face" "$@" || rc=$?
+    pick "MLX models on Hugging Face" "${list_rows[@]}" || rc=$?
     HFL_SORT_MODE="$MOLE_MENU_SORT_MODE" HFL_SORT_REVERSE="$MOLE_MENU_SORT_REVERSE"
+    HFL_SORT2="$MOLE_MENU_SORT2_MODE" HFL_SORT2_REVERSE="$MOLE_MENU_SORT2_REVERSE"
     HFL_SEARCH="$MOLE_MENU_SEARCH" HFL_FILTERS="$MOLE_MENU_COLUMN_FILTERS"
     HFL_ITEM="$MOLE_MENU_START_ITEM" HFL_ORDER="$MOLE_MENU_VIEW_ORDER" HFL_HEADINGS="$MOLE_MENU_HEADINGS_USED"
     return "$rc"
@@ -1848,7 +2250,7 @@ hf_screen() {
     [[ ! "$bytes" =~ ^[1-9][0-9]*$ ]] || row+=" · $(bytes_to_human "$bytes")"
     local MOLE_MENU_INTRO
     MOLE_MENU_INTRO="$(MOLE_MENU_DETAILS_WIDTH="$cols" hf_details "$i" | sed '1,2d')"$'\n'
-    local -a MOLE_MENU_SORT_COLUMNS=() MOLE_MENU_SORT_KEYS=()
+    local -a MOLE_MENU_SORT_COLUMNS=() MOLE_MENU_SORT_KEYS=() MOLE_MENU_COL_VALUES=() MOLE_MENU_COL_CHOICES=()
     local MOLE_MENU_SINGLE=true MOLE_MENU_SIDE_RETURN=true MOLE_MENU_SIDE_LABEL="Other model" MOLE_MENU_ENTER_LABEL="Add" MOLE_MENU_CANCEL_LABEL="Back"
     local MOLE_MENU_SEARCH="" MOLE_MENU_COLUMN_FILTERS="" MOLE_MENU_START_ITEM="" MOLE_MENU_VIEW_ORDER="" MOLE_MENU_SORT_MODE=name MOLE_MENU_SORT_REVERSE=false
     COLUMNS_HEADER=""

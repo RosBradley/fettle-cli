@@ -452,9 +452,10 @@ select_updates() {
     MOLE_MENU_COLUMNS_HEADER=$(update_header_text)
     # Up from the first row reaches the headings: Source and Name sort the
     # list, and S steps between them. It opens A-Z by name, as it was built.
-    local -a sort_sources=() sort_names=() MOLE_MENU_SORT_COLUMNS=("Source|text" "Name|text") MOLE_MENU_SORT_KEYS=()
+    local -a sort_sources=() sort_names=() source_ids=() MOLE_MENU_SORT_COLUMNS=("Source|text" "Name|text") MOLE_MENU_SORT_KEYS=() MOLE_MENU_COL_VALUES=() MOLE_MENU_COL_CHOICES=()
     for ((i = 0; i < ${#U_KIND[@]}; i++)); do
         sort_sources+=("$(kind_short "${U_KIND[i]}")")
+        source_ids+=("src_${sort_sources[i]//[^A-Za-z0-9]/_}")
         sort_names+=("${U_NAME[i]}")
     done
     MOLE_MENU_SORT_KEYS[0]=$(
@@ -465,6 +466,17 @@ select_updates() {
         IFS=$'\x1f'
         printf '%s' "${sort_names[*]}"
     )
+    # Source filters by its values: Homebrew, App Store, macOS...
+    MOLE_MENU_COL_VALUES[0]=$(
+        IFS=$'\x1f'
+        printf '%s' "${source_ids[*]}"
+    )
+    local src_line
+    for ((i = 0; i < ${#U_KIND[@]}; i++)); do
+        src_line="${source_ids[i]}"$'\t'"${sort_sources[i]}"
+        [[ $'\n'"${MOLE_MENU_COL_CHOICES[0]:-}"$'\n' == *$'\n'"$src_line"$'\n'* ]] ||
+            MOLE_MENU_COL_CHOICES[0]+="${MOLE_MENU_COL_CHOICES[0]:+$'\n'}$src_line"
+    done
     local MOLE_MENU_SORT_MODE=col:1 MOLE_MENU_SORT_REVERSE=false
 
     MOLE_SELECTION_RESULT=""

@@ -563,7 +563,7 @@ models --install-updates hf.co/me/m-4bit:latest llama3.2:latest" ] || { cat "$CA
 	# A-Z the list starts on Name; Left picks Source. App Store (Xcode, 7)
 	# sorts first, ahead of CLI tool, Homebrew, macOS, Own updater and To
 	# Homebrew.
-	printf '%s\n' CHAR:s LEFT ENTER DOWN SPACE CHAR:d > "$BATS_TEST_TMPDIR/keys"
+	printf '%s\n' CHAR:s LEFT ENTER ENTER SPACE CHAR:d > "$BATS_TEST_TMPDIR/keys"
 	run updates_env COLUMNS=100 KEYS_FILE="$BATS_TEST_TMPDIR/keys" KEY_STATE="$BATS_TEST_TMPDIR/key-state" /bin/bash -c '
 		source "$1"
 		enter_alt_screen() { :; }

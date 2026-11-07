@@ -69,7 +69,7 @@ For [Ollama](https://ollama.com):
 Software removal, Slim, Installer files, Software updates and the Ollama model items share one pick list:
 
 - **`/` searches** as you type, matching anywhere in the name.
-- **Lists open A–Z.** ↑ on the first row goes to the last. In lists with column headings, S moves onto the headings: ← → pick a column, Enter sorts by it and Enter again reverses it, and Enter on MLX shows only the MLX models. Other lists keep S for size and date and O to flip the order.
+- **Lists open A–Z.** ↑ on the first row goes to the last. Lists with column headings work like a spreadsheet: S moves onto the headings, ← → pick a column, and Enter opens its menu to sort by it (and then by a second column) or tick the values to show, each with its count: fits this Mac, MLX, sizes, pull ranges, months. Filters on several columns combine, F filters by fields without a column (what a model can do, its maker and country), and X clears them. Other lists keep S for size and date and O to flip the order.
 - **Nothing is selected for you.** That includes Purge, where Mole selected everything older than 7 days.
 - **Rows never wrap.** A long row is cut at the window's edge, so the list stays in place while you scroll.
 - **Details.** In Software updates and the Ollama model items, Enter opens everything about a model, and D goes on: Download, Add, Update or Remove. Each row starts with its status and whether it fits in memory.

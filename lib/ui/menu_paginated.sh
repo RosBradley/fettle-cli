@@ -86,6 +86,9 @@ paginated_multi_select() {
     local title="$1"
     shift
     local -a items=("$@")
+    # MoreMole: every function this one calls would copy the items while
+    # they're still its arguments, which slowed long lists; they're in items.
+    set --
     # A deliberate quit and a real failure both leave through return 1, and
     # callers deciding between "user cancelled" and "selection broke" need to
     # tell them apart. Reset here so a stale value from a previous menu can
@@ -191,68 +194,119 @@ paginated_multi_select() {
         has_sort_controls=true
     fi
 
-    # MoreMole: a caller with a heading line can name its sortable columns in
-    # MOLE_MENU_SORT_COLUMNS, one "Label|mode" each, left to right. The mode
-    # is one of this menu's own sorts (name, size, date, count), or num or
-    # text with the column's keys, one per item joined by the unit separator,
-    # at the same place in MOLE_MENU_SORT_KEYS. ":asc" or ":desc" after the
-    # mode is the order the column's first Enter sorts in. The mode filter,
-    # with keys of 1 and 0, makes Enter show only the rows marked 1, and
-    # Enter again all of them; MOLE_MENU_COLUMN_FILTERS lists the labels of
-    # filters that start on. S moves into the heading line: Left and Right
-    # pick a column, Enter sorts by it (or filters) and Enter again
-    # reverses, Down goes back to the list.
-    local -a sort_col_label=() sort_col_pos=() sort_col_mode=() sort_col_type=() sort_col_first=() sort_col_keys=() col_filter_on=()
+    # MoreMole: a list with a heading line can name its columns, left to
+    # right, in MOLE_MENU_SORT_COLUMNS: "Label|mode|flags|first|second", all
+    # but the label optional. The mode is how the column sorts: one of this
+    # menu's own sorts (name, size, date, count), num or text with the
+    # column's keys (one per item, joined by the unit separator, at the same
+    # place in MOLE_MENU_SORT_KEYS), or none. ":asc" or ":desc" after it is
+    # the order the column sorts in first; first and second name the two
+    # orders in its menu ("most first", "fewest first"). The flag hidden
+    # keeps a column off the heading line: it filters from F's list of
+    # fields only. A column can filter, like a spreadsheet's: the choices
+    # in MOLE_MENU_COL_CHOICES (one per line, "id<TAB>label", or a group
+    # "+<TAB>label<TAB>id id ...") and each item's ids in
+    # MOLE_MENU_COL_VALUES (space-separated, items joined by the unit
+    # separator). The legacy mode filter, keys of 1 and 0, is a filter by
+    # that label. S moves onto the heading line: Left and Right pick a
+    # column, Enter opens its menu to sort by it, sort by it second, or show
+    # only the rows with the choices ticked; Down goes back to the list. F
+    # lists every field to filter by, and X clears every filter. Filters on
+    # different columns all apply; choices ticked in one column show rows
+    # with any of them. MOLE_MENU_COLUMN_FILTERS holds what is filtered
+    # ("Label=id id;Label=id"), MOLE_MENU_SORT2_MODE and
+    # MOLE_MENU_SORT2_REVERSE the second sort.
+    local -a sort_col_label=() sort_col_pos=() sort_col_mode=() sort_col_type=() sort_col_first=() sort_col_keys=()
+    local -a col_hidden=() col_first_label=() col_second_label=() col_choices=() col_values=() col_sel=()
     local sort_col_count=0 header_focus=false header_col=0
+    local sort2_mode="${MOLE_MENU_SORT2_MODE:-}" sort2_reverse="${MOLE_MENU_SORT2_REVERSE:-false}"
     # Until S is used in this list, the heading line ends with a hint that
     # says how to sort; MOLE_MENU_HEADINGS_USED carries that across reopens.
     local headings_used="${MOLE_MENU_HEADINGS_USED:-false}"
     if [[ -n "$column_header" ]]; then
-        local _spec _label _mode _dir _from=0 _rest _prefix _s=0 _k
-        local -a _keys=()
+        local _spec _label _mode _dir _flags _first _second _from=0 _rest _prefix _s=0 _k _pos _choices _vals
+        local -a _keys=() _parts=()
         for _spec in ${MOLE_MENU_SORT_COLUMNS[@]+"${MOLE_MENU_SORT_COLUMNS[@]}"}; do
-            _label="${_spec%%|*}"
-            _mode="${_spec#*|}"
+            _parts=()
+            IFS='|' read -r -a _parts <<< "$_spec"
+            _label="${_parts[0]:-}"
+            _mode="${_parts[1]:-none}"
+            _flags="${_parts[2]:-}"
+            _first="${_parts[3]:-}"
+            _second="${_parts[4]:-}"
             _dir=""
             if [[ "$_mode" == *:* ]]; then
                 _dir="${_mode#*:}"
                 _mode="${_mode%%:*}"
             fi
-            _rest="${column_header:_from}"
-            _prefix="${_rest%%"$_label"*}"
-            if [[ -n "$_label" && "$_prefix" != "$_rest" ]]; then
-                sort_col_label+=("$_label")
-                sort_col_pos+=($((_from + ${#_prefix})))
-                _from=$((_from + ${#_prefix} + ${#_label}))
-                case "$_mode" in
-                    num | text | filter)
-                        sort_col_mode+=("col:$sort_col_count")
-                        sort_col_type+=("$_mode")
-                        _keys=()
-                        IFS=$'\x1f' read -r -a _keys <<< "${MOLE_MENU_SORT_KEYS[_s]:-}"
-                        for ((_k = 0; _k < total_items; _k++)); do
-                            sort_col_keys[sort_col_count * total_items + _k]="${_keys[_k]:-}"
-                        done
-                        ;;
-                    *)
-                        sort_col_mode+=("$_mode")
-                        sort_col_type+=("")
-                        ;;
-                esac
-                sort_col_first+=("$_dir")
-                if [[ "$_mode" == "filter" && ",${MOLE_MENU_COLUMN_FILTERS:-}," == *",$_label,"* ]]; then
-                    col_filter_on+=(true)
-                else
-                    col_filter_on+=(false)
+            _choices="${MOLE_MENU_COL_CHOICES[_s]:-}"
+            _vals="${MOLE_MENU_COL_VALUES[_s]:-}"
+            _keys=()
+            if [[ "$_mode" == "filter" ]]; then
+                # The legacy filter: rows marked 1 have the column's label.
+                _choices="1"$'\t'"$_label"$'\n'"0"$'\t'"not $_label"
+                _vals="${MOLE_MENU_SORT_KEYS[_s]:-}"
+                _mode=none
+            elif [[ "$_mode" == "num" || "$_mode" == "text" ]]; then
+                IFS=$'\x1f' read -r -a _keys <<< "${MOLE_MENU_SORT_KEYS[_s]:-}"
+            fi
+            _pos=-1
+            if [[ ",$_flags," != *",hidden,"* ]]; then
+                _rest="${column_header:_from}"
+                _prefix="${_rest%%"$_label"*}"
+                if [[ -n "$_label" && "$_prefix" != "$_rest" ]]; then
+                    _pos=$((_from + ${#_prefix}))
+                    _from=$((_pos + ${#_label}))
                 fi
-                sort_col_count=$((sort_col_count + 1))
             fi
             _s=$((_s + 1))
+            # A column with no way to sort or filter has nothing to offer.
+            [[ "$_mode" != "none" || -n "$_choices" ]] || continue
+            [[ -n "$_label" ]] || continue
+            sort_col_label+=("$_label")
+            sort_col_pos+=("$_pos")
+            case "$_mode" in
+                num | text)
+                    sort_col_mode+=("col:$sort_col_count")
+                    sort_col_type+=("$_mode")
+                    for ((_k = 0; _k < total_items; _k++)); do
+                        sort_col_keys[sort_col_count * total_items + _k]="${_keys[_k]:-}"
+                    done
+                    ;;
+                none)
+                    sort_col_mode+=("")
+                    sort_col_type+=("")
+                    ;;
+                *)
+                    sort_col_mode+=("$_mode")
+                    sort_col_type+=("")
+                    ;;
+            esac
+            sort_col_first+=("$_dir")
+            col_first_label+=("$_first")
+            col_second_label+=("$_second")
+            col_choices+=("$_choices")
+            if [[ -n "$_choices" ]]; then
+                _keys=()
+                IFS=$'\x1f' read -r -a _keys <<< "$_vals"
+                for ((_k = 0; _k < total_items; _k++)); do
+                    col_values[sort_col_count * total_items + _k]="${_keys[_k]:-}"
+                done
+            fi
+            # A filter the list is opened again with.
+            local _saved=";${MOLE_MENU_COLUMN_FILTERS:-};" _sel=""
+            if [[ "$_saved" == *";$_label="* ]]; then
+                _sel="${_saved#*;"$_label"=}"
+                _sel="${_sel%%;*}"
+            fi
+            col_sel+=("$_sel")
+            sort_col_count=$((sort_col_count + 1))
         done
     fi
     ((sort_col_count == 0)) || has_sort_controls=true
 
     sort_mode_available() {
+        [[ -n "$1" ]] || return 1
         case "$1" in
             date) [[ "$has_epoch_metadata" == "true" ]] ;;
             size) [[ "$has_size_metadata" == "true" ]] ;;
@@ -489,7 +543,7 @@ paginated_multi_select() {
     local -a filter_cache_indices=()
 
     ensure_sorted_indices() {
-        local requested_key="${sort_mode}:${sort_reverse}:${has_epoch_metadata}:${has_size_metadata}:${has_count_metadata}"
+        local requested_key="${sort_mode}:${sort_reverse}:${sort2_mode}:${sort2_reverse}:${has_epoch_metadata}:${has_size_metadata}:${has_count_metadata}"
         if [[ "$requested_key" == "$sort_cache_key" && ${#sorted_indices_cache[@]} -gt 0 ]]; then
             return
         fi
@@ -501,64 +555,87 @@ paginated_multi_select() {
         fi
 
         # Build sort key once; filtering should reuse this cached order.
-        local sort_key
-        if [[ "$sort_mode" == col:* ]]; then
-            # MoreMole: a column's own keys, small to large unless reversed.
-            if [[ "${sort_col_type[${sort_mode#col:}]}" == "num" ]]; then
-                sort_key="-k1,1n"
-                [[ "$sort_reverse" == "true" ]] && sort_key="-k1,1nr"
-            else
-                sort_key="-k1,1f"
-                [[ "$sort_reverse" == "true" ]] && sort_key="-k1,1fr"
-            fi
-        elif [[ "$sort_mode" == "date" ]]; then
-            # Date: ascending by default (oldest first)
-            sort_key="-k1,1n"
-            [[ "$sort_reverse" == "true" ]] && sort_key="-k1,1nr"
-        elif [[ "$sort_mode" == "size" || "$sort_mode" == "count" ]]; then
-            # Size and count: descending by default (largest first)
-            sort_key="-k1,1nr"
-            [[ "$sort_reverse" == "true" ]] && sort_key="-k1,1n"
-        else
-            # Name: ascending by default (A to Z)
-            sort_key="-k1,1f"
-            [[ "$sort_reverse" == "true" ]] && sort_key="-k1,1fr"
+        # MoreMole: a second sort orders the rows the first leaves equal.
+        local sort_key sort_key2=""
+        sort_key=$(_pm_sort_spec "$sort_mode" "$sort_reverse" 1)
+        if [[ -n "$sort2_mode" && "$sort2_mode" != "$sort_mode" ]] && sort_mode_available "$sort2_mode"; then
+            sort_key2=$(_pm_sort_spec "$sort2_mode" "$sort2_reverse" 2)
         fi
 
         local tmpfile
         tmpfile=$(mktemp 2> /dev/null) || tmpfile=""
         if [[ -n "$tmpfile" ]]; then
-            local k id
+            local k k2="" id
             for id in "${orig_indices[@]}"; do
-                case "$sort_mode" in
-                    date) k="${epochs[id]:-0}" ;;
-                    size) k="${sizekb[id]:-0}" ;;
-                    count) k="${count_meta[id]:-0}" ;;
-                    col:*)
-                        k="${sort_col_keys[${sort_mode#col:} * total_items + id]:-}"
-                        k="${k//$'\t'/ }"
-                        [[ "${sort_col_type[${sort_mode#col:}]}" != "num" || "$k" =~ ^-?[0-9]+$ ]] || k=0
-                        ;;
-                    name | *)
-                        # Full names, not the truncated, padded display row.
-                        k="${filter_targets_lower[id]}"
-                        k="${k//$'\t'/ }"
-                        ;;
-                esac
-                printf "%s\t%s\n" "$k" "$id" >> "$tmpfile"
+                _pm_sort_value "$sort_mode" "$id"
+                k="$_pm_value"
+                if [[ -n "$sort_key2" ]]; then
+                    _pm_sort_value "$sort2_mode" "$id"
+                    k2="$_pm_value"
+                fi
+                printf "%s\t%s\t%s\n" "$k" "$k2" "$id" >> "$tmpfile"
             done
 
             sorted_indices_cache=()
-            while IFS=$'\t' read -r _key _id; do
-                [[ -z "$_id" ]] && continue
+            local -a _sort_args=("$sort_key")
+            [[ -z "$sort_key2" ]] || _sort_args+=("$sort_key2")
+            # The id is the last field; tabs are whitespace to read, so an
+            # empty second key would shift the fields.
+            local _line
+            while IFS= read -r _line; do
+                _id="${_line##*$'\t'}"
+                [[ -n "$_id" ]] || continue
                 sorted_indices_cache+=("$_id")
-            done < <(LC_ALL=C sort -t $'\t' $sort_key -k2,2n -- "$tmpfile" 2> /dev/null)
+            done < <(LC_ALL=C sort -t $'\t' "${_sort_args[@]}" -k3,3n -- "$tmpfile" 2> /dev/null)
 
             rm -f "$tmpfile"
         else
             sorted_indices_cache=("${orig_indices[@]}")
         fi
         sort_cache_key="$requested_key"
+    }
+
+    # The sort(1) key for a sort mode in tab-separated field $3: dates
+    # oldest first, sizes and counts largest first, the rest small to large
+    # or A-Z, each flipped by its reverse flag.
+    _pm_sort_spec() {
+        local mode="$1" reverse="$2" field="$3" spec
+        case "$mode" in
+            date) spec="n" ;;
+            size | count) spec="nr" ;;
+            col:*)
+                if [[ "${sort_col_type[${mode#col:}]}" == "num" ]]; then spec="n"; else spec="f"; fi
+                ;;
+            *) spec="f" ;;
+        esac
+        if [[ "$reverse" == "true" ]]; then
+            case "$spec" in
+                nr) spec="n" ;;
+                n) spec="nr" ;;
+                f) spec="fr" ;;
+            esac
+        fi
+        printf -- '-k%s,%s%s' "$field" "$field" "$spec"
+    }
+
+    # An item's value for a sort mode, in _pm_value.
+    _pm_sort_value() {
+        local mode="$1" id="$2"
+        case "$mode" in
+            date) _pm_value="${epochs[id]:-0}" ;;
+            size) _pm_value="${sizekb[id]:-0}" ;;
+            count) _pm_value="${count_meta[id]:-0}" ;;
+            col:*)
+                _pm_value="${sort_col_keys[${mode#col:} * total_items + id]:-}"
+                _pm_value="${_pm_value//$'\t'/ }"
+                [[ "${sort_col_type[${mode#col:}]}" != "num" || "$_pm_value" =~ ^-?[0-9]+$ ]] || _pm_value=0
+                ;;
+            name | *)
+                # Full names, not the truncated, padded display row.
+                _pm_value="${filter_targets_lower[id]}"
+                _pm_value="${_pm_value//$'\t'/ }"
+                ;;
+        esac
     }
 
     # Rebuild the view_indices applying filter over cached sort order
@@ -609,16 +686,12 @@ paginated_multi_select() {
             fi
         fi
 
-        # MoreMole: columns filtering the list keep only their rows marked 1.
-        local _c _id
-        local -a _kept=()
+        # MoreMole: each filtered column keeps the rows with any of its
+        # ticked choices.
+        local _c
         for ((_c = 0; _c < sort_col_count; _c++)); do
-            [[ "${col_filter_on[_c]}" == true ]] || continue
-            _kept=()
-            for _id in ${view_indices[@]+"${view_indices[@]}"}; do
-                [[ "${sort_col_keys[_c * total_items + _id]:-}" != "1" ]] || _kept+=("$_id")
-            done
-            view_indices=(${_kept[@]+"${_kept[@]}"})
+            [[ -n "${col_sel[_c]}" ]] || continue
+            _pm_keep_matching "$_c"
         done
 
         # Clamp cursor into visible range
@@ -636,6 +709,53 @@ paginated_multi_select() {
             cursor_pos=$((current_visible > 0 ? current_visible - 1 : 0))
         fi
         [[ $cursor_pos -lt 0 ]] && cursor_pos=0
+    }
+
+    # MoreMole: keep in view_indices only the rows column $1's ticked
+    # choices match.
+    _pm_keep_matching() {
+        local c="$1" id v sel=" ${col_sel[$1]} "
+        local -a kept=()
+        for id in ${view_indices[@]+"${view_indices[@]}"}; do
+            for v in ${col_values[c * total_items + id]:-}; do
+                if [[ "$sel" == *" $v "* ]]; then
+                    kept+=("$id")
+                    break
+                fi
+            done
+        done
+        view_indices=(${kept[@]+"${kept[@]}"})
+    }
+
+    # MoreMole: the label of choice $2 of column $1.
+    _pm_choice_label() {
+        local line
+        while IFS= read -r line; do
+            [[ "${line%%$'\t'*}" != "$2" ]] || {
+                printf '%s' "${line#*$'\t'}"
+                return 0
+            }
+        done <<< "${col_choices[$1]}"
+        printf '%s' "$2"
+    }
+
+    # MoreMole: what is filtered, for the title: "MLX · Size: fits, 4-8GB".
+    _pm_filter_summary() {
+        local c id text out="" labels
+        for ((c = 0; c < sort_col_count; c++)); do
+            [[ -n "${col_sel[c]}" ]] || continue
+            labels=""
+            for id in ${col_sel[c]}; do
+                labels+="${labels:+, }$(_pm_choice_label "$c" "$id")"
+            done
+            if [[ "$labels" == "${sort_col_label[c]}" ]]; then
+                text="$labels"
+            else
+                text="${sort_col_label[c]}: $labels"
+            fi
+            out+="${out:+ · }$text"
+        done
+        printf '%s' "$out"
     }
 
     # MoreMole: a list opened again comes back as it was left: its search
@@ -670,8 +790,10 @@ paginated_multi_select() {
         [[ $sort_col_count -gt 0 || "$single_mode" == true || "$side_return" == true ]] || return 0
         local _c _filters="" _order=""
         for ((_c = 0; _c < sort_col_count; _c++)); do
-            [[ "${col_filter_on[_c]}" != true ]] || _filters+="${_filters:+,}${sort_col_label[_c]}"
+            [[ -z "${col_sel[_c]}" ]] || _filters+="${_filters:+;}${sort_col_label[_c]}=${col_sel[_c]}"
         done
+        export MOLE_MENU_SORT2_MODE="$sort2_mode"
+        export MOLE_MENU_SORT2_REVERSE="$sort2_reverse"
         _order=$(
             IFS=','
             printf '%s' "${view_indices[*]-}"
@@ -798,10 +920,8 @@ paginated_multi_select() {
         printf "\033[1;1H" >&2
         # MoreMole: the title stays on the first row and the search line
         # always shows on the second, where the list used to leave a gap.
-        local _count_text _c _shown=""
-        for ((_c = 0; _c < sort_col_count; _c++)); do
-            [[ "${col_filter_on[_c]}" != true ]] || _shown+="${_shown:+, }${sort_col_label[_c]}"
-        done
+        local _count_text _shown=""
+        ((sort_col_count == 0)) || _shown=$(_pm_filter_summary)
         if [[ "$single_mode" == true && $total_items -eq 1 ]]; then
             _count_text=""
         elif [[ "$single_mode" == true ]]; then
@@ -809,7 +929,14 @@ paginated_multi_select() {
         else
             _count_text="$selected_count/$total_items selected"
         fi
-        [[ -z "$_shown" ]] || _count_text="$_shown only · $_count_text"
+        if [[ -n "$_shown" ]]; then
+            # What is filtered, cut to fit after the title, then the count.
+            local _room
+            _room=$(($(_pm_get_terminal_width) - ${#title} - ${#_count_text} - 16))
+            ((_room >= 10)) || _room=10
+            ((${#_shown} <= _room)) || _shown="${_shown:0:_room-3}..."
+            _count_text="Filtered: $_shown · $_count_text · X Clear"
+        fi
         printf "\r\033[2K${PURPLE_BOLD}%s${NC}  ${GRAY}%s${NC}\n" "${title}" "$_count_text" >&2
         local _intro_line
         for _intro_line in ${intro_lines[@]+"${intro_lines[@]}"}; do
@@ -853,37 +980,56 @@ paginated_multi_select() {
         fi
     }
 
-    # MoreMole: the heading line with the sorted column in white and an
-    # arrow after it (up for small to large), and the column under the cursor
-    # in reverse, cut to the row width like the rows.
+    # MoreMole: the heading line with the sorted columns in white, an arrow
+    # after each (up for small to large; the second sort's marked 2), a dot
+    # after a filtered one, and the column under the cursor in reverse, cut
+    # to the row width like the rows.
     _pm_column_header_text() {
         local plain="$column_header" limit=$((row_width > 1 ? row_width - 1 : 0))
         ((limit == 0 || ${#plain} <= limit)) || plain="${plain:0:limit}"
-        local out="" prev=0 c pos label end arrow
+        local out="" prev=0 c pos label end room
+        local -a marks=()
         for ((c = 0; c < sort_col_count; c++)); do
             pos=${sort_col_pos[c]}
+            ((pos >= 0)) || continue
             label="${sort_col_label[c]}"
             end=$((pos + ${#label}))
             ((end <= ${#plain})) || continue
             out+="${plain:prev:pos-prev}"
+            marks=()
+            if [[ -n "${sort_col_mode[c]}" && "${sort_col_mode[c]}" == "$sort_mode" ]]; then
+                if sort_runs_ascending "$sort_mode"; then marks+=("▲"); else marks+=("▼"); fi
+            elif [[ -n "${sort_col_mode[c]}" && "${sort_col_mode[c]}" == "$sort2_mode" ]]; then
+                if _pm_runs_ascending "$sort2_mode" "$sort2_reverse"; then marks+=("▲"); else marks+=("▼"); fi
+                marks+=("²")
+            fi
+            [[ -z "${col_sel[c]}" ]] || marks+=("●")
             if [[ "$header_focus" == true && $c -eq $header_col ]]; then
                 out+="${NC}"$'\033[7m'"${label}${NC}${GRAY}"
-            elif [[ "${sort_col_mode[c]}" == "$sort_mode" || "${col_filter_on[c]}" == true ]]; then
+            elif [[ ${#marks[@]} -gt 0 ]]; then
                 out+="${NC}${label}${GRAY}"
             else
                 out+="$label"
             fi
             prev=$end
-            arrow=""
-            if [[ "${col_filter_on[c]}" == true ]]; then
-                arrow="●"
-            elif [[ "${sort_col_mode[c]}" == "$sort_mode" ]]; then
-                arrow="▼"
-                sort_runs_ascending "$sort_mode" && arrow="▲"
-            fi
-            if [[ -n "$arrow" ]]; then
-                out+="$arrow"
-                [[ "${plain:end:1}" != " " ]] || prev=$((end + 1))
+            if [[ ${#marks[@]} -gt 0 ]]; then
+                # The marks take the spaces after the label, keeping one before
+                # the next heading; at the end of the line they all fit.
+                room=0
+                while [[ "${plain:end+room:1}" == " " ]] && ((room < 4)); do
+                    room=$((room + 1))
+                done
+                if ((end + room >= ${#plain})); then
+                    room=${#marks[@]}
+                else
+                    room=$((room - 1))
+                fi
+                local m
+                for ((m = 0; m < room && m < ${#marks[@]}; m++)); do
+                    out+="${marks[m]}"
+                done
+                prev=$((end + m))
+                ((prev <= ${#plain})) || prev=${#plain}
             fi
         done
         out+="${plain:prev}"
@@ -895,36 +1041,331 @@ paginated_multi_select() {
         printf '%s' "$out"
     }
 
-    # MoreMole: Enter on a heading sorts by its column, and reverses a column
-    # already sorted by; a new column starts in the order its spec names.
-    _pm_sort_by_column() {
-        local c="$1" mode first
+    # Whether a sort mode with this reverse flag runs from small to large.
+    _pm_runs_ascending() {
+        local saved="$sort_reverse" rc=0
+        sort_reverse="$2"
+        sort_runs_ascending "$1" || rc=1
+        sort_reverse="$saved"
+        return "$rc"
+    }
+
+    # MoreMole: sort by column $1, first ("1") or second ("2"), in the
+    # column's ascending ("asc") or descending ("desc") order, as the column
+    # names them: "asc" is the order it sorts in first.
+    _pm_apply_sort() {
+        local c="$1" which="$2" order="$3" mode first reverse=false
         mode="${sort_col_mode[c]}"
-        if [[ "${sort_col_type[c]}" == "filter" ]]; then
-            if [[ "${col_filter_on[c]}" == true ]]; then col_filter_on[c]=false; else col_filter_on[c]=true; fi
-            rebuild_view
-            cursor_pos=0
-            top_index=0
-            return 0
-        fi
         sort_mode_available "$mode" || return 0
-        if [[ "$sort_mode" == "$mode" ]]; then
-            if [[ "$sort_reverse" == "true" ]]; then sort_reverse=false; else sort_reverse=true; fi
-        else
-            sort_mode="$mode"
-            sort_reverse=false
-            first="${sort_col_first[c]}"
-            if [[ -n "$first" ]]; then
-                if sort_runs_ascending "$mode"; then
-                    [[ "$first" != "desc" ]] || sort_reverse=true
-                else
-                    [[ "$first" != "asc" ]] || sort_reverse=true
-                fi
+        # reverse=false is the mode's own direction; the column's first order
+        # may be its reverse.
+        first="${sort_col_first[c]}"
+        if [[ -n "$first" ]]; then
+            if _pm_runs_ascending "$mode" false; then
+                [[ "$first" != "desc" ]] || reverse=true
+            else
+                [[ "$first" != "asc" ]] || reverse=true
             fi
+        fi
+        if [[ "$order" == "desc" ]]; then
+            if [[ "$reverse" == true ]]; then reverse=false; else reverse=true; fi
+        fi
+        if [[ "$which" == "2" ]]; then
+            if [[ "$mode" == "$sort_mode" ]]; then
+                return 0
+            fi
+            sort2_mode="$mode"
+            sort2_reverse="$reverse"
+        else
+            # A column that was second becomes first; the second goes.
+            [[ "$mode" != "$sort2_mode" ]] || sort2_mode=""
+            sort_mode="$mode"
+            sort_reverse="$reverse"
         fi
         rebuild_view
         cursor_pos=0
         top_index=0
+    }
+
+    # MoreMole: the names of a column's two orders: "smallest first" or the
+    # column's own, the first being the order it sorts in first.
+    _pm_order_names() {
+        local c="$1" mode asc_name desc_name
+        mode="${sort_col_mode[c]}"
+        case "$mode" in
+            date) asc_name="oldest first" desc_name="newest first" ;;
+            size) asc_name="largest first" desc_name="smallest first" ;;
+            count) asc_name="most first" desc_name="fewest first" ;;
+            col:*)
+                if [[ "${sort_col_type[c]}" == "num" ]]; then
+                    asc_name="lowest first" desc_name="highest first"
+                else
+                    asc_name="A to Z" desc_name="Z to A"
+                fi
+                ;;
+            *) asc_name="A to Z" desc_name="Z to A" ;;
+        esac
+        # The first order is the one the column sorts in first.
+        if [[ -n "${sort_col_first[c]}" ]]; then
+            local own_asc=true
+            _pm_runs_ascending "$mode" false || own_asc=false
+            if { [[ "${sort_col_first[c]}" == "desc" && "$own_asc" == true ]] || [[ "${sort_col_first[c]}" == "asc" && "$own_asc" != true ]]; }; then
+                local t="$asc_name"
+                asc_name="$desc_name"
+                desc_name="$t"
+            fi
+        fi
+        [[ -z "${col_first_label[c]}" ]] || asc_name="${col_first_label[c]}"
+        [[ -z "${col_second_label[c]}" ]] || desc_name="${col_second_label[c]}"
+        _pm_first_name="$asc_name"
+        _pm_second_name="$desc_name"
+    }
+
+    # MoreMole: column $1's menu, on a screen of its own: its sorts, then
+    # its choices to tick, each with how many rows of the list as it stands
+    # (search and other filters) have it. Enter on a sort sorts; Enter on a
+    # choice shows the ticked choices, or just that one when none is
+    # ticked; Space ticks; Esc leaves it as it was.
+    _pm_column_menu() {
+        local c="$1" line id label ids n i pos=0 key cols mark kind
+        local -a e_kind=() e_text=() e_ids=() e_count=()
+        local _pm_first_name _pm_second_name
+        if [[ -n "${sort_col_mode[c]}" ]] && sort_mode_available "${sort_col_mode[c]}"; then
+            _pm_order_names "$c"
+            e_kind+=(sort1a sort1d)
+            e_text+=("Sort: $_pm_first_name" "Sort: $_pm_second_name")
+            e_ids+=("" "")
+            e_count+=("" "")
+            if [[ "${sort_col_mode[c]}" != "$sort_mode" ]]; then
+                e_kind+=(sort2a sort2d)
+                e_text+=("Then sort: $_pm_first_name" "Then sort: $_pm_second_name")
+                e_ids+=("" "")
+                e_count+=("" "")
+            fi
+            if [[ -n "$sort2_mode" ]]; then
+                e_kind+=(sort2none)
+                e_text+=("No second sort")
+                e_ids+=("")
+                e_count+=("")
+            fi
+        fi
+        local ticked=" ${col_sel[c]} "
+        if [[ -n "${col_choices[c]}" ]]; then
+            # The rows the other filters and the search leave.
+            local -a base=() saved_view=("${view_indices[@]+"${view_indices[@]}"}")
+            local saved_sel="${col_sel[c]}" saved_cursor=$cursor_pos saved_top=$top_index
+            col_sel[c]=""
+            rebuild_view
+            base=("${view_indices[@]+"${view_indices[@]}"}")
+            col_sel[c]="$saved_sel"
+            view_indices=("${saved_view[@]+"${saved_view[@]}"}")
+            cursor_pos=$saved_cursor
+            top_index=$saved_top
+            e_kind+=(all)
+            e_text+=("Show all")
+            e_ids+=("")
+            e_count+=("${#base[@]}")
+            while IFS= read -r line || [[ -n "$line" ]]; do
+                [[ -n "$line" ]] || continue
+                if [[ "$line" == "+"$'\t'* ]]; then
+                    line="${line#+$'\t'}"
+                    e_kind+=(group)
+                    e_text+=("${line%%$'\t'*}")
+                    e_ids+=("${line#*$'\t'}")
+                else
+                    e_kind+=(choice)
+                    e_text+=("${line#*$'\t'}")
+                    e_ids+=("${line%%$'\t'*}")
+                fi
+                e_count+=(0)
+            done <<< "${col_choices[c]}"
+            # Count each choice's rows: an item counts once per choice.
+            local item v
+            for item in ${base[@]+"${base[@]}"}; do
+                for v in ${col_values[c * total_items + item]:-}; do
+                    for ((i = 0; i < ${#e_kind[@]}; i++)); do
+                        case "${e_kind[i]}" in
+                            choice) [[ "${e_ids[i]}" != "$v" ]] || e_count[i]=$((e_count[i] + 1)) ;;
+                            group) [[ " ${e_ids[i]} " != *" $v "* ]] || e_count[i]=$((e_count[i] + 1)) ;;
+                        esac
+                    done
+                done
+            done
+            # Start on the first choice, or on the sort when there are none ticked.
+        fi
+        ((${#e_kind[@]} > 0)) || return 0
+        cols=$(_pm_get_terminal_width)
+        while true; do
+            printf "\033[2J\033[H" >&2
+            printf "${PURPLE_BOLD}%s${NC}  ${GRAY}%s${NC}\n\n" "${sort_col_label[c]}" "$title" >&2
+            for ((i = 0; i < ${#e_kind[@]}; i++)); do
+                kind="${e_kind[i]}"
+                if [[ "$kind" == "all" && $i -gt 0 ]]; then
+                    printf "  ${GRAY}%s${NC}\n" "$(printf '%*s' 30 '' | tr ' ' '-')" >&2
+                fi
+                mark="  "
+                case "$kind" in
+                    choice)
+                        mark="$ICON_EMPTY "
+                        [[ "$ticked" != *" ${e_ids[i]} "* ]] || mark="$ICON_SOLID "
+                        ;;
+                    group)
+                        mark="$ICON_EMPTY "
+                        n=0
+                        for id in ${e_ids[i]}; do
+                            [[ "$ticked" != *" $id "* ]] || n=$((n + 1))
+                        done
+                        [[ $n -eq 0 ]] || mark="$ICON_SOLID "
+                        ;;
+                esac
+                label="${e_text[i]}"
+                [[ -z "${e_count[i]}" ]] || label+="  (${e_count[i]})"
+                ((${#label} <= cols - 8)) || label="${label:0:cols-11}..."
+                if [[ $i -eq $pos ]]; then
+                    printf "${CYAN}${ICON_ARROW} %s%s${NC}\n" "$mark" "$label" >&2
+                else
+                    printf "  %s%s\n" "$mark" "$label" >&2
+                fi
+            done
+            printf '\n%b\n' "${GRAY}${ICON_NAV_UP}${ICON_NAV_DOWN}${NC} ${GRAY}|${NC} ${GRAY}Space Tick${NC} ${GRAY}|${NC} ${GRAY}Enter Apply${NC} ${GRAY}|${NC} ${GRAY}Esc Back${NC}" >&2
+            while ! key=$(read_key 1); do :; done
+            drain_pending_input
+            case "$key" in
+                UP) if ((pos > 0)); then pos=$((pos - 1)); else pos=$((${#e_kind[@]} - 1)); fi ;;
+                DOWN) if ((pos < ${#e_kind[@]} - 1)); then pos=$((pos + 1)); else pos=0; fi ;;
+                TOP) pos=0 ;;
+                BOTTOM) pos=$((${#e_kind[@]} - 1)) ;;
+                SPACE)
+                    case "${e_kind[pos]}" in
+                        choice)
+                            if [[ "$ticked" == *" ${e_ids[pos]} "* ]]; then
+                                ticked="${ticked/ ${e_ids[pos]} / }"
+                            else
+                                ticked+="${e_ids[pos]} "
+                            fi
+                            ;;
+                        group)
+                            n=0
+                            for id in ${e_ids[pos]}; do
+                                [[ "$ticked" != *" $id "* ]] || n=$((n + 1))
+                            done
+                            for id in ${e_ids[pos]}; do
+                                ticked="${ticked/ $id / }"
+                                [[ $n -gt 0 ]] || ticked+="$id "
+                            done
+                            ;;
+                    esac
+                    ;;
+                ENTER)
+                    case "${e_kind[pos]}" in
+                        sort1a) _pm_apply_sort "$c" 1 asc ;;
+                        sort1d) _pm_apply_sort "$c" 1 desc ;;
+                        sort2a) _pm_apply_sort "$c" 2 asc ;;
+                        sort2d) _pm_apply_sort "$c" 2 desc ;;
+                        sort2none)
+                            sort2_mode=""
+                            rebuild_view
+                            ;;
+                        all) ticked=" " ;;
+                        choice | group)
+                            # Enter on a choice with none ticked shows just it.
+                            if [[ -z "${ticked// /}" ]]; then
+                                ticked=" ${e_ids[pos]} "
+                            fi
+                            ;;
+                    esac
+                    case "${e_kind[pos]}" in
+                        all | choice | group)
+                            local cleaned=""
+                            for id in $ticked; do
+                                cleaned+="${cleaned:+ }$id"
+                            done
+                            col_sel[c]="$cleaned"
+                            rebuild_view
+                            cursor_pos=0
+                            top_index=0
+                            ;;
+                    esac
+                    break
+                    ;;
+                QUIT) break ;;
+            esac
+        done
+        printf "\033[2J" >&2
+        return 0
+    }
+
+    # MoreMole: F's list of every field to filter or sort by, including the
+    # ones without a heading; Enter opens a field's menu.
+    _pm_fields_menu() {
+        local -a fields=()
+        local c i pos=0 key label
+        for ((c = 0; c < sort_col_count; c++)); do
+            fields+=("$c")
+        done
+        ((${#fields[@]} > 0)) || return 0
+        while true; do
+            printf "\033[2J\033[H" >&2
+            printf "${PURPLE_BOLD}%s${NC}  ${GRAY}%s${NC}\n\n" "Filter or sort by" "$title" >&2
+            for ((i = 0; i < ${#fields[@]}; i++)); do
+                c="${fields[i]}"
+                label="${sort_col_label[c]}"
+                [[ -z "${col_sel[c]}" ]] || label+="  ● $(_pm_filter_summary_of "$c")"
+                if [[ $i -eq $pos ]]; then
+                    printf "${CYAN}${ICON_ARROW} %s${NC}\n" "$label" >&2
+                else
+                    printf "  %s\n" "$label" >&2
+                fi
+            done
+            printf '\n%b\n' "${GRAY}${ICON_NAV_UP}${ICON_NAV_DOWN}${NC} ${GRAY}|${NC} ${GRAY}Enter Open${NC} ${GRAY}|${NC} ${GRAY}X Clear all${NC} ${GRAY}|${NC} ${GRAY}Esc Back${NC}" >&2
+            while ! key=$(read_key 1); do :; done
+            drain_pending_input
+            case "$key" in
+                UP) if ((pos > 0)); then pos=$((pos - 1)); else pos=$((${#fields[@]} - 1)); fi ;;
+                DOWN) if ((pos < ${#fields[@]} - 1)); then pos=$((pos + 1)); else pos=0; fi ;;
+                ENTER)
+                    _pm_column_menu "${fields[pos]}"
+                    break
+                    ;;
+                CHAR:x | CHAR:X) _pm_clear_filters ;;
+                QUIT) break ;;
+            esac
+        done
+        printf "\033[2J" >&2
+    }
+
+    # MoreMole: the ticked choices of one column, as labels.
+    _pm_filter_summary_of() {
+        local id out=""
+        for id in ${col_sel[$1]}; do
+            out+="${out:+, }$(_pm_choice_label "$1" "$id")"
+        done
+        printf '%s' "$out"
+    }
+
+    # MoreMole: clear every column's filter.
+    _pm_clear_filters() {
+        local c
+        for ((c = 0; c < sort_col_count; c++)); do
+            col_sel[c]=""
+        done
+        rebuild_view
+        cursor_pos=0
+        top_index=0
+    }
+
+    # MoreMole: the next column on the heading line from $1, going $2 (1 or
+    # -1); $1 itself when there is none.
+    _pm_next_heading() {
+        local c=$(($1 + $2))
+        while ((c >= 0 && c < sort_col_count)); do
+            ((sort_col_pos[c] < 0)) || {
+                printf '%s' "$c"
+                return 0
+            }
+            c=$((c + $2))
+        done
+        printf '%s' "$1"
     }
 
     # Handle filter character input (reduces code duplication)
@@ -1002,15 +1443,7 @@ paginated_multi_select() {
             optional_controls=("${GRAY}Ctrl+U Clear${NC}" "${GRAY}Backspace${NC}")
         elif [[ "$header_focus" == true ]]; then
             # MoreMole: the cursor is on the heading line.
-            local _enter_head="${GRAY}Enter Sort, again to reverse${NC}"
-            if [[ "${sort_col_type[header_col]}" == "filter" ]]; then
-                if [[ "${col_filter_on[header_col]}" == true ]]; then
-                    _enter_head="${GRAY}Enter Show all${NC}"
-                else
-                    _enter_head="${GRAY}Enter Show only ${sort_col_label[header_col]}${NC}"
-                fi
-            fi
-            controls=("${GRAY}← → Column${NC}" "$_enter_head" "${GRAY}${ICON_NAV_DOWN} Back to the list${NC}" "$cancel_label")
+            controls=("${GRAY}← → Column${NC}" "${GRAY}Enter Sort or filter${NC}" "${GRAY}${ICON_NAV_DOWN} Back to the list${NC}" "$cancel_label")
             optional_controls=("$cancel_label")
         else
             # A single-pick list has no selection, so no Space hint.
@@ -1028,9 +1461,19 @@ paginated_multi_select() {
                 _segs_browse=("$sort_ctrl" "$filter_ctrl")
             fi
             [[ -n "$filter_text" ]] && _segs_browse+=("${GRAY}Esc Clear${NC}")
+            # MoreMole: every field to filter by, and clearing the filters.
+            local fields_ctrl="" clear_ctrl="" _c
+            if ((sort_col_count > 0)); then
+                fields_ctrl="${GRAY}F Filter${NC}"
+                _segs_browse+=("$fields_ctrl")
+                for ((_c = 0; _c < sort_col_count; _c++)); do
+                    [[ -z "${col_sel[_c]}" ]] || clear_ctrl="${GRAY}X Clear filters${NC}"
+                done
+                [[ -z "$clear_ctrl" ]] || _segs_browse+=("$clear_ctrl")
+            fi
             _segs_browse+=("$page_ctrl")
             controls=("${_segs[@]}" "${_segs_browse[@]}")
-            optional_controls=("$page_ctrl" "$nav" "$order_ctrl" "$select_all" "$sort_ctrl" "$filter_ctrl" "$side_ctrl")
+            optional_controls=("$page_ctrl" "$nav" "$order_ctrl" "$select_all" "${fields_ctrl:-}" "$sort_ctrl" "$filter_ctrl" "$side_ctrl")
         fi
         # Drop the hints this list doesn't have.
         local -a _present=()
@@ -1181,28 +1624,46 @@ paginated_multi_select() {
         if [[ ("$key" == "CHAR:s" || "$key" == "CHAR:S") && -z "${MOLE_READ_KEY_FORCE_CHAR:-}" && "$header_focus" != true && $sort_col_count -gt 0 ]]; then
             header_focus=true
             headings_used=true
-            header_col=0
+            # The sorted column if it has a heading, else the first heading.
+            header_col=$(_pm_next_heading -1 1)
             local _c
             for ((_c = 0; _c < sort_col_count; _c++)); do
-                [[ "${sort_col_mode[_c]}" != "$sort_mode" ]] || header_col=$_c
+                [[ "${sort_col_mode[_c]}" != "$sort_mode" || ${sort_col_pos[_c]} -lt 0 ]] || header_col=$_c
             done
             need_full_redraw=true
             continue
+        fi
+        # MoreMole: F lists every field to filter by; X clears the filters.
+        if [[ -z "${MOLE_READ_KEY_FORCE_CHAR:-}" && $sort_col_count -gt 0 ]]; then
+            case "$key" in
+                CHAR:f | CHAR:F)
+                    header_focus=false
+                    _pm_fields_menu
+                    need_full_redraw=true
+                    continue
+                    ;;
+                CHAR:x | CHAR:X)
+                    _pm_clear_filters
+                    need_full_redraw=true
+                    continue
+                    ;;
+            esac
         fi
         if [[ "$header_focus" == true ]]; then
             case "$key" in
                 LEFT | RIGHT)
                     if [[ "$key" == "LEFT" ]]; then
-                        ((header_col == 0)) || header_col=$((header_col - 1))
+                        header_col=$(_pm_next_heading "$header_col" -1)
                     else
-                        ((header_col >= sort_col_count - 1)) || header_col=$((header_col + 1))
+                        header_col=$(_pm_next_heading "$header_col" 1)
                     fi
                     # The keys line says what Enter does on this column.
                     need_full_redraw=true
                     continue
                     ;;
                 ENTER)
-                    _pm_sort_by_column "$header_col"
+                    _pm_column_menu "$header_col"
+                    header_focus=false
                     need_full_redraw=true
                     continue
                     ;;

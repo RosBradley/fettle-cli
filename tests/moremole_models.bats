@@ -396,17 +396,17 @@ ollama pull llama3.1:405b" ] || { cat "$CALLS"; return 1; }
 	library_models
 	printf 'mlx=1\n' >> "$ROWS_DIR/status"
 	row tags tag gemma3:4b-mlx 3500000000 3.5GB 128K "Text, Image" 1 0 0
-	# S goes to the headings, on Name; Left is MLX. Enter shows only gemma3,
-	# Down goes back to the list, and Enter opens it.
-	printf '%s\n' CHAR:s LEFT ENTER DOWN ENTER QUIT QUIT > "$KEYS_FILE"
+	# S goes to the headings, on Name; Left is MLX. Enter opens its menu (Show
+	# all, MLX, not MLX); Down Enter shows only gemma3, and Enter opens it.
+	printf '%s\n' CHAR:s LEFT ENTER DOWN ENTER ENTER QUIT QUIT > "$KEYS_FILE"
 	run models_env /bin/bash -c '
 		source "$1"
 		eval "$2"
 		main --download
 	' bash "$PROJECT_ROOT/bin/moremole-models.sh" "$SCRIPTED"
 	[ "$status" -eq 0 ] || { echo "$output"; return 1; }
-	[[ "$output" == *"Enter Show only MLX"* ]] || return 1
-	[[ "$output" == *"MLX only · 1 of 2"* ]] || return 1
+	[[ "$output" == *"Enter Sort or filter"* ]] || return 1
+	[[ "$output" == *"Filtered: MLX · 1 of 2"* ]] || return 1
 	[ "$(cat "$ROWS_DIR/tags-asked")" = "gemma3" ] || { cat "$ROWS_DIR/tags-asked"; return 1; }
 	[ ! -s "$CALLS" ]
 }
@@ -496,10 +496,10 @@ hf_models() {
 
 @test "the headings sort Hugging Face models by downloads and the library by pulls" {
 	hf_models
-	# S goes to the headings, on Name; Right Right Right is Downloads. Enter
-	# sorts most first (Qwen), Enter again fewest first, so the first row is
-	# Gemma; Enter opens it and Enter adds it, which Esc cancels.
-	printf '%s\n' CHAR:s RIGHT RIGHT RIGHT ENTER ENTER DOWN ENTER ENTER QUIT QUIT > "$KEYS_FILE"
+	# S goes to the headings, on Name; four Rights is Downloads (past Bits,
+	# Size, Can do). Its menu's second sort is fewest first, so the first row
+	# is Gemma; Enter opens it and Enter adds it, which Esc cancels.
+	printf '%s\n' CHAR:s RIGHT RIGHT RIGHT RIGHT ENTER DOWN ENTER ENTER ENTER QUIT QUIT > "$KEYS_FILE"
 	run models_env /bin/bash -c '
 		source "$1"
 		eval "$2"
@@ -509,11 +509,11 @@ hf_models() {
 	[[ "$output" == *"S Sort by column"* && "$output" != *"S Downloads"* ]] || return 1
 	[[ "$output" == *"Add from Hugging Face:"*"someone/Gemma-4-nochat-bf16"* ]] || return 1
 
-	# The library: S, then Right Right Right to Pulls (Status, MLX, Name,
-	# Size, Pulls): most first, llama3.1 (120.6M) before gemma3 (30.1M).
+	# The library: S, then three Rights to Pulls (past Size and Sizes); its
+	# first sort is most first, llama3.1 (120.6M) before gemma3 (30.1M).
 	library_models
 	: > "$KEY_STATE"
-	printf '%s\n' CHAR:s RIGHT RIGHT ENTER DOWN ENTER QUIT QUIT > "$KEYS_FILE"
+	printf '%s\n' CHAR:s RIGHT RIGHT RIGHT ENTER ENTER ENTER QUIT QUIT > "$KEYS_FILE"
 	run models_env COLUMNS=160 /bin/bash -c '
 		source "$1"
 		eval "$2"
@@ -694,17 +694,17 @@ note	Ollama was off, so it is off again" ] || { cat "$results"; return 1; }
 
 @test "the Hugging Face headings sort by Bits, and Enter again reverses it" {
 	hf_models
-	# S goes to the headings, on Name; Right is Bits. Enter sorts fewest bits
-	# first (Qwen, 4-bit), Enter again most first, so the first row is Gemma
+	# S goes to the headings, on Name; Right is Bits. Its menu sorts fewest
+	# bits first (Qwen, 4-bit) or most first, so the first row is Gemma
 	# (bf16); Enter opens it and Enter adds it, which Esc cancels.
-	printf '%s\n' CHAR:s RIGHT ENTER ENTER DOWN ENTER ENTER QUIT QUIT > "$KEYS_FILE"
+	printf '%s\n' CHAR:s RIGHT ENTER DOWN ENTER ENTER ENTER QUIT QUIT > "$KEYS_FILE"
 	run models_env /bin/bash -c '
 		source "$1"
 		eval "$2"
 		printf "\033" | main --huggingface
 	' bash "$PROJECT_ROOT/bin/moremole-models.sh" "$SCRIPTED"
 	[ "$status" -eq 0 ] || { echo "$output"; return 1; }
-	[[ "$output" == *"Enter Sort, again to reverse"* ]] || return 1
+	[[ "$output" == *"Sort: fewest first"*"Sort: most first"*"16-bit (bf16, fp16)  (1)"*"4-bit  (1)"* ]] || return 1
 	[[ "$(printf '%s' "$output" | sed $'s/\033\\[[0-9;]*m//g')" == *"Bits▼"* ]] || return 1
 	[[ "$output" == *"Add from Hugging Face:"*"someone/Gemma-4-nochat-bf16"* ]] || return 1
 	[[ "$output" != *"Add from Hugging Face:"*"mlx-community/Qwen3.5-9B-4bit "*"· as"* ]]
@@ -722,16 +722,16 @@ note	Ollama was off, so it is off again" ] || { cat "$results"; return 1; }
 	[[ "$output" == *"update      MLX  qwen3.5:35b-mlx"* ]] || return 1
 	[[ "$output" == *"up to date  MLX  qwen3.8:27b-mlx-bf16"* ]] || return 1
 
-	# The update list: S, Left to MLX, Enter, Down; the first row is then the
-	# MLX one, and its details say what runs it.
-	printf '%s\n' CHAR:s LEFT ENTER DOWN ENTER QUIT QUIT > "$KEYS_FILE"
+	# The update list: S, Left to MLX, Enter, then MLX in its menu; the first
+	# row is then the MLX one, and its details say what runs it.
+	printf '%s\n' CHAR:s LEFT ENTER DOWN ENTER ENTER QUIT QUIT > "$KEYS_FILE"
 	run models_env /bin/bash -c '
 		source "$1"
 		eval "$2"
 		main
 	' bash "$PROJECT_ROOT/bin/moremole-models.sh" "$SCRIPTED"
 	[ "$status" -eq 0 ] || { echo "$output"; return 1; }
-	[[ "$output" == *"MLX only · 0/2 selected"* ]] || return 1
+	[[ "$output" == *"Filtered: MLX · 0/2 selected"* ]] || return 1
 	[[ "$output" == *"qwen3.5:35b-mlx"*"Runs on"*"Ollama's MLX engine, for Apple silicon"* ]] || return 1
 	[ ! -s "$CALLS" ]
 }
@@ -750,4 +750,37 @@ note	Ollama was off, so it is off again" ] || { cat "$results"; return 1; }
 	[[ "$output" == *"Pulls  Updated"* ]] || return 1
 	[[ "$output" == *"snowflake-arctic-embed..."*"1.20GB  568m"*"1.2M  2026-09-21"* ]] || return 1
 	[[ "$output" == *"gemma3"*"3.30GB  1b–27b"*"30.1M  2026-09-21"* ]]
+}
+
+@test "the library filters by what a model can do from F, and its headings offer sizes, months and makers" {
+	library_models
+	printf 'mlx=1\n' >> "$ROWS_DIR/status"
+	row tags tag gemma3:4b 3300000000 3.3GB 128K "Text, Image" 0 1 1
+	# F lists Status, MLX, Name, Size, Sizes, Pulls, Updated, then the fields
+	# without a column: Can do, Maker, Country. Can do's menu: Show all,
+	# tools, vision; vision shows only gemma3, and Enter opens it.
+	printf '%s\n' CHAR:f DOWN DOWN DOWN DOWN DOWN DOWN DOWN ENTER DOWN DOWN ENTER ENTER QUIT QUIT > "$KEYS_FILE"
+	run models_env COLUMNS=160 /bin/bash -c '
+		source "$1"
+		eval "$2"
+		main --download
+	' bash "$PROJECT_ROOT/bin/moremole-models.sh" "$SCRIPTED"
+	[ "$status" -eq 0 ] || { echo "$output"; return 1; }
+	[[ "$output" == *"Filter or sort by"*"Updated"*"Can do"*"Maker"*"Country"* ]] || return 1
+	[[ "$output" == *"Show all  (2)"*"tools  (1)"*"vision  (1)"* ]] || return 1
+	[[ "$output" == *"Filtered: Can do: vision · 1 of 2"* ]] || return 1
+	[ "$(cat "$ROWS_DIR/tags-asked")" = "gemma3" ] || { cat "$ROWS_DIR/tags-asked"; return 1; }
+
+	# The Sizes, Updated and (from F) Maker menus: each choice with its rows.
+	: > "$KEY_STATE"
+	printf '%s\n' CHAR:s RIGHT RIGHT ENTER QUIT CHAR:s RIGHT RIGHT RIGHT RIGHT ENTER QUIT CHAR:f DOWN DOWN DOWN DOWN DOWN DOWN DOWN DOWN ENTER QUIT QUIT > "$KEYS_FILE"
+	run models_env COLUMNS=160 /bin/bash -c '
+		source "$1"
+		eval "$2"
+		main --download
+	' bash "$PROJECT_ROOT/bin/moremole-models.sh" "$SCRIPTED"
+	[ "$status" -eq 0 ] || { echo "$output"; return 1; }
+	[[ "$output" == *"Sort: smallest version first"*"up to 3b  (1)"*"up to 8b  (2)"*"over 70b  (1)"* ]] || return 1
+	[[ "$output" == *"Sort: newest first"*"2026  (1)"*"September 2026  (1)"*"2024  (1)"*"November 2024  (1)"* ]] || return 1
+	[[ "$output" == *"Google  (1)"*"Meta  (1)"* ]]
 }
