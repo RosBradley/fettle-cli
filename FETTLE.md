@@ -43,7 +43,7 @@ The Fettle changes live in their own files, so Mole's updates merge cleanly:
 Fettle runs straight from its folder. This section is for your git folder; everyone else installs with one line (see Installing for everyone else), which runs the same setup. Set up the `fettle` command, with `ft` as a short name for it, once:
 
 ```sh
-cd ~/Developer/fettle
+cd ~/Developer/fettle-cli
 bash scripts/fettle-install.sh
 ```
 
@@ -284,7 +284,7 @@ It checks that you're on `fettle` with everything committed and pushed, shows th
 
 If a step fails, nothing is published: fix it, push, and run the script again. GitHub sometimes has no Apple-silicon Mac free: the job then waits 15 minutes and is cancelled before any step runs. `.github/workflows/fettle-release-retry.yml` notices that and starts the release again by itself, up to six tries; a release that ran and failed, or that you cancelled, isn't started again. A commit whose tag never became a release can be tagged again after removing the tag; the script says how.
 
-You can add it to the menu under My commands, as `bash ~/Developer/fettle/scripts/fettle-release.sh`.
+You can add it to the menu under My commands, as `bash ~/Developer/fettle-cli/scripts/fettle-release.sh`.
 
 One-time setup on GitHub:
 
