@@ -19,5 +19,5 @@ MOLE_COMMANDS=(
     "version:Show version"
 )
 
-# MoreMole: fork-only commands.
-source "$(dirname "${BASH_SOURCE[0]}")/../moremole/commands.sh"
+# Fettle: fork-only commands.
+source "$(dirname "${BASH_SOURCE[0]}")/../fettle/commands.sh"

@@ -2235,7 +2235,7 @@ main() {
                 # selector that broke gets the visible abort below.
                 stop_uninstall_interactive_screen
                 show_cursor
-                moremole_note_cancel
+                fettle_note_cancel
                 # An app that failed earlier in this run still fails the run.
                 [[ ${MOLE_UNINSTALL_FAILED_APPS:-0} -eq 0 ]] || return 1
                 return 0

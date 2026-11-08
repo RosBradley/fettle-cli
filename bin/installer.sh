@@ -23,8 +23,8 @@ export MOLE_CURRENT_COMMAND="${MOLE_CURRENT_COMMAND:-installer}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/../lib/core/common.sh"
 source "$SCRIPT_DIR/../lib/ui/menu_paginated.sh"
-# MoreMole: the shared list for installer files (search, A-Z, size, date).
-source "$SCRIPT_DIR/../lib/moremole/lists.sh"
+# Fettle: the shared list for installer files (search, A-Z, size, date).
+source "$SCRIPT_DIR/../lib/fettle/lists.sh"
 
 cleanup() {
     if [[ "${IN_ALT_SCREEN:-0}" == "1" ]]; then
@@ -664,7 +664,7 @@ show_installer_menu() {
     echo ""
 
     MOLE_SELECTION_RESULT=""
-    if ! moremole_select_installers; then
+    if ! fettle_select_installers; then
         return 1
     fi
 
@@ -1040,7 +1040,7 @@ main() {
             return 1
             ;;
         1)
-            moremole_note_cancel
+            fettle_note_cancel
             printf '\n'
             ;;
         2)

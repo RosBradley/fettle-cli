@@ -114,9 +114,9 @@ setup() {
 @test "mole --help prints command overview" {
 	run env HOME="$HOME" "$PROJECT_ROOT/mole" --help
 	[ "$status" -eq 0 ]
-	[[ "$output" == *"moremole clean"* ]] || return 1
-	[[ "$output" == *"moremole optimize"* ]] || return 1
-	[[ "$output" == *"moremole analyze"* ]] || return 1
+	[[ "$output" == *"fettle clean"* ]] || return 1
+	[[ "$output" == *"fettle optimize"* ]] || return 1
+	[[ "$output" == *"fettle analyze"* ]] || return 1
 	[[ "$output" != *"mo optimise"* ]]
 }
 
@@ -207,7 +207,7 @@ SCRIPT
 	ln -s "$PROJECT_ROOT/mole" "$link_dir/mole"
 	run env HOME="$HOME" "$link_dir/mole" --help
 	[ "$status" -eq 0 ] || { echo "$output"; return 1; }
-	[[ "$output" == *"moremole clean"* ]] || return 1
+	[[ "$output" == *"fettle clean"* ]] || return 1
 }
 
 @test "mole invoked through a Homebrew-style prefix symlink still sources lib" {
@@ -221,7 +221,7 @@ SCRIPT
 	ln -s "$cellar/mole" "$prefix/bin/mole"
 	run env HOME="$HOME" "$prefix/bin/mole" --help
 	[ "$status" -eq 0 ] || { echo "$output"; return 1; }
-	[[ "$output" == *"moremole clean"* ]] || return 1
+	[[ "$output" == *"fettle clean"* ]] || return 1
 }
 
 @test "mole --version shows nightly channel metadata" {
@@ -298,7 +298,7 @@ EOF
 @test "mole --help documents history command" {
 	run env HOME="$HOME" "$PROJECT_ROOT/mole" --help
 	[ "$status" -eq 0 ]
-	[[ "$output" == *"moremole history"* ]]
+	[[ "$output" == *"fettle history"* ]]
 }
 
 @test "mole check is not a public command" {
@@ -354,14 +354,14 @@ EOF
 	[[ "$output" == *"U Update"* ]] || return 1
 }
 
-@test "show_main_menu lists every command from the More screen (moremole)" {
+@test "show_main_menu lists every command from the More screen (fettle)" {
 	run /bin/bash --noprofile --norc <<'EOF'
 set -euo pipefail
 HOME="$(mktemp -d)"
 export HOME MOLE_TEST_MODE=1 MOLE_SKIP_MAIN=1
 source "$PROJECT_ROOT/mole"
 show_brand_banner() { printf 'banner\n'; }
-_moremole_terminal_size() { echo "40 120"; }
+_fettle_terminal_size() { echo "40 120"; }
 MAIN_MENU_BANNER=""
 MAIN_MENU_UPDATE_MESSAGE=""
 MAIN_MENU_SHOW_UPDATE=false
@@ -373,7 +373,7 @@ EOF
 	[[ "$output" == *"History"*"Export"* ]] || return 1
 	[[ "$output" == *"Purge"*"Preview"*"Choose folders"* ]] || return 1
 	[[ "$output" == *"Shell completion"*"Preview"* ]] || return 1
-	[[ "$output" == *"Update MoreMole"* ]] || return 1
+	[[ "$output" == *"Update Fettle"* ]] || return 1
 	[[ "$output" == *"Add a command"* ]]
 }
 
@@ -385,7 +385,7 @@ HOME="$(mktemp -d)"
 export HOME MOLE_TEST_MODE=1 MOLE_SKIP_MAIN=1
 source "$PROJECT_ROOT/mole"
 [[ -n "$GREEN" && -n "$NC" ]] || exit 1
-_moremole_terminal_size() { echo "40 120"; }
+_fettle_terminal_size() { echo "40 120"; }
 line=$'\r\033[2K'
 render() {
     MAIN_MENU_BANNER=""
@@ -393,7 +393,7 @@ render() {
     MAIN_MENU_SHOW_UPDATE=true
     show_main_menu 1 true
 }
-tagline="${GREEN}${MOREMOLE_TAGLINE[1]}${NC}"$'\n'
+tagline="${GREEN}${FETTLE_TAGLINE[1]}${NC}"$'\n'
 
 # The real banner is used: command substitution strips its trailing blank line,
 # so the separator has to come from the notice itself.

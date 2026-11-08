@@ -108,7 +108,7 @@ enable_touchid() {
         read -rp "Continue anyway? [y/N] " confirm
         if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
             echo -e "${YELLOW}Cancelled${NC}"
-            moremole_note_cancel
+            fettle_note_cancel
             return 1
         fi
         echo ""
@@ -313,7 +313,7 @@ show_menu() {
 
         case "$key" in
             $'\e' | q | Q) # ESC or Q
-                moremole_note_cancel
+                fettle_note_cancel
                 return 0
                 ;;
             "" | $'\n' | $'\r')   # Enter
@@ -335,7 +335,7 @@ show_menu() {
 
         case "$key" in
             $'\e' | q | Q) # ESC or Q
-                moremole_note_cancel
+                fettle_note_cancel
                 return 0
                 ;;
             "" | $'\n' | $'\r')   # Enter

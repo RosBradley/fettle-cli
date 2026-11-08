@@ -1,4 +1,4 @@
-> **This is MoreMole,** a personal fork of [Mole](https://github.com/tw93/Mole) by tw93, with a menu of every command, your own commands and a Status screen that fills the window. It is not affiliated with or endorsed by the Mole project. What's different and how to run it: [MOREMOLE.md](MOREMOLE.md). The rest of this page is Mole's own README.
+> **This is Fettle,** a personal fork of [Mole](https://github.com/tw93/Mole) by tw93, with a menu of every command, your own commands and a Status screen that fills the window. It is not affiliated with or endorsed by the Mole project. What's different and how to run it: [FETTLE.md](FETTLE.md). The rest of this page is Mole's own README.
 
 <p align="right"><b>macOS</b> · <a href="https://github.com/tw93/Mole/tree/windows#readme">Windows</a> · <a href="https://github.com/tw93/Mole/tree/linux#readme">Linux</a></p>
 

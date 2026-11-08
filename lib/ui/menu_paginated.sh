@@ -86,7 +86,7 @@ paginated_multi_select() {
     local title="$1"
     shift
     local -a items=("$@")
-    # MoreMole: every function this one calls would copy the items while
+    # Fettle: every function this one calls would copy the items while
     # they're still its arguments, which slowed long lists; they're in items.
     set --
     # A deliberate quit and a real failure both leave through return 1, and
@@ -117,7 +117,7 @@ paginated_multi_select() {
     # Only callers that opt in get A; selecting every app to remove in one key
     # is not a shortcut the app selector should offer.
     local select_all_enabled="${_MOLE_MENU_SELECT_ALL:-false}"
-    # MoreMole: a caller that names a function printing a row's details gets
+    # Fettle: a caller that names a function printing a row's details gets
     # Enter for that row's details screen and D to save the selection.
     local details_fn="${MOLE_MENU_DETAILS_FN:-}"
     if [[ -n "$details_fn" ]] && ! declare -F "$details_fn" > /dev/null 2>&1; then
@@ -126,10 +126,10 @@ paginated_multi_select() {
     # Rows are cut to the terminal's width, so none wraps onto a second line,
     # which would push every later row down and break the redraw.
     local row_width=0
-    # MoreMole: a caller can name the columns in a heading line under the
+    # Fettle: a caller can name the columns in a heading line under the
     # search line; the list then starts a row lower.
     local column_header="${MOLE_MENU_COLUMNS_HEADER:-}"
-    # MoreMole: MOLE_MENU_INTRO holds lines shown under the title, above the
+    # Fettle: MOLE_MENU_INTRO holds lines shown under the title, above the
     # search line, such as a model's description; the caller fits them to
     # the window. MOLE_MENU_SINGLE=true makes a list without checkboxes where
     # Enter returns the row under the cursor (MOLE_MENU_ENTER_LABEL names
@@ -150,7 +150,7 @@ paginated_multi_select() {
     # epochs[i]   -> last_used_epoch (numeric) for item i
     # sizekb[i]   -> size in KB (numeric) for item i
     # filter_names[i] -> name for filtering (if not set, use items[i])
-    # count_meta[i] -> MoreMole: a count such as downloads, most first, named
+    # count_meta[i] -> Fettle: a count such as downloads, most first, named
     #                by MOLE_MENU_COUNT_LABEL
     local -a epochs=()
     local -a sizekb=()
@@ -192,7 +192,7 @@ paginated_multi_select() {
         has_sort_controls=true
     fi
 
-    # MoreMole: a list with a heading line can name its columns, left to
+    # Fettle: a list with a heading line can name its columns, left to
     # right, in MOLE_MENU_SORT_COLUMNS: "Label|mode|flags|first|second", all
     # but the label optional. The mode is how the column sorts: one of this
     # menu's own sorts (name, size, date, count), num or text with the
@@ -366,7 +366,7 @@ paginated_multi_select() {
     # App names alone support name sorting, even before size/date metadata is
     # available. Generic callers without metadata retain their input order.
     if [[ "$sort_mode" == col:* ]] && sort_mode_available "$sort_mode"; then
-        : # MoreMole: a column sort the caller asked for
+        : # Fettle: a column sort the caller asked for
     elif [[ "$has_metadata" == "false" ]]; then
         sort_mode="name"
     else
@@ -553,7 +553,7 @@ paginated_multi_select() {
         fi
 
         # Build sort key once; filtering should reuse this cached order.
-        # MoreMole: a second sort orders the rows the first leaves equal.
+        # Fettle: a second sort orders the rows the first leaves equal.
         local sort_key sort_key2=""
         sort_key=$(_pm_sort_spec "$sort_mode" "$sort_reverse" 1)
         if [[ -n "$sort2_mode" && "$sort2_mode" != "$sort_mode" ]] && sort_mode_available "$sort2_mode"; then
@@ -684,7 +684,7 @@ paginated_multi_select() {
             fi
         fi
 
-        # MoreMole: each filtered column keeps the rows with any of its
+        # Fettle: each filtered column keeps the rows with any of its
         # ticked choices.
         local _c
         for ((_c = 0; _c < sort_col_count; _c++)); do
@@ -709,7 +709,7 @@ paginated_multi_select() {
         [[ $cursor_pos -lt 0 ]] && cursor_pos=0
     }
 
-    # MoreMole: keep in view_indices only the rows column $1's ticked
+    # Fettle: keep in view_indices only the rows column $1's ticked
     # choices match.
     _pm_keep_matching() {
         local c="$1" id v sel=" ${col_sel[$1]} "
@@ -725,7 +725,7 @@ paginated_multi_select() {
         view_indices=(${kept[@]+"${kept[@]}"})
     }
 
-    # MoreMole: the label of choice $2 of column $1.
+    # Fettle: the label of choice $2 of column $1.
     _pm_choice_label() {
         local line
         while IFS= read -r line; do
@@ -737,7 +737,7 @@ paginated_multi_select() {
         printf '%s' "$2"
     }
 
-    # MoreMole: what is filtered, for the title: "MLX · Size: fits, 4-8GB".
+    # Fettle: what is filtered, for the title: "MLX · Size: fits, 4-8GB".
     _pm_filter_summary() {
         local c id text out="" labels
         for ((c = 0; c < sort_col_count; c++)); do
@@ -756,7 +756,7 @@ paginated_multi_select() {
         printf '%s' "$out"
     }
 
-    # MoreMole: a list opened again comes back as it was left: its search
+    # Fettle: a list opened again comes back as it was left: its search
     # (MOLE_MENU_SEARCH) and the row under the cursor (MOLE_MENU_START_ITEM,
     # an item's index); _pm_export_state hands them back.
     if [[ -n "${MOLE_MENU_SEARCH:-}" ]]; then
@@ -782,7 +782,7 @@ paginated_multi_select() {
         done
     fi
 
-    # MoreMole: what a caller opening this list again needs to bring it
+    # Fettle: what a caller opening this list again needs to bring it
     # back as it was left.
     _pm_export_state() {
         [[ $sort_col_count -gt 0 || "$single_mode" == true ]] || return 0
@@ -916,7 +916,7 @@ paginated_multi_select() {
 
     draw_header() {
         printf "\033[1;1H" >&2
-        # MoreMole: the title stays on the first row and the search line
+        # Fettle: the title stays on the first row and the search line
         # always shows on the second, where the list used to leave a gap.
         local _count_text _shown=""
         ((sort_col_count == 0)) || _shown=$(_pm_filter_summary)
@@ -978,7 +978,7 @@ paginated_multi_select() {
         fi
     }
 
-    # MoreMole: the heading line with the sorted columns in white, an arrow
+    # Fettle: the heading line with the sorted columns in white, an arrow
     # after each (up for small to large; the second sort's marked 2), a dot
     # after a filtered one, and the column under the cursor in reverse, cut
     # to the row width like the rows.
@@ -1048,7 +1048,7 @@ paginated_multi_select() {
         return "$rc"
     }
 
-    # MoreMole: sort by column $1, first ("1") or second ("2"), in the
+    # Fettle: sort by column $1, first ("1") or second ("2"), in the
     # column's ascending ("asc") or descending ("desc") order, as the column
     # names them: "asc" is the order it sorts in first.
     _pm_apply_sort() {
@@ -1085,7 +1085,7 @@ paginated_multi_select() {
         top_index=0
     }
 
-    # MoreMole: the names of a column's two orders: "smallest first" or the
+    # Fettle: the names of a column's two orders: "smallest first" or the
     # column's own, the first being the order it sorts in first.
     _pm_order_names() {
         local c="$1" mode asc_name desc_name
@@ -1119,7 +1119,7 @@ paginated_multi_select() {
         _pm_second_name="$desc_name"
     }
 
-    # MoreMole: column $1's menu, on a screen of its own: its sorts, then
+    # Fettle: column $1's menu, on a screen of its own: its sorts, then
     # its choices to tick, each with how many rows of the list as it stands
     # (search and other filters) have it. Enter on a sort sorts; Enter on a
     # choice shows the ticked choices, or just that one when none is
@@ -1325,7 +1325,7 @@ paginated_multi_select() {
         return 0
     }
 
-    # MoreMole: F's list of every field to filter or sort by, including the
+    # Fettle: F's list of every field to filter or sort by, including the
     # ones without a heading; Enter opens a field's menu.
     _pm_fields_menu() {
         local -a fields=()
@@ -1364,7 +1364,7 @@ paginated_multi_select() {
         printf "\033[2J" >&2
     }
 
-    # MoreMole: the ticked choices of one column, as labels.
+    # Fettle: the ticked choices of one column, as labels.
     _pm_filter_summary_of() {
         local id out=""
         for id in ${col_sel[$1]}; do
@@ -1373,7 +1373,7 @@ paginated_multi_select() {
         printf '%s' "$out"
     }
 
-    # MoreMole: clear every column's filter.
+    # Fettle: clear every column's filter.
     _pm_clear_filters() {
         local c
         for ((c = 0; c < sort_col_count; c++)); do
@@ -1384,7 +1384,7 @@ paginated_multi_select() {
         top_index=0
     }
 
-    # MoreMole: the next column on the heading line from $1, going $2 (1 or
+    # Fettle: the next column on the heading line from $1, going $2 (1 or
     # -1); $1 itself when there is none.
     _pm_next_heading() {
         local c=$(($1 + $2))
@@ -1439,10 +1439,10 @@ paginated_multi_select() {
         local space_select="${GRAY}Space Select${NC}"
         local select_all="${GRAY}A All${NC}"
         local enter="${GRAY}Enter Save${NC}"
-        # MoreMole: the caller names what D does, such as Download.
+        # Fettle: the caller names what D does, such as Download.
         [[ -z "$details_fn" ]] || enter="${GRAY}Enter Details${NC}${sep}${GRAY}D ${MOLE_MENU_DONE_LABEL:-Save}${NC}"
         local cancel_label="${GRAY}Q ${MOLE_MENU_CANCEL_LABEL:-Cancel}${NC}"
-        # MoreMole: a single-pick list's Enter returns its row.
+        # Fettle: a single-pick list's Enter returns its row.
         [[ "$single_mode" != true ]] || enter="${GRAY}Enter ${MOLE_MENU_ENTER_LABEL:-Open}${NC}"
         [[ "$single_mode" == true || -z "${MOLE_MENU_ENTER_LABEL:-}" || -n "$details_fn" ]] || enter="${GRAY}Enter ${MOLE_MENU_ENTER_LABEL}${NC}"
 
@@ -1455,7 +1455,7 @@ paginated_multi_select() {
 
         local sort_ctrl="${GRAY}S ${sort_status}${NC}"
         local order_ctrl="${GRAY}O ${reverse_arrow}${NC}"
-        # MoreMole: a list with sortable headings sorts from them; S goes there.
+        # Fettle: a list with sortable headings sorts from them; S goes there.
         if ((sort_col_count > 0)); then
             sort_ctrl="${GRAY}S Sort/filter${NC}"
             order_ctrl=""
@@ -1470,7 +1470,7 @@ paginated_multi_select() {
             controls=("${_segs_filter[@]}")
             optional_controls=("${GRAY}Ctrl+U Clear${NC}" "${GRAY}Backspace${NC}")
         elif [[ "$header_focus" == true ]]; then
-            # MoreMole: the cursor is on the heading line.
+            # Fettle: the cursor is on the heading line.
             controls=("${GRAY}← → Column${NC}" "${GRAY}Enter Sort or filter${NC}" "${GRAY}${ICON_NAV_DOWN} Back to the list${NC}" "$cancel_label")
             optional_controls=("$cancel_label")
         else
@@ -1488,7 +1488,7 @@ paginated_multi_select() {
                 _segs_browse=("$sort_ctrl" "$filter_ctrl")
             fi
             [[ -n "$filter_text" ]] && _segs_browse+=("${GRAY}Esc Clear${NC}")
-            # MoreMole: every field to filter by, and clearing the filters.
+            # Fettle: every field to filter by, and clearing the filters.
             local fields_ctrl="" clear_ctrl="" _c
             if ((sort_col_count > 0)); then
                 fields_ctrl="${GRAY}F All filters${NC}"
@@ -1501,7 +1501,7 @@ paginated_multi_select() {
             _segs_browse+=("$page_ctrl")
             controls=("${_segs[@]}" "${_segs_browse[@]}")
             optional_controls=("$page_ctrl" "$nav" "$order_ctrl" "$select_all" "$sort_ctrl" "$filter_ctrl")
-            # MoreMole: in a list with headings, S and F are how to sort and
+            # Fettle: in a list with headings, S and F are how to sort and
             # filter it, so the keys wrap onto a second line before they go;
             # the other hints still give way first.
             if ((sort_col_count > 0)); then
@@ -1595,7 +1595,7 @@ paginated_multi_select() {
         printf '%b' "${clear_line}\033[J" >&2
     }
 
-    # MoreMole: leave the menu with a result (the given rows, or else the
+    # Fettle: leave the menu with a result (the given rows, or else the
     # selected ones), handing the caller the list's state.
     _pm_finish_selection() {
         local -a _picked=()
@@ -1641,7 +1641,7 @@ paginated_multi_select() {
             fi
         fi
 
-        # MoreMole: moving through the list leaves the search line, so Space
+        # Fettle: moving through the list leaves the search line, so Space
         # selects and Enter saves; the search stays applied.
         case "$key" in
             UP | DOWN | LEFT | RIGHT | TOP | BOTTOM)
@@ -1652,7 +1652,7 @@ paginated_multi_select() {
                 ;;
         esac
 
-        # MoreMole: S moves into the heading line of a list with sortable
+        # Fettle: S moves into the heading line of a list with sortable
         # headings; they replace S and O's own sorting there.
         if [[ ("$key" == "CHAR:s" || "$key" == "CHAR:S") && -z "${MOLE_READ_KEY_FORCE_CHAR:-}" && "$header_focus" != true && $sort_col_count -gt 0 ]]; then
             header_focus=true
@@ -1666,7 +1666,7 @@ paginated_multi_select() {
             need_full_redraw=true
             continue
         fi
-        # MoreMole: F lists every field to filter by; X clears the filters.
+        # Fettle: F lists every field to filter by; X clears the filters.
         if [[ -z "${MOLE_READ_KEY_FORCE_CHAR:-}" && $sort_col_count -gt 0 ]]; then
             case "$key" in
                 CHAR:f | CHAR:F)
@@ -1717,7 +1717,7 @@ paginated_multi_select() {
             continue
         fi
 
-        # MoreMole: Up on the first row goes to the last, and Down on the
+        # Fettle: Up on the first row goes to the last, and Down on the
         # last to the first, so either end of a long list is one key away.
         if [[ ${#view_indices[@]} -gt 1 && -z "${MOLE_READ_KEY_FORCE_CHAR:-}" ]]; then
             if [[ "$key" == "UP" && $((top_index + cursor_pos)) -eq 0 ]]; then
@@ -1727,7 +1727,7 @@ paginated_multi_select() {
             fi
         fi
 
-        # MoreMole: a single-pick list returns the row under the cursor.
+        # Fettle: a single-pick list returns the row under the cursor.
         if [[ "$single_mode" == true && -z "${MOLE_READ_KEY_FORCE_CHAR:-}" ]]; then
             case "$key" in
                 ENTER)
@@ -2041,7 +2041,7 @@ paginated_multi_select() {
                 fi
                 ;;
             "CHAR:/")
-                # MoreMole: while typing, / is part of the search, as in
+                # Fettle: while typing, / is part of the search, as in
                 # owner/model; Enter or an arrow key finishes typing.
                 if [[ -n "${MOLE_READ_KEY_FORCE_CHAR:-}" ]]; then
                     handle_filter_char "/"

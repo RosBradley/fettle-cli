@@ -124,9 +124,9 @@ is_touchid_configured() {
 # and the update banner call them in-process.
 source "$SCRIPT_DIR/lib/manage/update.sh"
 source "$SCRIPT_DIR/lib/manage/remove.sh"
-# moremole: full main menu, the user's own commands, and an update_mole that
-# keeps moremole's changes. Sourced last so its update_mole wins.
-source "$SCRIPT_DIR/lib/moremole/menu.sh"
+# fettle: full main menu, the user's own commands, and an update_mole that
+# keeps fettle's changes. Sourced last so its update_mole wins.
+source "$SCRIPT_DIR/lib/fettle/menu.sh"
 
 # Build the main-menu controls hint line. Pure so the show/hide logic can be
 # tested without a tty (the caller only renders it inside `[[ -t 0 ]]`).
@@ -170,7 +170,7 @@ show_main_menu() {
 
     printf '\033[H'
 
-    # moremole: no blank line above the banner, to leave room for the list.
+    # fettle: no blank line above the banner, to leave room for the list.
     local line=""
 
     while IFS= read -r line || [[ -n "$line" ]]; do
@@ -184,7 +184,7 @@ show_main_menu() {
         done <<< "$update_message"
     fi
 
-    # moremole: the list draws the line under the banner itself, holding
+    # fettle: the list draws the line under the banner itself, holding
     # "more above" when it has scrolled, and the bar at the bottom of the
     # window with the description and these controls.
     local controls=""
@@ -193,7 +193,7 @@ show_main_menu() {
         is_touchid_configured && touchid_state=true
         controls=$(_main_menu_controls_line "$touchid_state" "${MAIN_MENU_SHOW_UPDATE:-false}")
     fi
-    moremole_show_menu_items "$selected" "$controls"
+    fettle_show_menu_items "$selected" "$controls"
 }
 
 interactive_main_menu() {
@@ -219,22 +219,22 @@ interactive_main_menu() {
         if [[ -n "$original_stty" ]]; then
             stty "$original_stty" 2> /dev/null || true
         fi
-        # moremole: back to the terminal as it was before the menu.
-        moremole_menu_leave_screen
+        # fettle: back to the terminal as it was before the menu.
+        fettle_menu_leave_screen
         show_cursor
         exit 0
     }
 
-    # moremole: commands return to the menu when they finish.
+    # fettle: commands return to the menu when they finish.
     launch_menu_command() {
-        moremole_run_and_return "$@"
+        fettle_run_and_return "$@"
     }
 
     trap cleanup_and_exit INT
-    # moremole: the menu has a screen of its own (lib/moremole/menu.sh).
-    moremole_menu_enter_screen
+    # fettle: the menu has a screen of its own (lib/fettle/menu.sh).
+    fettle_menu_enter_screen
     hide_cursor
-    moremole_load_menu_items
+    fettle_load_menu_items
 
     while true; do
         update_message="$(read_update_message_cache "$msg_cache")"
@@ -256,11 +256,11 @@ interactive_main_menu() {
 
         case "$key" in
             "UP" | "DOWN" | "LEFT" | "RIGHT" | "TOP" | "BOTTOM")
-                current_option=$(moremole_menu_move "$current_option" "$key")
+                current_option=$(fettle_menu_move "$current_option" "$key")
                 ;;
             "ENTER")
-                moremole_menu_activate "$current_option"
-                current_option="$MOREMOLE_MENU_SELECTED"
+                fettle_menu_activate "$current_option"
+                current_option="$FETTLE_MENU_SELECTED"
                 ;;
             "CHAR:1")
                 launch_menu_command "$SCRIPT_DIR/bin/clean.sh"
@@ -277,16 +277,16 @@ interactive_main_menu() {
             "CHAR:5")
                 launch_menu_command "$SCRIPT_DIR/bin/status.sh"
                 ;;
-            "MORE") moremole_show_and_return show_help ;;       # moremole
-            "VERSION") moremole_show_and_return show_version ;; # moremole
+            "MORE") fettle_show_and_return show_help ;;       # fettle
+            "VERSION") fettle_show_and_return show_version ;; # fettle
             "TOUCHID")
-                moremole_menu_leave_screen # moremole
+                fettle_menu_leave_screen # fettle
                 show_cursor
                 exec "$SCRIPT_DIR/bin/touchid.sh"
                 ;;
             "UPDATE")
                 [[ "${MAIN_MENU_SHOW_UPDATE:-false}" == "true" ]] || continue
-                moremole_menu_leave_screen # moremole
+                fettle_menu_leave_screen # fettle
                 show_cursor
                 clear
                 update_mole
@@ -333,13 +333,13 @@ main() {
         "slim")
             run_mole_command "$SCRIPT_DIR/bin/slim.sh" "${args[@]:1}"
             ;;
-        # MoreMole: Software updates.
+        # Fettle: Software updates.
         "updates")
-            run_mole_command "$SCRIPT_DIR/bin/moremole-updates.sh" "${args[@]:1}"
+            run_mole_command "$SCRIPT_DIR/bin/fettle-updates.sh" "${args[@]:1}"
             ;;
-        # MoreMole: Ollama models.
+        # Fettle: Ollama models.
         "models")
-            run_mole_command "$SCRIPT_DIR/bin/moremole-models.sh" "${args[@]:1}"
+            run_mole_command "$SCRIPT_DIR/bin/fettle-models.sh" "${args[@]:1}"
             ;;
         "touchid")
             exec "$SCRIPT_DIR/bin/touchid.sh" "${args[@]:1}"

@@ -73,11 +73,11 @@ mole-analyze
 # Go binaries
 bin/analyze-go
 bin/status-go
-bin/moremole-updates-go
-bin/moremole-models-go
-bin/moremole-view-go
-# MoreMole: names the release in a download from the installer
-.moremole-release
+bin/fettle-updates-go
+bin/fettle-models-go
+bin/fettle-view-go
+# Fettle: names the release in a download from the installer
+.fettle-release
 bin/analyze-darwin-*
 bin/status-darwin-*
 

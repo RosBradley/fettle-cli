@@ -240,10 +240,10 @@ RC
     cat "$HOME/expected-user-lines" > "$HOME/.zshrc"
     # shellcheck disable=SC2016 # Assert literal shell configuration, not execution.
     printf '%s\n' '# Mole shell completion' 'eval "$(mole completion zsh)"' >> "$HOME/.zshrc"
-    # MoreMole: moremole wins over mole when both exist, so pin it for every machine.
+    # Fettle: fettle wins over mole when both exist, so pin it for every machine.
     mkdir -p "$HOME/stub-bin"
-    printf '#!/bin/sh\n' > "$HOME/stub-bin/moremole"
-    chmod +x "$HOME/stub-bin/moremole"
+    printf '#!/bin/sh\n' > "$HOME/stub-bin/fettle"
+    chmod +x "$HOME/stub-bin/fettle"
     run env SHELL=/bin/zsh PATH="$HOME/stub-bin:$PATH" "$PROJECT_ROOT/bin/completion.sh"
     [ "$status" -eq 0 ] || { echo "$output"; return 1; }
     while IFS= read -r line; do
@@ -252,7 +252,7 @@ RC
     # shellcheck disable=SC2016 # Assert literal shell configuration.
     ! grep -Fxq 'eval "$(mole completion zsh)"' "$HOME/.zshrc" || return 1
     # shellcheck disable=SC2016 # Assert literal shell configuration.
-    grep -Fxq 'if output="$(moremole completion zsh 2>/dev/null)"; then eval "$output"; fi' "$HOME/.zshrc" || return 1
+    grep -Fxq 'if output="$(fettle completion zsh 2>/dev/null)"; then eval "$output"; fi' "$HOME/.zshrc" || return 1
 }
 
 @test "completion confirmation cancels on closed input (#1837)" {

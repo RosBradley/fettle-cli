@@ -120,8 +120,8 @@ if [[ $# -eq 0 ]]; then
     fi
 
     completion_name=""
-    if command -v moremole > /dev/null 2>&1; then
-        completion_name="moremole" # moremole
+    if command -v fettle > /dev/null 2>&1; then
+        completion_name="fettle" # fettle
     elif command -v mole > /dev/null 2>&1; then
         completion_name="mole"
     elif command -v mo > /dev/null 2>&1; then
@@ -178,7 +178,7 @@ if [[ $# -eq 0 ]]; then
             case "$key" in
                 $'\e' | [Qq] | [Nn])
                     echo -e "${YELLOW}Cancelled${NC}"
-                    moremole_note_cancel
+                    fettle_note_cancel
                     exit 0
                     ;;
                 "" | $'\n' | $'\r' | [Yy]) ;;
@@ -294,7 +294,7 @@ if [[ $# -eq 0 ]]; then
     case "$key" in
         $'\e' | [Qq] | [Nn])
             echo -e "${YELLOW}Cancelled${NC}"
-            moremole_note_cancel
+            fettle_note_cancel
             exit 0
             ;;
         "" | $'\n' | $'\r' | [Yy]) ;;
@@ -385,11 +385,11 @@ _mole_completions()
     fi
 }
 
-complete -F _mole_completions mole mo moremole mm
+complete -F _mole_completions mole mo fettle ft
 EOF
         ;;
     zsh)
-        printf '#compdef mole mo moremole mm\n\n'
+        printf '#compdef mole mo fettle ft\n\n'
         printf '_mole() {\n'
         printf '    local -a subcommands\n'
         printf '    subcommands=(\n'
@@ -439,7 +439,7 @@ EOF
         printf '            ;;\n'
         printf '    esac\n'
         printf '}\n\n'
-        printf 'compdef _mole mole mo moremole mm\n'
+        printf 'compdef _mole mole mo fettle ft\n'
         ;;
     fish)
         printf '# Completions for mole\n'

@@ -1558,7 +1558,7 @@ select_purge_categories() {
         if [[ "${PURGE_CATEGORY_SIZE_UNKNOWN_FLAGS_ARRAY[i]:-false}" == true ]]; then
             group_unknown[group]=true
         fi
-        # MoreMole: nothing starts selected; the age column still shows
+        # Fettle: nothing starts selected; the age column still shows
         # which artifacts are old.
         selected[i]=false
     done
@@ -1879,7 +1879,7 @@ select_purge_categories() {
             CHAR:/)
                 # Readline owns text editing and multibyte input. A byte-at-a-time
                 # key loop on Bash 3.2 cannot safely edit Unicode project names.
-                # MoreMole: readline shows typing only if the terminal echoes,
+                # Fettle: readline shows typing only if the terminal echoes,
                 # and the menu turned echo off, so turn it on for the prompt.
                 stty echo 2> /dev/null || true
                 show_cursor

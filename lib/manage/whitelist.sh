@@ -471,7 +471,7 @@ ${GRAY}Edit: ${display_config}, any path added there is protected too${NC}"
 
     if [[ $exit_code -ne 0 ]]; then
         echo -e "${GRAY}Cancelled, no changes saved${NC}"
-        moremole_note_cancel
+        fettle_note_cancel
         return 0
     fi
 

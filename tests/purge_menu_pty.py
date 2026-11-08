@@ -101,7 +101,7 @@ try:
     initial_frame = receive()
     fits(initial_frame, 40, 120)
     assert re.search(r'\[cloud\].*artifact-0', plain(initial_frame)), plain(initial_frame)
-    # MoreMole: nothing starts selected, so A selects all first.
+    # Fettle: nothing starts selected, so A selects all first.
     assert '0 selected' in plain(initial_frame), plain(initial_frame)
     os.write(master, b'a')
     assert '80 selected' in plain(receive())

@@ -3462,7 +3462,7 @@ batch_uninstall_applications() {
         0) ;;
         2)
             _abort_uninstall_batch
-            moremole_note_cancel
+            fettle_note_cancel
             return 0
             ;;
         3)

@@ -38,15 +38,15 @@ mod-download:
 	exit 1
 
 # Local build (current architecture)
-# MoreMole: also builds the Software updates and Ollama models helpers and the
+# Fettle: also builds the Software updates and Ollama models helpers and the
 # command screen.
 build: mod-download
 	@echo "Building for local architecture..."
 	$(GO) build -ldflags="$(LDFLAGS)" -o $(BIN_DIR)/$(ANALYZE)-go $(ANALYZE_SRC)
 	$(GO) build -ldflags="$(LDFLAGS)" -o $(BIN_DIR)/$(STATUS)-go $(STATUS_SRC)
-	$(GO) build -ldflags="$(LDFLAGS)" -o $(BIN_DIR)/moremole-updates-go ./cmd/moremole-updates
-	$(GO) build -ldflags="$(LDFLAGS)" -o $(BIN_DIR)/moremole-view-go ./cmd/moremole-view
-	$(GO) build -ldflags="$(LDFLAGS)" -o $(BIN_DIR)/moremole-models-go ./cmd/moremole-models
+	$(GO) build -ldflags="$(LDFLAGS)" -o $(BIN_DIR)/fettle-updates-go ./cmd/fettle-updates
+	$(GO) build -ldflags="$(LDFLAGS)" -o $(BIN_DIR)/fettle-view-go ./cmd/fettle-view
+	$(GO) build -ldflags="$(LDFLAGS)" -o $(BIN_DIR)/fettle-models-go ./cmd/fettle-models
 
 check:
 	./scripts/check.sh --no-format

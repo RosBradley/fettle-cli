@@ -143,7 +143,7 @@ assert_slim_whitelist_change() {
 }
 
 @test "slim name sorting keeps identities when displayed prefixes match" {
-	# MoreMole: the list opens A-Z, so no S is needed.
+	# Fettle: the list opens A-Z, so no S is needed.
 	run_slim_selector DOWN ENTER
 	[[ "$output" == *"RESULT=1 RC=0"* ]] || return 1
 }
@@ -319,8 +319,8 @@ slim_env() {
 	[ "$status" -eq 0 ]
 	[[ "$output" == *"Usage: mo slim"* ]] || return 1
 	run env HOME="$HOME" "$PROJECT_ROOT/mole" --help
-	# moremole: the help screen names commands "moremole <command>".
-	[[ "$output" == *"moremole slim"* ]]
+	# fettle: the help screen names commands "fettle <command>".
+	[[ "$output" == *"fettle slim"* ]]
 }
 
 @test "slim refuses on an Intel host and says why" {

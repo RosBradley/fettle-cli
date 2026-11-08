@@ -933,7 +933,7 @@ PURGE_CATEGORY_SIZES="100,50,25"
 PURGE_CATEGORY_PROJECT_IDS_ARRAY=("project-a" "project-a" "project-b")
 PURGE_CATEGORY_PROJECT_PATHS_ARRAY=("~/work/obelisk" "~/work/obelisk" "~/work/atlas")
 PURGE_CATEGORY_SIZE_UNKNOWN_FLAGS_ARRAY=("false" "false" "false")
-# MoreMole: nothing starts selected, so A selects all first.
+# Fettle: nothing starts selected, so A selects all first.
 select_purge_categories "A node_modules" "A dist" "B target" <<< $'ax\n'
 printf 'RESULT=%s\n' "$PURGE_SELECTION_RESULT"
 EOF
@@ -954,7 +954,7 @@ source "$PROJECT_ROOT/lib/clean/project.sh"
 
 PURGE_CATEGORY_SIZES="1,2,3"
 PURGE_CATEGORY_PROJECT_IDS_ARRAY=("project-a" "project-a" "project-b")
-# MoreMole: nothing starts selected, so A selects all first.
+# Fettle: nothing starts selected, so A selects all first.
 select_purge_categories "A node_modules" "A dist" "B target" <<< $'ax\n' > /dev/null
 printf 'RESULT=%s\n' "$PURGE_SELECTION_RESULT"
 EOF
@@ -970,7 +970,7 @@ source "$PROJECT_ROOT/lib/clean/project.sh"
 
 PURGE_CATEGORY_SIZES="1,2"
 PURGE_CATEGORY_PROJECT_IDS_ARRAY=("" "project-a")
-# MoreMole: nothing starts selected, so A selects all first.
+# Fettle: nothing starts selected, so A selects all first.
 select_purge_categories "Unknown node_modules" "A dist" <<< $'ax\n' > /dev/null
 printf 'RESULT=%s\n' "$PURGE_SELECTION_RESULT"
 EOF
@@ -986,7 +986,7 @@ source "$PROJECT_ROOT/lib/clean/project.sh"
 
 PURGE_CATEGORY_SIZES="1,2"
 PURGE_CATEGORY_PROJECT_IDS_ARRAY=("inode:1:10" "inode:1:20")
-# MoreMole: nothing starts selected, so A selects all first.
+# Fettle: nothing starts selected, so A selects all first.
 select_purge_categories "~/client-a/obelisk node_modules" "~/client-b/obelisk dist" <<< $'ax\n' > /dev/null
 printf 'RESULT=%s\n' "$PURGE_SELECTION_RESULT"
 EOF
@@ -1003,7 +1003,7 @@ PURGE_CATEGORY_SIZES="1,2,3"
 PURGE_CATEGORY_PROJECT_IDS_ARRAY=("a" "b" "c")
 PURGE_CATEGORY_PROJECT_PATHS_ARRAY=("~/client-a/obelisk" "~/client-b/obelisk" "~/client-c/atlas")
 # Search is case-insensitive and accepts vim navigation letters as query text.
-# MoreMole: nothing starts selected, so A selects all first.
+# Fettle: nothing starts selected, so A selects all first.
 select_purge_categories "node_modules" "dist" "target" <<< $'a/CLIENT-B\n \n' >/dev/null
 [[ "$PURGE_SELECTION_RESULT" == "0,2" ]] || exit 1
 # Searching must restore the caller's shell matching mode.
@@ -3038,8 +3038,8 @@ EOF
 @test "mo purge: shows in help text" {
 	run env HOME="$HOME" "$PROJECT_ROOT/mole" --help
 	[ "$status" -eq 0 ]
-	# MoreMole: help shows the moremole command name.
-	[[ "$output" == *"moremole purge"* ]]
+	# Fettle: help shows the fettle command name.
+	[[ "$output" == *"fettle purge"* ]]
 }
 
 @test "mo purge --help includes include-empty option" {

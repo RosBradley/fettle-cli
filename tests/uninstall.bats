@@ -4,8 +4,8 @@ load helpers/common
 
 setup_file() {
     mole_test_setup_home uninstall-home
-    # MoreMole: these tests drive Mole's own remover, which MoreMole otherwise never runs.
-    export MOREMOLE_TEST_MOLE_REMOVER=1
+    # Fettle: these tests drive Mole's own remover, which Fettle otherwise never runs.
+    export FETTLE_TEST_MOLE_REMOVER=1
 }
 
 teardown_file() {

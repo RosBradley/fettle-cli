@@ -13,7 +13,7 @@ import (
 
 // View renders the TUI.
 func (m model) View() string {
-	analyzeTermWidth = m.width // moremole: the frame fills the window
+	analyzeTermWidth = m.width // fettle: the frame fills the window
 	defer func() { analyzeTermWidth = 0 }()
 	var b strings.Builder
 	fmt.Fprintln(&b)
@@ -373,7 +373,7 @@ func (m model) View() string {
 		}
 	}
 
-	body := b.String() // moremole: the keys go to the bottom of the window
+	body := b.String() // fettle: the keys go to the bottom of the window
 	b.Reset()
 	fmt.Fprintln(&b)
 	if m.inOverviewMode() {
@@ -462,7 +462,7 @@ func (m model) View() string {
 				colorYellow, uninstallCommandForApp(m.deleteTarget.Name), colorReset)
 		}
 	}
-	return fillWindowHeight(body, b.String(), m.height) // moremole
+	return fillWindowHeight(body, b.String(), m.height) // fettle
 }
 
 func (m model) writeOverviewStatus(b *strings.Builder) {
@@ -589,6 +589,6 @@ func calculateViewport(termHeight int, isLargeFiles bool) int {
 	if available < 1 {
 		return 1
 	}
-	// moremole: no 30-row cap, so the list fills the window.
+	// fettle: no 30-row cap, so the list fills the window.
 	return available
 }

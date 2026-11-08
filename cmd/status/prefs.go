@@ -160,7 +160,7 @@ var cpuCoresCycle = []int{2, 4, 8, 0}
 func loadCPUCores() int {
 	raw, ok := loadPrefs()["cpu_cores"]
 	if !ok {
-		return 0 // moremole: all cores until the user picks fewer
+		return 0 // fettle: all cores until the user picks fewer
 	}
 	n, err := strconv.Atoi(raw)
 	if err != nil || n < 0 {

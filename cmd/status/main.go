@@ -64,7 +64,7 @@ type model struct {
 	catHidden     bool // true = hidden, false = visible
 	cpuCores      int  // how many CPU cores to list; 0 = all
 
-	refresh time.Duration // moremole: time between refreshes; 0 = default
+	refresh time.Duration // fettle: time between refreshes; 0 = default
 }
 
 // padViewToHeight ensures the rendered frame always overwrites the full
@@ -87,7 +87,7 @@ func newModel() model {
 		collector: NewCollector(processWatchOptionsFromFlags()),
 		catHidden: loadCatHidden(),
 		cpuCores:  loadCPUCores(),
-		refresh:   loadRefreshInterval(), // moremole
+		refresh:   loadRefreshInterval(), // fettle
 	}
 }
 
@@ -130,7 +130,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			saveCPUCores(m.cpuCores)
 			return m, nil
 		case "r":
-			// moremole: cycle the time between refreshes and persist it.
+			// fettle: cycle the time between refreshes and persist it.
 			m.refresh = nextRefreshInterval(m.refreshEvery())
 			saveRefreshInterval(m.refresh)
 			return m, nil
@@ -144,7 +144,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.collecting = true
-		return m, m.collectCmd(m.refreshMode(m.schedule.nextMode(time.Now()))) // moremole
+		return m, m.collectCmd(m.refreshMode(m.schedule.nextMode(time.Now()))) // fettle
 	case collectionResult:
 		if msg.err != nil {
 			m.errMessage = msg.err.Error()
@@ -159,7 +159,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.fullCollected = true
 		}
 		m.collecting = false
-		delay := m.schedule.recordCompletion(msg, m.refreshEvery()) // moremole
+		delay := m.schedule.recordCompletion(msg, m.refreshEvery()) // fettle
 		return m, tickAfter(delay)
 	case animTickMsg:
 		m.animFrame++
@@ -187,7 +187,7 @@ func (m model) View() string {
 	)
 
 	renderFrame := func(cpuCores int) string {
-		// moremole: the card width only holds while this frame draws, so a
+		// fettle: the card width only holds while this frame draws, so a
 		// later bar drawn outside a frame keeps the classic width.
 		defer func() { statusCardWidth = 0 }()
 		var cardContent string
@@ -196,7 +196,7 @@ func (m model) View() string {
 			if cardWidth > 2 {
 				cardWidth -= 2
 			}
-			statusCardWidth = cardWidth // moremole: bars fill the card
+			statusCardWidth = cardWidth // fettle: bars fill the card
 			cards := buildCards(m.metrics, cardWidth, cpuCores, m.fullCollected)
 
 			var rendered []string
@@ -209,7 +209,7 @@ func (m model) View() string {
 			cardContent = lipgloss.JoinVertical(lipgloss.Left, rendered...)
 		} else {
 			cardWidth := max(24, termWidth/2-4)
-			statusCardWidth = cardWidth // moremole: bars fill the card
+			statusCardWidth = cardWidth // fettle: bars fill the card
 			cards := buildCards(m.metrics, cardWidth, cpuCores, m.fullCollected)
 			cardContent = renderTwoColumns(cards, termWidth)
 		}
@@ -223,7 +223,7 @@ func (m model) View() string {
 			parts = append(parts, mole)
 		}
 		parts = append(parts, cardContent)
-		parts = append(parts, "", renderStatusFooter(m.refreshEvery(), termWidth)) // moremole
+		parts = append(parts, "", renderStatusFooter(m.refreshEvery(), termWidth)) // fettle
 		return lipgloss.JoinVertical(lipgloss.Left, parts...)
 	}
 
@@ -239,9 +239,9 @@ func (m model) View() string {
 	}
 	if m.height > 0 && lipgloss.Height(output) > m.height {
 		output = renderTerminalTooSmall(termWidth, m.height)
-		return padViewToHeight(output, m.height) // moremole
+		return padViewToHeight(output, m.height) // fettle
 	}
-	return pinFooterToBottom(output, m.height) // moremole: the keys on the window's last row
+	return pinFooterToBottom(output, m.height) // fettle: the keys on the window's last row
 }
 
 func (m model) collectCmd(mode collectionMode) tea.Cmd {

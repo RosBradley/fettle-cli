@@ -157,7 +157,7 @@ func (c *Collector) getMacGPUUsage(now time.Time) float64 {
 		return c.cachedGPUUsage
 	}
 
-	// moremole: ioreg first, which needs no administrator rights.
+	// fettle: ioreg first, which needs no administrator rights.
 	usage := readIORegGPUUtilization()
 	if usage < 0 {
 		usage = getMacGPUUsage()

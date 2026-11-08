@@ -199,7 +199,7 @@ select_apps_for_uninstall() {
     fi
     export MOLE_MENU_FILTER_NAMES="$names_newline"
     export MOLE_MENU_IGNORE_INITIAL_ENTER=1
-    # MoreMole: lists open A-Z; S sorts by size, then by date.
+    # Fettle: lists open A-Z; S sorts by size, then by date.
     export MOLE_MENU_SORT_MODE="${MOLE_MENU_SORT_MODE:-name}"
 
     # The uninstall scan hands its "Preparing app list..." line to an inline
