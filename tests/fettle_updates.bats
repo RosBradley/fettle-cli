@@ -110,6 +110,16 @@ full_scan_rows() {
 	[ ! -s "$CALLS" ]
 }
 
+@test "off a terminal the list keeps long versions and notes whole" {
+	row brew tool luajit luajit 2.1.1793383622 2.1.1794214635 ""
+	row macos macos-settings "macOS 27.2.1-26B131" "macOS 27.2.1" "" 27.2.1 "needs a restart, opens Settings, and this note runs on well past the edge of any window"
+	run updates_env COLUMNS=60 /bin/bash -c 'source "$1"; main --dry-run' bash "$PROJECT_ROOT/bin/fettle-updates.sh"
+	[ "$status" -eq 0 ] || { echo "$output"; return 1; }
+	[[ "$output" == *"CLI tool     luajit        2.1.1793383622 → 2.1.1794214635"* ]] || { echo "$output"; return 1; }
+	[[ "$output" == *"needs a restart, opens Settings, and this note runs on well past the edge of any window"* ]] || { echo "$output"; return 1; }
+	[[ "$output" != *"..."* ]]
+}
+
 @test "nothing to update says so, and a missing helper says how to build it" {
 	run updates_env /bin/bash -c 'source "$1"; main --dry-run' bash "$PROJECT_ROOT/bin/fettle-updates.sh"
 	[ "$status" -eq 0 ] || { echo "$output"; return 1; }

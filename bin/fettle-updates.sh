@@ -332,12 +332,14 @@ fit_width() {
 }
 
 # Column widths that fit the terminal: names up to 32 cells, versions up
-# to 26, both narrower when the terminal is.
+# to 26, both narrower when the terminal is. With "whole" nothing is cut:
+# the list printed for a script, a pipe or an agent shows every name,
+# version and note in full.
 UPDATES_NAME_W=10
 UPDATES_VER_W=10
 UPDATES_ROW_W=76
 measure_columns() {
-    local columns="${COLUMNS:-$(tput cols 2> /dev/null || echo 80)}"
+    local columns="${COLUMNS:-$(tput cols 2> /dev/null || echo 80)}" whole="${1:-}"
     [[ "$columns" =~ ^[0-9]+$ && "$columns" -gt 0 ]] || columns=80
     # The menu puts four cells before each row.
     UPDATES_ROW_W=$((columns - 4))
@@ -351,6 +353,10 @@ measure_columns() {
         width=$(text_width "$(version_text "$i")")
         ((width <= UPDATES_VER_W)) || UPDATES_VER_W=$width
     done
+    if [[ "$whole" == "whole" ]]; then
+        UPDATES_ROW_W=$((15 + UPDATES_NAME_W + UPDATES_VER_W + 4 + $(longest_note)))
+        return 0
+    fi
     ((UPDATES_NAME_W <= 32)) || UPDATES_NAME_W=32
     ((UPDATES_VER_W <= 26)) || UPDATES_VER_W=26
     # Leave room for the source column, which comes first.
@@ -361,6 +367,18 @@ measure_columns() {
         UPDATES_VER_W=$((room - UPDATES_NAME_W))
         ((UPDATES_VER_W >= 4)) || UPDATES_VER_W=4
     fi
+}
+
+# Width of the longest note, as update_row_text shows it.
+longest_note() {
+    local i note longest=0
+    for ((i = 0; i < ${#U_KIND[@]}; i++)); do
+        note="${U_NOTE[i]}"
+        is_host_update "$i" && note="runs Fettle${note:+, $note}"
+        note=$(mole_terminal_safe_text "$note")
+        ((${#note} <= longest)) || longest=${#note}
+    done
+    printf '%s' "$longest"
 }
 
 # One display row per update: where it comes from first, then name,
@@ -426,9 +444,14 @@ update_details() {
     detail_line "Left out" "$advice"
 }
 
-# Without a terminal, or with --dry-run, list the updates and stop.
+# Without a terminal, or with --dry-run, list the updates and stop. Off a
+# terminal the list is printed whole.
 print_update_list() {
-    measure_columns
+    if [[ -t 1 ]]; then
+        measure_columns
+    else
+        measure_columns whole
+    fi
     local i
     echo -e "${PURPLE_BOLD}${#U_KIND[@]} updates available${NC}"
     printf '  %s%s%s\n' "$GRAY" "$(update_header_text)" "$NC"
