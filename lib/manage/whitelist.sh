@@ -47,10 +47,10 @@ save_whitelist_patterns() {
 
     if [[ "$mode" == "optimize" ]]; then
         config_file="$WHITELIST_CONFIG_OPTIMIZE"
-        header_text="# Mole Optimization Whitelist - These checks will be skipped during optimization"
+        header_text="# Fettle Optimization Whitelist - These checks will be skipped during optimization"
     else
         config_file="$WHITELIST_CONFIG_CLEAN"
-        header_text="# Mole Whitelist - Protected paths won't be deleted\n# Saved selections replace optional defaults; built-in safety protections still apply.\n# Add one pattern per line to keep items safe."
+        header_text="# Fettle Whitelist - Protected paths won't be deleted\n# Saved selections replace optional defaults; built-in safety protections still apply.\n# Add one pattern per line to keep items safe."
     fi
 
     ensure_user_file "$config_file"

@@ -8,7 +8,7 @@ set -euo pipefail
 # User state and installed tools must never run with inherited root privileges.
 # Individual maintenance operations request administrator access themselves.
 if [[ "$EUID" -eq 0 ]]; then
-    printf '%s\n' 'Run Mole without sudo; it requests administrator access when needed.' >&2
+    printf '%s\n' 'Run Fettle without sudo; it requests administrator access when needed.' >&2
     exit 1
 fi
 
@@ -1564,7 +1564,7 @@ start_cleanup() {
             echo ""
         else
             SYSTEM_CLEAN=false
-            echo -e "${GRAY}${ICON_WARNING} System caches need sudo, run ${NC}sudo -v && mo clean --dry-run${GRAY} for full preview${NC}"
+            echo -e "${GRAY}${ICON_WARNING} System caches need sudo, run ${NC}sudo -v && fettle clean --dry-run${GRAY} for full preview${NC}"
             echo ""
         fi
         return
@@ -2181,18 +2181,18 @@ main() {
                 exit 0
                 ;;
             "--select" | "--categories" | "--exclude")
-                echo "mo clean $1 was removed in this release." >&2
-                echo "Use 'mo clean --dry-run' to preview cleanup and 'mo clean --whitelist' to protect paths." >&2
+                echo "fettle clean $1 was removed in this release." >&2
+                echo "Use 'fettle clean --dry-run' to preview cleanup and 'fettle clean --whitelist' to protect paths." >&2
                 exit 1
                 ;;
             -*)
-                echo "Unknown option for mo clean: $1" >&2
-                echo "Run 'mo clean --help' for usage." >&2
+                echo "Unknown option for fettle clean: $1" >&2
+                echo "Run 'fettle clean --help' for usage." >&2
                 exit 1
                 ;;
             *)
-                echo "Unexpected argument for mo clean: $1" >&2
-                echo "Run 'mo clean --help' for usage." >&2
+                echo "Unexpected argument for fettle clean: $1" >&2
+                echo "Run 'fettle clean --help' for usage." >&2
                 exit 1
                 ;;
         esac

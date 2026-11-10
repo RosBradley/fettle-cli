@@ -1,21 +1,16 @@
 # Security Policy
 
-Mole is a local system maintenance tool. It includes high-risk operations such as cleanup, uninstall, optimization, and artifact removal. We treat safety boundaries, deletion logic, and release integrity as security-sensitive areas.
+Fettle is a local system maintenance tool, built on Mole by tw93. It includes high-risk operations such as cleanup, uninstall, optimization, and artifact removal. We treat safety boundaries, deletion logic, and release integrity as security-sensitive areas.
 
 ## Reporting a Vulnerability
 
-Please report suspected security issues privately.
-
-- Email: `hitw93@gmail.com`
-- Subject line: `Mole security report`
+Please report suspected security issues privately, through GitHub's private vulnerability reporting: <https://github.com/RosBradley/fettle-cli/security/advisories/new>.
 
 Do not open a public GitHub issue for an unpatched vulnerability.
 
-If GitHub Security Advisories private reporting is enabled for the repository, you may use that channel instead of email.
-
 Include as much of the following as possible:
 
-- Mole version and install method
+- Fettle version (`fettle --version`) and install method
 - macOS version
 - Exact command or workflow involved
 - Reproduction steps or proof of concept
@@ -33,8 +28,8 @@ Response times are best-effort for a maintainer-led open source project, but sec
 
 Security fixes are only guaranteed for:
 
-- The latest published release
-- The current `main` branch
+- The latest published Fettle release
+- The current `fettle` branch
 
 Older releases may not receive security fixes. Users running high-risk commands should stay current.
 
@@ -55,14 +50,14 @@ Examples of security-relevant issues include:
 The following are usually normal bugs, feature requests, or documentation issues rather than security issues:
 
 - Cleanup misses that leave recoverable junk behind
-- False negatives where Mole refuses to clean something
+- False negatives where Fettle refuses to clean something
 - Cosmetic UI problems
 - Requests for broader or more aggressive cleanup behavior
 - Compatibility issues without a plausible security impact
 
 If you are unsure whether something is security-relevant, report it privately first.
 
-## Security-Focused Areas in Mole
+## Security-Focused Areas in Fettle
 
 The project pays particular attention to:
 

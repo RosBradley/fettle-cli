@@ -243,11 +243,11 @@ func TestRefreshIntervalSetsTheWaitAndShowsInTheFooter(t *testing.T) {
 	if delay := m.schedule.recordCompletion(collectionResult{mode: collectionFast}, m.refreshEvery()); delay != 5*time.Second {
 		t.Errorf("wait = %v, want 5s", delay)
 	}
-	if footer := stripANSI(renderStatusFooter(500*time.Millisecond, 60)); footer != strings.Repeat("─", 60)+"\nR Refresh 0.5s  |  C CPU cores  |  K Cat  |  Q Quit" {
+	if footer := stripANSI(renderStatusFooter(500*time.Millisecond, 60)); footer != strings.Repeat("─", 60)+"\nR Refresh 0.5s  |  C CPU cores  |  Q Quit" {
 		t.Errorf("footer = %q", footer)
 	}
-	// A narrow window drops K, then C, and only then cuts the keys, rather
-	// than wrapping them.
+	// A narrow window drops C, and only then cuts the keys, rather than
+	// wrapping them.
 	for width, want := range map[int]string{
 		40: "R Refresh 1s  |  C CPU cores  |  Q Quit",
 		30: "R Refresh 1s  |  Q Quit",

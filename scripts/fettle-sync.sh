@@ -22,10 +22,68 @@ die() {
     exit 1
 }
 
+# Mole's files Fettle removed because they carry Mole's name, links or
+# contacts: its READMEs, images, sponsor and owner files, trademark notice
+# and Mole Mac issue forms. When Mole changes one, it stays removed.
+readonly FETTLE_REMOVED=(
+    README.md README_CN.md README_DE.md README_FR.md README_JA.md README_KR.md
+    README_PL.md README_RU.md README_TW.md README_UA.md
+    CONTRIBUTORS.svg TRADEMARK.md
+    docs/img/big-mole.png docs/img/mole-love.png docs/img/mole-banner.png
+    .github/FUNDING.yml .github/CODEOWNERS
+    .github/ISSUE_TEMPLATE/mac_app_bug.yml .github/ISSUE_TEMPLATE/mac_app_feature.yml
+)
+# Mole's files Fettle rewrote for itself. When Mole changes one, Fettle's
+# version stays.
+readonly FETTLE_OWNED=(
+    SECURITY.md CONTRIBUTING.md
+    .github/ISSUE_TEMPLATE/bug_report.md .github/ISSUE_TEMPLATE/feature_request.md
+    .github/ISSUE_TEMPLATE/config.yml
+)
+
+# Whether $1 is one of the remaining arguments.
+listed() {
+    local path="$1" entry
+    shift
+    for entry in "$@"; do
+        [[ "$entry" == "$path" ]] && return 0
+    done
+    return 1
+}
+
+# In a merge that stopped on conflicts, settle those in files Fettle removed
+# or rewrote, keeping Fettle's side. Succeeds only when that settles every
+# conflict.
+settle_fettle_files() {
+    git rev-parse -q --verify MERGE_HEAD > /dev/null || return 1
+    local path
+    local -a conflicts=() settled=()
+    while IFS= read -r path; do
+        [[ -n "$path" ]] && conflicts+=("$path")
+    done < <(git diff --name-only --diff-filter=U)
+    [[ ${#conflicts[@]} -gt 0 ]] || return 1
+    for path in "${conflicts[@]}"; do
+        if listed "$path" "${FETTLE_REMOVED[@]}"; then
+            git rm -q -- "$path" || return 1
+        elif listed "$path" "${FETTLE_OWNED[@]}"; then
+            { git checkout --ours -- "$path" && git add -- "$path"; } || return 1
+        else
+            continue
+        fi
+        settled+=("$path")
+    done
+    [[ ${#settled[@]} -gt 0 ]] && printf 'Kept Fettle'"'"'s side of %s, which Fettle removed or rewrote.\n' "${settled[*]}"
+    [[ -z "$(git diff --name-only --diff-filter=U)" ]]
+}
+
 # Merge $1 into the current branch, or stop at a conflict and list the files
-# to look at; $2 says where the other changes came from.
+# to look at; $2 says where the other changes came from. Conflicts only in
+# files Fettle removed or rewrote settle on their own.
 merge_or_stop() {
     git merge --no-edit "$1" && return 0
+    if settle_fettle_files; then
+        git commit -q --no-edit && return 0
+    fi
     printf '\nThe merge stopped on a conflict: %s changed the same lines as this folder.\n' "$2" >&2
     printf 'Files to look at:\n' >&2
     git diff --name-only --diff-filter=U | sed 's/^/    /' >&2

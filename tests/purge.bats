@@ -1062,7 +1062,7 @@ EOF
 
 	[ "$status" -eq 0 ] || return 1
 	[[ "$output" == *"Cloud-synced artifacts may also be removed from other devices."* ]] || return 1
-	[[ "$output" == *"mo purge --paths"* ]] || return 1
+	[[ "$output" == *"fettle purge --paths"* ]] || return 1
 	local warning_count
 	warning_count=$(printf '%s\n' "$output" | grep -cF "Cloud-synced artifacts may also be removed from other devices.")
 	[ "$warning_count" -eq 1 ] || return 1
@@ -2713,7 +2713,7 @@ echo "SIZE=$(cat "$stats_dir/purge_stats" 2> /dev/null || echo missing)"
 EOF
 
 	[ "$status" -eq 0 ]
-	[[ "$output" == *"Skipped ~/www/test-project/node_modules (final removal check failed; re-run mo purge to review it again)"* ]] || return 1
+	[[ "$output" == *"Skipped ~/www/test-project/node_modules (final removal check failed; re-run fettle purge to review it again)"* ]] || return 1
 	[[ "$output" == *"COUNT=0"* ]] || return 1
 	[[ "$output" == *"SIZE=0"* ]]
 }
@@ -3052,7 +3052,7 @@ EOF
 @test "mo purge -h shows usage and exits 0" {
 	run env HOME="$HOME" "$PROJECT_ROOT/mole" purge -h
 	[ "$status" -eq 0 ]
-	[[ "$output" == *"Usage:"* && "$output" == *"mo purge [options]"* ]] || return 1
+	[[ "$output" == *"Usage:"* && "$output" == *"fettle purge [options]"* ]] || return 1
 	[[ "$output" == *"-h, --help"* ]]
 }
 

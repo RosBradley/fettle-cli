@@ -22,15 +22,18 @@ func renderTerminalTooSmall(width, height int) string {
 		Render("Terminal too small. Enlarge the window to view status.")
 }
 
+// Fettle: the Patina colors of lib/core/base.sh. The accent is xterm-256
+// color 30 and gray is 244; green, yellow and red are the terminal's own, so
+// Status reads on a light window too.
 var (
-	titleStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("#C79FD7")).Bold(true)
-	subtleStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#737373"))
-	warnStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("#FFD75F"))
-	dangerStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#FF5F5F")).Bold(true)
-	okStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("#A5D6A7"))
+	titleStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("30")).Bold(true)
+	subtleStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("244"))
+	warnStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("3"))
+	dangerStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("1")).Bold(true)
+	okStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("2"))
 	lineStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("#404040"))
 
-	primaryStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("#BD93F9"))
+	primaryStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("30"))
 	alertBarStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("#2B1200")).
 			Background(lipgloss.Color("#FFD75F")).
@@ -290,13 +293,13 @@ func renderHeader(m MetricsSnapshot, errMsg string, animFrame int, termWidth int
 func getScoreStyle(score int) lipgloss.Style {
 	switch {
 	case score >= scoreExcellentThreshold:
-		return lipgloss.NewStyle().Foreground(lipgloss.Color("#87FF87")).Bold(true)
+		return lipgloss.NewStyle().Foreground(lipgloss.Color("2")).Bold(true) // Fettle: terminal green
 	case score >= scoreGoodThreshold:
-		return lipgloss.NewStyle().Foreground(lipgloss.Color("#87D787")).Bold(true)
+		return lipgloss.NewStyle().Foreground(lipgloss.Color("2")).Bold(true) // Fettle: terminal green
 	case score >= scoreFairThreshold:
-		return lipgloss.NewStyle().Foreground(lipgloss.Color("#FFD75F")).Bold(true)
+		return lipgloss.NewStyle().Foreground(lipgloss.Color("3")).Bold(true) // Fettle: terminal yellow
 	default:
-		return lipgloss.NewStyle().Foreground(lipgloss.Color("#FF6B6B")).Bold(true)
+		return lipgloss.NewStyle().Foreground(lipgloss.Color("1")).Bold(true) // Fettle: terminal red
 	}
 }
 

@@ -108,7 +108,7 @@ opt_diag_family_label() {
 opt_diag_family_note() {
     case "$1" in
         cloudshell)
-            printf '%s\n' "External enterprise agent pressure detected. Mole will not terminate enterprise security processes; restart or policy checks must happen outside Mole."
+            printf '%s\n' "External enterprise agent pressure detected. Fettle will not terminate enterprise security processes; restart or policy checks must happen outside Fettle."
             ;;
         syspolicyd)
             printf '%s\n' "Gatekeeper and code-signature assessment activity is elevated."
@@ -327,7 +327,7 @@ opt_diag_offer_detach_candidates() {
     echo -ne "  ${GRAY}${ICON_REVIEW}${NC} ${YELLOW}Detach now?${NC} ${GRAY}Enter confirm / Space cancel${NC}: "
     local key=""
     if ! key=$(read_key); then
-        echo -e "\n  ${GRAY}${ICON_WARNING}${NC} Kept mounted, whitelist via ${NC}mo optimize --whitelist${GRAY}${NC}"
+        echo -e "\n  ${GRAY}${ICON_WARNING}${NC} Kept mounted, whitelist via ${NC}fettle optimize --whitelist${GRAY}${NC}"
         return 0
     fi
 
@@ -335,7 +335,7 @@ opt_diag_offer_detach_candidates() {
         echo ""
         opt_diag_detach_candidates "$candidates"
     else
-        echo -e "\n  ${GRAY}${ICON_WARNING}${NC} Kept mounted, whitelist via ${NC}mo optimize --whitelist${GRAY}${NC}"
+        echo -e "\n  ${GRAY}${ICON_WARNING}${NC} Kept mounted, whitelist via ${NC}fettle optimize --whitelist${GRAY}${NC}"
     fi
 }
 

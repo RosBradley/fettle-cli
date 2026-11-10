@@ -8,7 +8,7 @@ set -euo pipefail
 # User state and installed tools must never run with inherited root privileges.
 # Individual maintenance operations request administrator access themselves.
 if [[ "$EUID" -eq 0 ]]; then
-    printf '%s\n' 'Run Mole without sudo; it requests administrator access when needed.' >&2
+    printf '%s\n' 'Run Fettle without sudo; it requests administrator access when needed.' >&2
     exit 1
 fi
 
@@ -313,9 +313,9 @@ perform_purge() {
 
 # Show help message
 show_help() {
-    echo -e "${PURPLE_BOLD}Mole Purge${NC}, Clean old project build artifacts"
+    echo -e "${PURPLE_BOLD}Fettle Purge${NC}, Clean old project build artifacts"
     echo ""
-    echo -e "${YELLOW}Usage:${NC} mo purge [options]"
+    echo -e "${YELLOW}Usage:${NC} fettle purge [options]"
     echo ""
     echo -e "${YELLOW}Options:${NC}"
     echo "  --paths         Edit custom scan directories"
@@ -359,7 +359,7 @@ main() {
                 ;;
             *)
                 echo "Unknown option: $arg" >&2
-                echo "Use 'mo purge --help' for usage information" >&2
+                echo "Use 'fettle purge --help' for usage information" >&2
                 exit 1
                 ;;
         esac

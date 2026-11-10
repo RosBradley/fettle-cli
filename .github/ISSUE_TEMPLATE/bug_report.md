@@ -1,6 +1,6 @@
 ---
 name: CLI Bug Report
-about: Report a bug in the Mole command-line tool
+about: Report a bug in Fettle
 title: '[BUG] '
 labels: bug
 assignees: ''
@@ -8,7 +8,7 @@ assignees: ''
 
 ## Before submitting
 
-Run `mo update` to install the latest stable version, then check `mo --version`. Reproduce the problem with that version. If updating itself fails, report that failure and your installed version.
+Run `fettle update` to install the latest stable version, then check `fettle --version`. Reproduce the problem with that version. If updating itself fails, report that failure and your installed version.
 
 - [ ] I updated and reproduced the problem, or this report explains why I cannot update.
 
@@ -16,11 +16,11 @@ Run `mo update` to install the latest stable version, then check `mo --version`.
 
 Describe what happened. English is preferred so more contributors can help triage.
 
-If you believe the issue may allow unsafe deletion, path validation bypass, privilege boundary bypass, or release/install integrity issues, do not file a public bug report. Report it privately using the contact details in [SECURITY.md](https://github.com/tw93/Mole/blob/main/SECURITY.md).
+If you believe the issue may allow unsafe deletion, path validation bypass, privilege boundary bypass, or release/install integrity issues, do not file a public bug report. Report it privately using the contact details in [SECURITY.md](https://github.com/RosBradley/fettle-cli/blob/fettle/SECURITY.md).
 
 ## Steps to reproduce
 
-1. Run command: `mo ...`
+1. Run command: `fettle ...`
 2. ...
 3. See error
 
@@ -33,8 +33,8 @@ What did you expect to happen instead?
 Run the command with `--debug` and paste the output:
 
 ```bash
-mo <command> --debug
-# Example: mo clean --debug
+fettle <command> --debug
+# Example: fettle clean --debug
 ```
 
 <details>
@@ -48,10 +48,10 @@ Paste debug output here
 
 ## Environment
 
-Paste the output of `mo --version` from the version used to reproduce the problem:
+Paste the output of `fettle --version` from the version used to reproduce the problem:
 
 ```text
-Paste mo --version output here
+Paste fettle --version output here
 ```
 
 ## Additional context

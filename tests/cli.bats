@@ -152,7 +152,7 @@ EOF
 	[[ "$output" == *"HELP_RC=0"* ]] || { echo "$output"; cat "$HOME/probe-help.out"; return 1; }
 	# Every other command keeps refusing an unknown working directory.
 	[[ "$output" == *"CLEAN_RC=1"* ]] || { echo "$output"; return 1; }
-	grep -q 'Mole version' "$HOME/probe-version.out" || return 1
+	grep -q '^Based on Mole ' "$HOME/probe-version.out" || return 1 # Fettle: its version screen credits Mole's version
 	! grep -q 'Cannot access the current directory' "$HOME/probe-version.out" || return 1
 }
 
@@ -233,7 +233,7 @@ EOF
 
 	run env HOME="$HOME" "$PROJECT_ROOT/mole" --version
 	[ "$status" -eq 0 ]
-	[[ "$output" == *"Mole version $expected_version"* ]] || return 1
+	[[ "$output" == *"Based on Mole $expected_version by tw93"* ]] || return 1 # Fettle: its version screen credits Mole's version
 	[[ "$output" == *"Channel: Nightly"* ]]
 }
 
@@ -597,7 +597,7 @@ EOF
 	DEBUG_LOG="$HOME/Library/Logs/mole/mole_debug_session.log"
 	[ -f "$DEBUG_LOG" ]
 
-	run grep "Mole Debug Session" "$DEBUG_LOG"
+	run grep "Fettle Debug Session" "$DEBUG_LOG"
 	[ "$status" -eq 0 ]
 
 	[[ "$MOLE_OUTPUT" =~ "Debug session log saved to" ]]
@@ -635,7 +635,7 @@ EOF
 @test "mo uninstall --help directs leftover-only cleanup to clean" {
 	run env HOME="$HOME" "$PROJECT_ROOT/mole" uninstall --help
 	[ "$status" -eq 0 ]
-	[[ "$output" == *"already gone, use mo clean"* ]]
+	[[ "$output" == *"already gone, use fettle clean"* ]]
 }
 
 @test "mo clean --external accepts canonicalized custom root" {
@@ -1050,7 +1050,7 @@ PY
         # so the test never requests root or runs a maintenance command.
         run /bin/bash -c "${prefix//\$EUID/0}"
         [ "$status" -eq 1 ] || return 1
-        [[ "$output" == *"Run Mole without sudo"* ]] || return 1
+        [[ "$output" == *"Run Fettle without sudo"* ]] || return 1
         run /bin/bash -c "${prefix//\$EUID/501}"
         [ "$status" -eq 0 ] || return 1
     done

@@ -2,7 +2,9 @@
 
 Fettle is a personal fork of [Mole](https://github.com/tw93/Mole) by tw93, modified since October 2026. Mole and Fettle are licensed under GPL-3.0 (see `LICENSE`); Fettle is not affiliated with or endorsed by the Mole project. It was called MoreMole until 2026-11-07. It keeps everything Mole does and changes these things:
 
-- **The banner says Fettle** and points to this repository, on the menu and the help screen. Its tagline keeps Mole's line, "Deep clean and optimize your Mac.", and adds "Manage, update and remove apps." The version screen (V) credits Mole and shows the Fettle commit that is running.
+- **Everything you see says Fettle.** The banner spells Fettle and points to this repository, on the menu and the help screen; its tagline is "Deep clean and optimize your Mac." and "Manage, update and remove apps." Every message, usage line and hint says Fettle, and `fettle <command>` where Mole says `mo <command>`; the password dialog is titled Fettle. The version screen (V) names the Fettle release or commit that is running, then credits Mole and the Mole version it includes. Mole's code names stay, so Mole's changes keep merging: the `mole` script, `MOLE_` settings, and the folders `~/.config/mole`, `~/.cache/mole` and `~/Library/Logs/mole`. `scripts/fettle_brand_audit.py` (run by `tests/fettle_brand.bats`) fails when a message with Mole's name comes back, for example in a merge from Mole.
+- **Fettle's own colors, Patina.** The accent is verdigris (xterm-256 color 30) for the banner, titles, section headings and the selected row; the second color is copper (166) for the repository link, help headings, dividers and spinners. Both read on light and dark windows. Green, yellow and red are your terminal's own, in Status too, which used Mole's pastels that were hard to read on a white window. Mole's purple is gone. The palette, with the shades the Mac app will use, is at https://claude.ai/artifact/LHwMYGasy3FrsTNQojCfUJ.
+- **No mascot.** Mole's cat no longer runs across the top of Status, and its K key is gone. Fettle's own mark comes later, with the Mac app's icon.
 - **The main menu lists every command** from Mole's More screen (M), not just the first five. Each command has its own row, with its preview (dry-run) and other variants beside it, and a bar at the bottom of the window describes the highlighted item and lists the keys.
 - **You can add your own commands to the menu,** and edit or remove them, right in the menu. They get a section of their own.
 - **Commands run inside a Fettle screen:** the title and the command's summary stay at the top and a bar at the bottom says it's running, while its output scrolls between them, like the menu. When it finishes, the bar says so and shows the keys; you scroll back through everything it printed, search it with /, and open Clean's file list with F. A cancelled command returns to the menu straight away.
@@ -28,12 +30,16 @@ The Fettle changes live in their own files, so Mole's updates merge cleanly:
 | `lib/fettle/cancel.sh` | Lets a cancelled command tell the menu to come straight back |
 | `lib/fettle/lists.sh` | Puts Installer files on the shared pick list |
 | `cmd/fettle-view/` | The command screen: runs a command inside the fixed frame, then shows its results |
-| `scripts/fettle-sync.sh` | Brings in Mole's latest changes |
+| `scripts/fettle-sync.sh` | Brings in Mole's latest changes, keeping Fettle's side of the Mole files Fettle removed or rewrote |
+| `scripts/fettle_brand_audit.py`, `tests/fettle_brand.bats` | Fail when text users see names Mole or `mo`, or the colors aren't Fettle's |
 | `fettle-get.sh` | The installer: installs the newest Fettle release, and updates a copy it installed |
 | `scripts/fettle-release.sh`, `scripts/fettle-release-build.sh`, `.github/workflows/fettle-release.yml` | Publishing a release: you tag it, GitHub tests, builds and publishes it |
 | `.github/README.md` | The front page on GitHub, shown instead of Mole's README |
 | `tests/fettle_*.bats`, `cmd/status/fettle_test.go`, `cmd/analyze/fettle_test.go`, `cmd/fettle-updates/*_test.go`, `cmd/fettle-models/*_test.go`, `cmd/fettle-view/*_test.go` | Tests for the above |
 | `mole`, `Makefile`, `lib/core/commands.sh`, `lib/core/common.sh`, `cmd/status/*.go`, `cmd/analyze/view.go`, `cmd/analyze/format.go` | A few marked lines (`fettle`) that hook the above in |
+| `lib/core/base.sh`, `cmd/analyze/constants.go`, `cmd/status/view.go`, `cmd/fettle-view/view.go` | The Patina colors (marked `Fettle`); `cmd/status/main.go` and `cmd/status/fettle.go` keep the cat hidden and drop its key |
+| Messages across Mole's `bin/`, `lib/` and `cmd/` files | Say Fettle and `fettle <command>`; the tests that check those messages say so too |
+| `SECURITY.md`, `CONTRIBUTING.md`, `.github/ISSUE_TEMPLATE/` | Rewritten for Fettle: private reports go through GitHub's vulnerability reporting on this repository. Mole's READMEs, images, contributor picture, trademark notice, sponsor and owner files and Mac app issue forms are removed |
 | `lib/ui/menu_paginated.sh`, `lib/ui/app_selector.sh`, `bin/slim.sh`, `bin/installer.sh`, `bin/optimize.sh`, `lib/clean/project.sh` | Marked lines (`Fettle`) for the search line, A–Z first, Optimize's names, and Purge's find showing what you type and starting with nothing selected; `tests/slim.bats`, `tests/uninstall_menu.bats`, `tests/purge.bats` and `tests/purge_menu_pty.py` have the tests that relied on the old behavior changed to match |
 | `tests/update.bats` | One marked line in its setup, so Mole's tests of its own updater keep running it; Fettle never runs Mole's updater, which would install the official Mole over Fettle |
 | Mole's commands: `bin/clean.sh`, `bin/completion.sh`, `bin/installer.sh`, `bin/purge.sh`, `bin/slim.sh`, `bin/touchid.sh`, `bin/uninstall.sh`, `lib/uninstall/batch.sh`, `lib/manage/whitelist.sh` | One `fettle_note_cancel` line at each place the user cancels (`tests/fettle_cancel.bats` checks they're all there) |
@@ -57,17 +63,17 @@ The installer:
 - builds Analyze, Status, Software updates, Ollama models and the command screen, which are written in Go, if one of them was never built (install Go first with `brew install go`); after that, the update rebuilds them whenever they change;
 - offers Tab completion for `fettle` and `ft`, asking before it changes `~/.zshrc` (later: `fettle completion`);
 - offers to remove the official Mole if Homebrew installed it, with `brew uninstall mole`, which keeps `~/.config/mole`. Don't use Mole's own `mo remove` for this: it also moves `~/.config/mole`, including your Fettle commands, to the Trash;
-- links Mole's own names, `mo` and `mole`, to Fettle too, so scripts written for Mole keep working. A name that already runs something else, such as an official Mole you kept, stays as it is; run the installer again after removing that Mole to take the name over.
+- removes the `mo` and `mole` links earlier versions of Fettle made in `~/.local/bin`; Fettle answers only to `fettle` and `ft`. A `mo` or `mole` that runs an official Mole stays as it is.
 
-It's safe to run again. To undo it, delete `fettle`, `ft`, `mo` and `mole` from `~/.local/bin`.
+It's safe to run again. To undo it, delete `fettle` and `ft` from `~/.local/bin`.
 
 ## Scripts and the command line
 
-Every command works from the command line and in scripts as in Mole: same commands, options, output and exit codes, and `fettle status --json` is unchanged. The menu's additions (the command screen, cancel) only happen when a command runs from the menu. The differences:
+Every command works from the command line and in scripts as in Mole: same commands, options and exit codes, and `fettle status --json` is unchanged. Messages say Fettle where Mole's say Mole. The menu's additions (the command screen, cancel) only happen when a command runs from the menu. The differences:
 
-- `fettle update` (and `mo update` once `mo` runs Fettle) updates Fettle the way it was installed (see Updating), instead of installing a Mole release; the help screen leaves out Mole's `--force` and `--nightly`, which Fettle's update does not use.
+- `fettle update` updates Fettle the way it was installed (see Updating), instead of installing a Mole release; the help screen leaves out Mole's `--force` and `--nightly`, which Fettle's update does not use.
 - `fettle updates` (Software updates) and `fettle models` (Ollama models) are new.
-- The help screen names commands `fettle ...`; hints inside commands still say `mo ...`.
+- The help screen, usage lines and hints inside commands name commands `fettle ...`.
 - `fettle remove` doesn't run Mole's remover, which would leave Fettle in place and move `~/.config/mole`, with your menu commands and protected lists, to the Trash. It changes nothing: it lists the links and folder to delete, notes that your settings stay, and records the refusal in History. It is not in the menu.
 
 ## The menu
@@ -155,7 +161,7 @@ They're saved in `~/.config/mole/my_commands`, one per line as name, a Tab, then
 ## Status
 
 - The bars stretch to fill the window; make the window wider for longer bars.
-- **R** changes how often Status refreshes: 0.5, 1, 2, 5 or 10 seconds, starting at 1. It remembers your choice. The bottom of the window, under a divider as on the command screen, shows the current setting and the keys: R Refresh, C CPU cores, K Cat and Q Quit.
+- **R** changes how often Status refreshes: 0.5, 1, 2, 5 or 10 seconds, starting at 1. It remembers your choice. The bottom of the window, under a divider as on the command screen, shows the current setting and the keys: R Refresh, C CPU cores and Q Quit.
 - **C** (Mole's own key) cycles through 2, 4, 8 and all CPU cores and remembers your choice; a window too short for all of them shows fewer.
 - The GPU card shows total GPU use, updated with every refresh like CPU use, plus the chip and its GPU core count. macOS reports GPU use for the GPU as a whole, not for each GPU core.
 
@@ -252,7 +258,7 @@ The menu's update notice works the same way: a copy from the installer is told w
 bash scripts/fettle-sync.sh
 ```
 
-It first brings down any Fettle changes already on GitHub, then copies Mole's latest changes into `main`, merges them into the `fettle` branch, and pushes both to GitHub. When one of the Go parts (Analyze, Status, Software updates, Ollama models, the command screen) is older than its code, including after a `git pull`, it rebuilds them (`make build`). It stops and says what to do if you have uncommitted changes, are on another branch, can't reach GitHub or Mole, or if Mole changed the same lines as Fettle. When it stops on uncommitted changes or a missing connection, it still rebuilds the Go parts if they're older than the code in your folder, so Fettle runs that code; after a conflict it doesn't, since the code is half merged.
+It first brings down any Fettle changes already on GitHub, then copies Mole's latest changes into `main`, merges them into the `fettle` branch, and pushes both to GitHub. When one of the Go parts (Analyze, Status, Software updates, Ollama models, the command screen) is older than its code, including after a `git pull`, it rebuilds them (`make build`). It stops and says what to do if you have uncommitted changes, are on another branch, can't reach GitHub or Mole, or if Mole changed the same lines as Fettle. When Mole changes a file Fettle removed (its READMEs and images, for example) or rewrote (`SECURITY.md`, `CONTRIBUTING.md`, the issue forms), Fettle's side is kept and the merge carries on; the list is at the top of the script. When it stops on uncommitted changes or a missing connection, it still rebuilds the Go parts if they're older than the code in your folder, so Fettle runs that code; after a conflict it doesn't, since the code is half merged.
 
 People who installed Fettle get these changes with the next release you publish.
 

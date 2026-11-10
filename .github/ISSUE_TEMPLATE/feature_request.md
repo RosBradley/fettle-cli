@@ -1,6 +1,6 @@
 ---
 name: CLI Feature Request
-about: Suggest an improvement for the Mole command-line tool
+about: Suggest an improvement for Fettle
 title: '[FEATURE] '
 labels: enhancement
 assignees: ''
@@ -8,7 +8,7 @@ assignees: ''
 
 ## Before submitting
 
-Run `mo update` to install the latest stable version, then check `mo --version`. Check whether the requested feature is already available.
+Run `fettle update` to install the latest stable version, then check `fettle --version`. Check whether the requested feature is already available.
 
 - [ ] I updated to the latest stable version and checked that this feature is still missing.
 
@@ -22,7 +22,7 @@ What problem does this solve, or what workflow would it improve?
 
 ## Proposed Solution
 
-How should this work in Mole? (Commands, flags, or expected behavior)
+How should this work in Fettle? (Commands, flags, or expected behavior)
 
 ## Alternatives Considered
 

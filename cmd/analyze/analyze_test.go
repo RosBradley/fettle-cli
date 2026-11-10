@@ -455,16 +455,16 @@ func TestUninstallCommandForApp(t *testing.T) {
 		input string
 		want  string
 	}{
-		{name: "simple", input: "Safari.app", want: "mo uninstall Safari"},
-		{name: "space", input: "Google Chrome.app", want: "mo uninstall 'Google Chrome'"},
-		{name: "dollar", input: "My$App.app", want: "mo uninstall 'My$App'"},
-		{name: "command substitution", input: "Unsafe$(printf HACKED).app", want: "mo uninstall 'Unsafe$(printf HACKED)'"},
-		{name: "semicolon", input: "Foo;Bar.app", want: "mo uninstall 'Foo;Bar'"},
-		{name: "backtick", input: "My`App.app", want: "mo uninstall 'My`App'"},
-		{name: "single quote", input: "Bob's App.app", want: `mo uninstall 'Bob'\''s App'`},
-		{name: "leading dash", input: "-Example.app", want: "mo uninstall <App>"},
-		{name: "tab", input: "Tabbed\tApp.app", want: "mo uninstall <App>"},
-		{name: "newline", input: "Split\nApp.app", want: "mo uninstall <App>"},
+		{name: "simple", input: "Safari.app", want: "fettle uninstall Safari"},
+		{name: "space", input: "Google Chrome.app", want: "fettle uninstall 'Google Chrome'"},
+		{name: "dollar", input: "My$App.app", want: "fettle uninstall 'My$App'"},
+		{name: "command substitution", input: "Unsafe$(printf HACKED).app", want: "fettle uninstall 'Unsafe$(printf HACKED)'"},
+		{name: "semicolon", input: "Foo;Bar.app", want: "fettle uninstall 'Foo;Bar'"},
+		{name: "backtick", input: "My`App.app", want: "fettle uninstall 'My`App'"},
+		{name: "single quote", input: "Bob's App.app", want: `fettle uninstall 'Bob'\''s App'`},
+		{name: "leading dash", input: "-Example.app", want: "fettle uninstall <App>"},
+		{name: "tab", input: "Tabbed\tApp.app", want: "fettle uninstall <App>"},
+		{name: "newline", input: "Split\nApp.app", want: "fettle uninstall <App>"},
 	}
 
 	for _, tt := range tests {
@@ -486,7 +486,7 @@ func TestViewDeleteConfirmShowsUninstallHintForAppBundle(t *testing.T) {
 	}
 
 	view := m.View()
-	if !strings.Contains(view, "mo uninstall Safari") {
+	if !strings.Contains(view, "fettle uninstall Safari") {
 		t.Fatalf("expected app-specific uninstall command, got:\n%s", view)
 	}
 	if !strings.Contains(view, "only the bundle moves to Trash") {
@@ -504,7 +504,7 @@ func TestViewDeleteConfirmNoHintForRegularDirectory(t *testing.T) {
 	}
 
 	view := m.View()
-	if strings.Contains(view, "mo uninstall") {
+	if strings.Contains(view, "fettle uninstall") {
 		t.Fatalf("did not expect uninstall hint for a regular directory, got:\n%s", view)
 	}
 }
@@ -521,7 +521,7 @@ func TestViewDeleteConfirmMultiSelectShowsGenericHint(t *testing.T) {
 	}
 
 	view := m.View()
-	if !strings.Contains(view, "mo uninstall <App>") {
+	if !strings.Contains(view, "fettle uninstall <App>") {
 		t.Fatalf("expected generic uninstall hint for multi-select containing an app bundle, got:\n%s", view)
 	}
 }

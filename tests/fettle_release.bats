@@ -493,6 +493,63 @@ run_sync() {
 	[ ! -e "$MAKE_LOG" ]
 }
 
+@test "Update Fettle's sync keeps Fettle's side of Mole files it removed or rewrote" {
+	make_sync_repo
+	git -C "$WORK" checkout -q main
+	printf '# Mole\n' > "$WORK/README.md"
+	printf 'Email Mole\n' > "$WORK/SECURITY.md"
+	git -C "$WORK" add -A
+	git -C "$WORK" commit -q -m "Mole's docs"
+	git -C "$WORK" push -q upstream main
+	git -C "$WORK" checkout -q fettle
+	git -C "$WORK" merge -q --no-edit main
+	git -C "$WORK" rm -q README.md
+	printf 'Report Fettle issues privately\n' > "$WORK/SECURITY.md"
+	git -C "$WORK" commit -q -am "Fettle's docs"
+	git -C "$WORK" push -q origin fettle
+	git -C "$WORK" checkout -q main
+	printf '# Mole, now with more\n' > "$WORK/README.md"
+	printf 'Email Mole at a new address\n' > "$WORK/SECURITY.md"
+	git -C "$WORK" commit -q -am "Mole's new docs"
+	git -C "$WORK" push -q upstream main
+	git -C "$WORK" reset -q --hard HEAD~1
+	git -C "$WORK" checkout -q fettle
+	run run_sync
+	[ "$status" -eq 0 ] || { echo "$output"; return 1; }
+	[[ "$output" == *"Kept Fettle's side of "*"README.md"*"which Fettle removed or rewrote."* ]] || { echo "$output"; return 1; }
+	[ ! -e "$WORK/README.md" ] || return 1
+	[ "$(cat "$WORK/SECURITY.md")" = "Report Fettle issues privately" ] || return 1
+	git -C "$WORK" merge-base --is-ancestor upstream/main fettle || return 1
+	[ -z "$(git -C "$WORK" status --porcelain --untracked-files=no)" ]
+}
+
+@test "Update Fettle's sync still stops when another file conflicts beside them" {
+	make_sync_repo
+	git -C "$WORK" checkout -q main
+	printf '# Mole\n' > "$WORK/README.md"
+	git -C "$WORK" add -A
+	git -C "$WORK" commit -q -m "Mole's docs"
+	git -C "$WORK" push -q upstream main
+	git -C "$WORK" checkout -q fettle
+	git -C "$WORK" merge -q --no-edit main
+	git -C "$WORK" rm -q README.md
+	printf 'package main // fettle\n' > "$WORK/cmd/status/main.go"
+	git -C "$WORK" commit -q -am "Fettle's changes"
+	git -C "$WORK" push -q origin fettle
+	git -C "$WORK" checkout -q main
+	printf '# Mole, now with more\n' > "$WORK/README.md"
+	printf 'package main // mole\n' > "$WORK/cmd/status/main.go"
+	git -C "$WORK" commit -q -am "Mole's changes"
+	git -C "$WORK" push -q upstream main
+	git -C "$WORK" reset -q --hard HEAD~1
+	git -C "$WORK" checkout -q fettle
+	run run_sync
+	[ "$status" -eq 1 ] || { echo "$output"; return 1; }
+	[[ "$output" == *"The merge stopped on a conflict: Mole changed the same lines"*"    cmd/status/main.go"* ]] || { echo "$output"; return 1; }
+	[[ "$output" != *"    README.md"* ]] || return 1
+	git -C "$WORK" rev-parse -q --verify MERGE_HEAD > /dev/null
+}
+
 @test "Fettle's incident ledger names real commits, layers and catchers" {
 	run python3 "$PROJECT_ROOT/scripts/audit_incidents.py" --ledger "$PROJECT_ROOT/docs/fettle-incidents.md"
 	[ "$status" -eq 0 ] || { echo "$output"; return 1; }

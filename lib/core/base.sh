@@ -53,11 +53,15 @@ if [[ "$mole_color" == "0" ]]; then
 else
     readonly ESC=$'\033'
     readonly GREEN="${ESC}[0;32m"
-    readonly BLUE="${ESC}[1;34m"
-    readonly CYAN="${ESC}[0;36m"
+    # Fettle: the Patina colors. The accent (PURPLE, PURPLE_BOLD, CYAN) is
+    # verdigris, xterm-256 color 30; the second color (BLUE) is copper, 166.
+    # Both read on light and dark windows; green, yellow and red stay the
+    # terminal's own.
+    readonly BLUE="${ESC}[1;38;5;166m"
+    readonly CYAN="${ESC}[0;38;5;30m"
     readonly YELLOW="${ESC}[0;33m"
-    readonly PURPLE="${ESC}[0;35m"
-    readonly PURPLE_BOLD="${ESC}[1;35m"
+    readonly PURPLE="${ESC}[0;38;5;30m"
+    readonly PURPLE_BOLD="${ESC}[1;38;5;30m"
     readonly RED="${ESC}[0;31m"
     readonly GRAY="${ESC}[0;38;5;244m"
     readonly NC="${ESC}[0m"
@@ -388,19 +392,19 @@ mole_report_unreadable_whitelist() {
     case "$reason" in
         directory)
             printf 'Cannot access your %s directory: %s\n' "$label" "${file//[[:cntrl:]]/?}" >&2
-            printf '  Mole stops so nothing you protected is cleaned by mistake. Run: chmod u+rx %q\n' "$file" >&2
+            printf '  Fettle stops so nothing you protected is cleaned by mistake. Run: chmod u+rx %q\n' "$file" >&2
             ;;
         invalid)
             printf 'Cannot read your %s: invalid path or broken link: %s\n' "$label" "${file//[[:cntrl:]]/?}" >&2
-            printf '  Mole stops so nothing you protected is cleaned by mistake. Restore this path or its link target before retrying.\n' >&2
+            printf '  Fettle stops so nothing you protected is cleaned by mistake. Restore this path or its link target before retrying.\n' >&2
             ;;
         unknown)
             printf 'Cannot inspect your %s path: %s\n' "$label" "${file//[[:cntrl:]]/?}" >&2
-            printf '  Mole stops because absence could not be verified. Check access to this path before retrying.\n' >&2
+            printf '  Fettle stops because absence could not be verified. Check access to this path before retrying.\n' >&2
             ;;
         *)
             printf 'Cannot read your %s: %s\n' "$label" "${file//[[:cntrl:]]/?}" >&2
-            printf '  Mole stops so nothing you protected is cleaned by mistake. Run: chmod u+r %q\n' "$file" >&2
+            printf '  Fettle stops so nothing you protected is cleaned by mistake. Run: chmod u+r %q\n' "$file" >&2
             ;;
     esac
 }
@@ -414,7 +418,7 @@ mole_whitelist_file_state() {
     local file="$1" label="${2:-whitelist}" problem="" probe_rc=0
     if [[ ! -x /usr/bin/perl ]]; then
         printf 'Cannot inspect your %s: the system Perl runtime is unavailable.\n' "$label" >&2
-        printf '  Mole stops so nothing you protected is cleaned by mistake. Restore /usr/bin/perl before retrying.\n' >&2
+        printf '  Fettle stops so nothing you protected is cleaned by mistake. Restore /usr/bin/perl before retrying.\n' >&2
         return 2
     fi
     problem=$(/usr/bin/perl -e '

@@ -40,7 +40,7 @@ readonly FETTLE_BUILTIN_ROWS=(
     "Add Ollama models|mole|fettle-models --download|Choose new models from Ollama's library, then the versions to download;Preview|mole|fettle-models --download --dry-run|List the models in Ollama's library, without downloading anything"
     "Add Hugging Face MLX|mole|fettle-models --huggingface|Add MLX models from Hugging Face to Ollama, each checked to work, for Apple silicon;Preview|mole|fettle-models --huggingface --dry-run|List the MLX models on Hugging Face that Ollama runs, without downloading anything"
     "Ollama model removal|mole|fettle-models --remove|Remove Ollama models;Preview|mole|fettle-models --remove --dry-run|List your Ollama models and their sizes, without removing anything"
-    "Update Fettle|update||Get the newest Fettle, with Mole's latest changes"
+    "Update Fettle|update||Get the newest Fettle"
 )
 readonly FETTLE_SECTION_LABEL="My commands"
 readonly FETTLE_ADD_LABEL="Add a command"
@@ -49,8 +49,7 @@ readonly FETTLE_MENU_COLUMNS=3
 readonly FETTLE_REPO_URL="github.com/RosBradley/fettle-cli"
 readonly FETTLE_INSTALL_LINE="curl -fsSL https://raw.githubusercontent.com/RosBradley/fettle-cli/fettle/fettle-get.sh | bash"
 readonly FETTLE_RELEASE_RE='^[0-9]{4}\.[0-9]{2}\.[0-9]{2}(\.[0-9]+)?$'
-# Two short lines, so the banner stays within 80 columns: Mole's own line,
-# then what Fettle adds.
+# Two short lines, so the banner stays within 60 columns.
 readonly FETTLE_TAGLINE=("Deep clean and optimize your Mac." "Manage, update and remove apps.")
 
 # Lines around the items besides the banner: the line under the banner (blank,
@@ -727,35 +726,36 @@ _fettle_remove_my_command() {
 }
 
 # The Fettle banner, used by the menu and the help screen in place of
-# Mole's. The repository and tagline sit beside the logo when the window is
-# wide enough, else under it.
+# Mole's: the name in the accent color, with the repository (in the second
+# color) and the tagline beside it when the window is wide enough, else under
+# it. The widest line beside the name is 60 columns.
 show_brand_banner() {
     local -a art=(
-        ' __  __                __  __       _'
-        '|  \/  | ___  _ __ ___|  \/  | ___ | | ___'
-        "| |\\/| |/ _ \\| '__/ _ \\ |\\/| |/ _ \\| |/ _ \\"
-        '| |  | | (_) | | |  __/ |  | | (_) | |  __/'
-        '|_|  |_|\___/|_|  \___|_|  |_|\___/|_|\___|'
+        ' _____    _   _   _      '
+        '|  ___|__| |_| |_| | ___ '
+        "| |_ / _ \\ __| __| |/ _ \\"
+        '|  _|  __/ |_| |_| |  __/'
+        '|_|  \___|\__|\__|_|\___|'
     )
     local size cols line i
     size="$(_fettle_terminal_size)"
     cols="${size##* }"
-    if ((cols >= 80)); then
+    if ((cols >= 60)); then
         for ((i = 0; i < ${#art[@]}; i++)); do
-            line="$(printf '%s%-43s%s' "$GREEN" "${art[i]}" "$NC")"
+            line="$(printf '%s%-25s%s' "$PURPLE" "${art[i]}" "$NC")"
             case "$i" in
                 2) line+="  ${BLUE}${FETTLE_REPO_URL}${NC}" ;;
-                3) line+="  ${GREEN}${FETTLE_TAGLINE[0]}${NC}" ;;
-                4) line+="  ${GREEN}${FETTLE_TAGLINE[1]}${NC}" ;;
+                3) line+="  ${FETTLE_TAGLINE[0]}" ;;
+                4) line+="  ${FETTLE_TAGLINE[1]}" ;;
             esac
             printf '%s\n' "$line"
         done
     else
         for line in "${art[@]}"; do
-            printf '%s%s%s\n' "$GREEN" "$line" "$NC"
+            printf '%s%s%s\n' "$PURPLE" "$line" "$NC"
         done
         printf '%s%s%s\n' "$BLUE" "$FETTLE_REPO_URL" "$NC"
-        printf '%s%s%s\n' "$GREEN" "${FETTLE_TAGLINE[0]}" "$NC" "$GREEN" "${FETTLE_TAGLINE[1]}" "$NC"
+        printf '%s\n' "${FETTLE_TAGLINE[0]}" "${FETTLE_TAGLINE[1]}"
     fi
     printf '\n'
 }
@@ -786,7 +786,8 @@ readonly FETTLE_HELP_COLUMN=32
 # "mo <command>". Each command and option line is "  " + GREEN + the command
 # padded to 28 + NC + the description; the column widens to fit the name.
 # update --force and --nightly pick a Mole release channel, which Fettle's
-# update does not use, so they are left out.
+# update does not use, and remove --dry-run previews Mole's remover, which
+# Fettle replaces with a note that changes nothing, so they are left out.
 show_help() {
     local line body command prefix="  ${GREEN}"
     _fettle_official_show_help | while IFS= read -r line || [[ -n "$line" ]]; do
@@ -795,7 +796,7 @@ show_help() {
             command="${body:0:28}"
             command="${command%"${command##*[![:space:]]}"}"
             case "$command" in
-                "mo update --force" | "mo update --nightly") continue ;;
+                "mo update --force" | "mo update --nightly" | "mo remove --dry-run") continue ;;
             esac
             if [[ "$command" == "mo" || "$command" == "mo "* ]]; then
                 command="fettle${command#mo}"
@@ -897,23 +898,28 @@ if declare -F show_version > /dev/null; then
     eval "$(declare -f show_version | sed '1s/^show_version /_fettle_official_show_version /')"
 fi
 
-# The version screen names Fettle, says which Fettle release or commit is
-# running, and credits Mole and its author. Mole's version stays the first
-# line, "Mole version X.Y.Z": Mole's scripts take the number from the first
-# line and from the line holding "Mole version", as its third and its last
-# word.
+# The version screen names Fettle and the release or commit that is running,
+# then credits Mole, the GPL project Fettle is built on, with the Mole
+# version it includes, in place of Mole's "Mole version X.Y.Z" line. Only
+# Mole's own installer, updater and Homebrew updater read that line, and
+# Fettle runs none of them; Mole's tests of its updater still get Mole's
+# screen.
 show_version() {
-    local commit="" line release
+    if _fettle_mole_updater_for_tests; then
+        _fettle_official_show_version
+        return
+    fi
+    local version="" line release
     if _fettle_is_git_folder; then
-        commit="$(git -C "$SCRIPT_DIR" log -1 --format='%h, %cd' --date=short 2> /dev/null)" || commit=""
+        version="$(git -C "$SCRIPT_DIR" log -1 --format='%h (%cd)' --date=short 2> /dev/null)" || version=""
     elif release="$(_fettle_release_version)"; then
-        commit="release $release"
+        version="$release"
     fi
     _fettle_official_show_version | while IFS= read -r line || [[ -n "$line" ]]; do
         if [[ "$line" == "Mole version "* ]]; then
-            printf '%s\n' "$line" 2> /dev/null || return 0
-            printf 'Fettle: %s%s\n' "$FETTLE_REPO_URL" "${commit:+ ($commit)}" 2> /dev/null || return 0
-            printf 'Based on Mole by tw93: github.com/tw93/Mole\n' 2> /dev/null || return 0
+            printf 'Fettle%s\n' "${version:+ version $version}" 2> /dev/null || return 0
+            printf '%s\n' "$FETTLE_REPO_URL" 2> /dev/null || return 0
+            printf 'Based on Mole %s by tw93: github.com/tw93/Mole\n' "${line#Mole version }" 2> /dev/null || return 0
         else
             printf '%s\n' "$line" 2> /dev/null || return 0
         fi
@@ -997,8 +1003,7 @@ remove_mole() {
         link="$HOME/.local/bin/$name"
         [[ -L "$link" && "$(readlink "$link")" == "$SCRIPT_DIR/mole" ]] && links+=("$link")
     done
-    printf 'fettle remove does not remove Fettle: Mole'"'"'s remover looks for the official Mole, and would move ~/.config/mole, your Fettle commands included, to the Trash.\n'
-    printf '\nTo remove Fettle, nothing else:\n'
+    printf 'fettle remove changes nothing. To remove Fettle, nothing else:\n'
     if [[ ${#links[@]} -gt 0 ]]; then
         printf '  rm'
         printf ' %q' "${links[@]}"
@@ -1006,7 +1011,6 @@ remove_mole() {
     fi
     printf '  then move %s to the Trash.\n' "$SCRIPT_DIR"
     printf 'Your settings in ~/.config/mole and the logs in ~/Library/Logs/mole stay.\n'
-    printf '\nTo remove the official Mole installed with Homebrew: brew uninstall mole\n'
     log_operation "remove" "SKIPPED" "$SCRIPT_DIR" "fettle remove is not supported" || true
     return 1
 }

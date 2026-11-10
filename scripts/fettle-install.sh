@@ -8,8 +8,8 @@
 # missing; replaces an older `alias mm=` line; builds Analyze, Status,
 # Software updates, Ollama models and the command screen when one of them was
 # never built; offers to remove the official Mole when Homebrew installed it;
-# links Mole's own names, mo and mole, too when no other Mole answers to them;
-# and offers Tab completion for fettle and ft. Safe to run again.
+# removes the mo and mole links earlier versions of Fettle made; and offers
+# Tab completion for fettle and ft. Safe to run again.
 #
 # Usage: bash scripts/fettle-install.sh
 
@@ -23,7 +23,8 @@ readonly OLD_LINK_NAMES=(moremole mm)
 # What `make build` builds.
 readonly GO_PARTS=(bin/analyze-go bin/status-go bin/fettle-updates-go bin/fettle-models-go bin/fettle-view-go)
 readonly GO_PARTS_NAMES="Analyze, Status, Software updates, Ollama models and the command screen"
-# Mole's own names, linked only while no other Mole answers to them.
+# Mole's own names. Fettle no longer answers to them; the links earlier
+# versions made are removed.
 readonly MOLE_NAMES=(mo mole)
 readonly SHELL_RC="$HOME/.zshrc"
 readonly PATH_MARKER="# fettle: commands in ~/.local/bin"
@@ -165,35 +166,17 @@ report_other_mole() {
     done
 }
 
-# Link mo and mole to Fettle too, so scripts written for Mole keep working,
-# unless something else already answers to the name: it keeps the name.
-link_mole_names() {
-    local repo_root="$1" name link taken path
-    local -a linked=()
+# Remove the mo and mole links earlier versions of Fettle made. Only links to
+# a Fettle or MoreMole folder go; an official Mole keeps its names.
+remove_mole_names() {
+    local name link
     for name in "${MOLE_NAMES[@]}"; do
         link="$LINK_DIR/$name"
-        taken=""
-        if [[ -e "$link" || -L "$link" ]]; then
-            is_our_link "$link" "$repo_root/mole" || taken="$link"
-        fi
-        if [[ -z "$taken" ]]; then
-            path="$(command -v "$name" 2> /dev/null || true)"
-            [[ -z "$path" || "$path" == "$link" ]] || taken="$path"
-        fi
-        if [[ -n "$taken" ]]; then
-            printf '%s already runs %s, so it stays as it is.\n' "$name" "$taken"
-            continue
-        fi
-        if ! is_our_link "$link" "$repo_root/mole"; then
-            ln -sfn "$repo_root/mole" "$link"
-            oplog "REBUILT" "$link" "links to $repo_root/mole"
-        fi
-        linked+=("$name")
+        is_fettle_link "$link" || continue
+        rm -f "$link" # SAFE: Fettle's own link in ~/.local/bin, checked to point at a Fettle or MoreMole folder
+        oplog "REMOVED" "$link" "Mole's name for the command, which Fettle no longer uses"
+        printf '  Removed %s: Fettle answers to fettle and ft.\n' "$link"
     done
-    case ${#linked[@]} in
-        1) printf '%s now runs Fettle too.\n' "${linked[0]}" ;;
-        2) printf '%s and %s now run Fettle too.\n' "${linked[0]}" "${linked[1]}" ;;
-    esac
 }
 
 main() {
@@ -216,6 +199,7 @@ main() {
         link_command "$name" "$repo_root/mole"
     done
     remove_old_links
+    remove_mole_names
     ensure_path
     remove_old_alias
     # shellcheck source=lib/fettle/migrate.sh
@@ -238,8 +222,6 @@ main() {
 
     offer_official_removal
     report_other_mole "$repo_root"
-    printf '\n'
-    link_mole_names "$repo_root"
 
     # Mole's own completion setup asks before it changes ~/.zshrc and replaces
     # an earlier Mole completion line. ~/.local/bin goes first on PATH so it

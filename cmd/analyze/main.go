@@ -25,7 +25,7 @@ var (
 // usageText is the help every other Mole subcommand prints by hand. The Go flag
 // package would otherwise render "Usage of /usr/local/bin/analyze-go:", naming a
 // bundled binary the user never typed, so the text is written out here instead.
-const usageText = `Usage: mo analyze [OPTIONS] [PATH]
+const usageText = `Usage: fettle analyze [OPTIONS] [PATH]
 
 Explore disk usage. Without PATH, scans a machine-wide overview.
 
@@ -34,9 +34,9 @@ Options:
   -h, --help      Show this help message
 
 Examples:
-  mo analyze                 Machine-wide overview
-  mo analyze ~/Library       Scan one directory
-  mo analyze --json /Volumes Machine-readable output
+  fettle analyze                 Machine-wide overview
+  fettle analyze ~/Library       Scan one directory
+  fettle analyze --json /Volumes Machine-readable output
 `
 
 // parseArgs applies Mole's CLI conventions to the flag package: help goes to
@@ -44,7 +44,7 @@ Examples:
 // every bash subcommand does, rather than the flag package's stderr-and-2.
 // It returns the exit code and whether main should keep running.
 func parseArgs(args []string, stdout, stderr io.Writer) (int, bool) {
-	flag.CommandLine.Init("mo analyze", flag.ContinueOnError)
+	flag.CommandLine.Init("fettle analyze", flag.ContinueOnError)
 	// Parse must not print: this function decides which stream each message
 	// belongs on, and the default handler writes usage to stderr for both.
 	flag.CommandLine.SetOutput(io.Discard)
@@ -57,7 +57,7 @@ func parseArgs(args []string, stdout, stderr io.Writer) (int, bool) {
 		return 0, false
 	case err != nil:
 		_, _ = fmt.Fprintln(stderr, err)
-		_, _ = fmt.Fprintln(stderr, "Use 'mo analyze --help' for usage information")
+		_, _ = fmt.Fprintln(stderr, "Use 'fettle analyze --help' for usage information")
 		return 1, false
 	}
 	return 0, true

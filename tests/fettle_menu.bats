@@ -409,22 +409,22 @@ echo "== left: $(find "$TMPDIR" -mindepth 1 | wc -l | tr -d " ")"
 	run /bin/bash --noprofile --norc -c "$(prelude)"'
 show_brand_banner
 echo "---"
-_fettle_terminal_size() { echo "40 60"; }
+_fettle_terminal_size() { echo "40 59"; }
 show_brand_banner
 '
 	[ "$status" -eq 0 ] || { echo "$output"; return 1; }
 	local wide="${output%%---*}" narrow="${output#*---}"
-	# The logo spells Fettle: its last row ends in the "Mole" letters.
-	[[ "$wide" == *'|_|  |_|\___/|_|  \___|_|  |_|\___/|_|\___|'* ]] || return 1
-	[[ "$wide" != *"mole.fit"* ]] || return 1
-	# Wide: the address and the two tagline lines sit beside the logo's
-	# last three rows, and no row is wider than 80 columns.
+	# The logo spells Fettle, not MoreMole.
+	[[ "$wide" == *'|_|  \___|\__|\__|_|\___|'* ]] || return 1
+	[[ "$wide" != *"mole.fit"* && "$wide" != *'|  \/  |'* ]] || return 1
+	# Wide (60 columns or more): the address and the two tagline lines sit
+	# beside the logo's last three rows, and no row is wider than 60 columns.
 	[[ "$wide" == *'/ _ \  github.com/RosBradley/fettle-cli'* ]] || return 1
 	[[ "$wide" == *'__/  Deep clean and optimize your Mac.'* ]] || return 1
 	[[ "$wide" == *'\___|  Manage, update and remove apps.'* ]] || return 1
 	local row
 	while IFS= read -r row; do
-		[ "${#row}" -le 80 ] || { echo "too wide: $row"; return 1; }
+		[ "${#row}" -le 60 ] || { echo "too wide: $row"; return 1; }
 	done <<< "$wide"
 	# Narrow: they move under the logo, each on its own line.
 	[[ "$narrow" == *$'\ngithub.com/RosBradley/fettle-cli\nDeep clean and optimize your Mac.\nManage, update and remove apps.'* ]]
@@ -435,13 +435,11 @@ show_brand_banner
 	[ "$status" -eq 0 ] || { echo "$output"; return 1; }
 	local expected
 	expected="$(sed -n 's/^VERSION="\(.*\)"$/\1/p' "$PROJECT_ROOT/mole")"
-	[[ "$output" == *"Mole version $expected"$'\nFettle: github.com/RosBradley/fettle-cli'*$'\nBased on Mole by tw93: github.com/tw93/Mole'* ]] || return 1
-	# Mole's own scripts read the number from the first line (Mole's updater)
-	# and from the "Mole version" line, as its last word (install.sh) and as
-	# its third (lib/core/common.sh).
-	[ "$(printf '%s\n' "$output" | awk 'NF {print $NF; exit}')" = "$expected" ] || return 1
-	[ "$(printf '%s\n' "$output" | awk '/Mole version/ {print $NF; exit}')" = "$expected" ] || return 1
-	[ "$(printf '%s\n' "$output" | awk '/Mole version/ {print $3; exit}')" = "$expected" ]
+	# This git folder names its commit; Mole's version moves to the credit.
+	local commit
+	commit="$(git -C "$PROJECT_ROOT" log -1 --format='%h (%cd)' --date=short)"
+	[[ "$output" == *"Fettle version $commit"$'\ngithub.com/RosBradley/fettle-cli\n'"Based on Mole $expected by tw93: github.com/tw93/Mole"$'\n'* ]] || { echo "$output"; return 1; }
+	[[ "$output" != *"Mole version"* ]]
 }
 
 @test "fettle remove changes nothing and says what to remove instead" {
@@ -451,8 +449,9 @@ show_brand_banner
 	ln -sfn /usr/bin/true "$HOME/.local/bin/mo"
 	run env HOME="$HOME" NO_COLOR=1 "$PROJECT_ROOT/mole" remove
 	[ "$status" -eq 1 ] || { echo "$output"; return 1; }
-	[[ "$output" == *"does not remove Fettle"* ]] || return 1
-	[[ "$output" == *"rm $HOME/.local/bin/ft"*"move $PROJECT_ROOT to the Trash"*"brew uninstall mole"* ]] || return 1
+	[[ "$output" == *"fettle remove changes nothing. To remove Fettle, nothing else:"* ]] || return 1
+	[[ "$output" == *"rm $HOME/.local/bin/ft"*"move $PROJECT_ROOT to the Trash"* ]] || return 1
+	[[ "$output" != *"Mole"* ]] || return 1
 	# Only links to this folder are listed; another tool's mo is not.
 	[[ "$output" != *".local/bin/mo "* && "$output" != *".local/bin/mo"$'\n'* ]] || return 1
 	[ "$(cat "$HOME/.config/mole/my_commands")" = "keep" ] || return 1
@@ -467,7 +466,9 @@ show_brand_banner
 	[[ "$output" == *"  fettle clean --dry-run           Preview cleanup"* ]] || return 1
 	[[ "$output" == *"  fettle touchid enable --dry-run  Preview Touch ID setup"* ]] || return 1
 	[[ "$output" == *"  --debug                          Show detailed operation logs"* ]] || return 1
-	[[ "$output" == *"  fettle update   "* && "$output" == *"  fettle remove --dry-run "* ]] || return 1
+	[[ "$output" == *"  fettle update   "* && "$output" == *"  fettle remove   "* ]] || return 1
+	# fettle remove changes nothing, so it has no preview.
+	[[ "$output" != *"remove --dry-run"* ]] || return 1
 	# Mole's release channels do nothing in Fettle, so they are not offered.
 	[[ "$output" != *"update --force"* && "$output" != *"update --nightly"* ]] || return 1
 	[[ "$output" != *$'\n  mo '* ]]
@@ -510,10 +511,11 @@ interactive_main_menu < <(printf "xq\n")
 @test "Tab completion covers fettle and ft, and setup uses the fettle command" {
 	run "$PROJECT_ROOT/bin/completion.sh" zsh
 	[ "$status" -eq 0 ] || return 1
-	[[ "$output" == *"#compdef mole mo fettle ft"* ]] || return 1
-	[[ "$output" == *"compdef _mole mole mo fettle ft"* ]] || return 1
+	# Only Fettle's names: an official Mole keeps its own completion.
+	[[ "$output" == *$'#compdef fettle ft\n'* ]] || return 1
+	[[ "$output" == *$'\ncompdef _mole fettle ft' ]] || return 1
 	run "$PROJECT_ROOT/bin/completion.sh" bash
-	[[ "$output" == *"complete -F _mole_completions mole mo fettle ft"* ]] || return 1
+	[[ "$output" == *$'\ncomplete -F _mole_completions fettle ft' ]] || return 1
 
 	mkdir -p "$HOME/stub-bin"
 	printf '#!/bin/bash\n' > "$HOME/stub-bin/fettle"

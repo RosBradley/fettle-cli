@@ -853,7 +853,7 @@ echo sourced
 @test "mo history rejects unknown options" {
     run env HOME="$HOME" "$PROJECT_ROOT/mole" history --bad-option
     [ "$status" -eq 1 ]
-    [[ "$output" == *"Unknown option for mo history"* ]]
+    [[ "$output" == *"Unknown option for fettle history"* ]]
 }
 
 @test "mo history rejects invalid limit values" {

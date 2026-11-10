@@ -232,11 +232,11 @@ func pinFooterToBottom(view string, height int) string {
 
 // renderStatusFooter is the bottom bar, styled as the command screen's: a
 // gray divider across the window, then the keys in gray, joined by "|", with
-// the current time between refreshes. A narrow window drops K, then C, as
-// the command screen drops its optional keys, before cutting what is left.
+// the current time between refreshes. A narrow window drops C, as the
+// command screen drops its optional keys, before cutting what is left.
 func renderStatusFooter(refresh time.Duration, width int) string {
 	width = max(width, 1)
-	keys := []string{fmt.Sprintf("R Refresh %gs", refresh.Seconds()), "C CPU cores", "K Cat", "Q Quit"}
+	keys := []string{fmt.Sprintf("R Refresh %gs", refresh.Seconds()), "C CPU cores", "Q Quit"}
 	join := func() string {
 		parts := make([]string, len(keys))
 		for i, k := range keys {
@@ -245,7 +245,7 @@ func renderStatusFooter(refresh time.Duration, width int) string {
 		return strings.Join(parts, "  |  ")
 	}
 	bar := join()
-	for _, optional := range []string{"K Cat", "C CPU cores"} {
+	for _, optional := range []string{"C CPU cores"} {
 		if ansi.StringWidth(bar) <= width {
 			break
 		}

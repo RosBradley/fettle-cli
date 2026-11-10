@@ -9,9 +9,9 @@ import (
 	"github.com/charmbracelet/x/ansi"
 )
 
-// Colors match Mole's shell UI; NO_COLOR turns them off.
+// Colors match the shell UI (lib/core/base.sh); NO_COLOR turns them off.
 var (
-	titleStyle  = "\x1b[1;35m"
+	titleStyle  = "\x1b[1;38;5;30m"
 	grayStyle   = "\x1b[0;38;5;244m"
 	greenStyle  = "\x1b[0;32m"
 	yellowStyle = "\x1b[0;33m"

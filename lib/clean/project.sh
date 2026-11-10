@@ -197,7 +197,7 @@ warn_purge_config_write_failure() {
 # Save discovered paths to config.
 save_discovered_paths() {
     local -a paths=("$@")
-    write_purge_config "# Mole Purge Paths - Auto-discovered project directories
+    write_purge_config "# Fettle Purge Paths - Auto-discovered project directories
 # Edit this file to customize, or run: mo purge --paths
 # Add one path per line (supports ~ for home directory)
 " "${paths[@]}"
@@ -239,7 +239,7 @@ load_purge_config() {
             [[ -n "$path" ]] && discovered+=("$path")
         done <<< "$discovery_output"
         if [[ $PURGE_DISCOVERY_STATUS -ne 0 && -z "${_PURGE_DISCOVERY_SILENT:-}" ]]; then
-            echo -e "${YELLOW}${ICON_WARNING}${NC} Project discovery was incomplete; using completed roots without saving them. Run mo purge --paths to review search paths." >&2
+            echo -e "${YELLOW}${ICON_WARNING}${NC} Project discovery was incomplete; using completed roots without saving them. Run fettle purge --paths to review search paths." >&2
         fi
 
         if [[ ${#discovered[@]} -gt 0 ]]; then
@@ -1996,7 +1996,7 @@ confirm_purge_cleanup() {
     if [[ $cloud_count -gt 0 ]]; then
         echo ""
         echo -e "${YELLOW}${ICON_WARNING}${NC} Cloud-synced artifacts may also be removed from other devices."
-        echo -e "${GRAY}Use 'mo purge --paths' to exclude cloud storage roots.${NC}"
+        echo -e "${GRAY}Use 'fettle purge --paths' to exclude cloud storage roots.${NC}"
     fi
 
     echo -ne "${PURPLE}${ICON_ARROW}${NC} Remove ${item_count} ${item_text}, ${size_display}${unknown_hint}  ${GREEN}Enter${NC} confirm, ${GRAY}ESC${NC} cancel: "
@@ -2027,7 +2027,7 @@ confirm_purge_cleanup() {
 clean_project_artifacts() {
     if [[ ! -t 0 && "${MOLE_DRY_RUN:-0}" != "1" && "${MOLE_PURGE_YES:-0}" != "1" ]]; then
         PURGE_RUN_OUTCOME="cancelled"
-        echo "Purge requires confirmation. Run mo purge in a terminal, or use --dry-run to preview and --yes to confirm unattended cleanup." >&2
+        echo "Purge requires confirmation. Run fettle purge in a terminal, or use --dry-run to preview and --yes to confirm unattended cleanup." >&2
         return 1
     fi
     PURGE_RUN_OUTCOME="completed"
@@ -2417,7 +2417,7 @@ clean_project_artifacts() {
         if [[ ${#failed_scan_roots[@]} -gt $failed_shown_limit ]]; then
             echo -e "  ${GRAY}and $((${#failed_scan_roots[@]} - failed_shown_limit)) more${NC}"
         fi
-        echo -e "${GRAY}Re-run with 'mo purge --debug' to inspect the scan failure.${NC}"
+        echo -e "${GRAY}Re-run with 'fettle purge --debug' to inspect the scan failure.${NC}"
         if [[ $completed_scan_count -eq 0 ]]; then
             printf '\n'
             PURGE_RUN_OUTCOME="scan_failed"
@@ -3237,7 +3237,7 @@ clean_project_artifacts() {
         fi
         if [[ $protection_rc -eq 0 ]]; then
             if [[ "$PURGE_PROTECTION_UNVERIFIED" == "true" ]]; then
-                echo -e "${YELLOW}${ICON_WARNING}${NC} Skipped $display_item_path (could not inspect contents; re-run mo purge to review it again)"
+                echo -e "${YELLOW}${ICON_WARNING}${NC} Skipped $display_item_path (could not inspect contents; re-run fettle purge to review it again)"
             else
                 debug_log "Skipping purge target that became protected after review: $item_path"
             fi
@@ -3294,7 +3294,7 @@ clean_project_artifacts() {
                     fi
                     return "$removal_status"
                 fi
-                echo -e "${YELLOW}${ICON_WARNING}${NC} Skipped $display_item_path (final removal check failed; re-run mo purge to review it again)"
+                echo -e "${YELLOW}${ICON_WARNING}${NC} Skipped $display_item_path (final removal check failed; re-run fettle purge to review it again)"
             fi
         fi
         if [[ -t 1 ]]; then

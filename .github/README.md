@@ -88,7 +88,6 @@ Software removal, Slim, Installer files, Software updates and the Ollama model i
 - **Optimize** names what it applied, or would apply in a Preview, in its summary.
 - **Update Fettle** installs the newest Fettle release, checked against its published checksums. Mole's own updater never runs, because it would replace Fettle with Mole.
 - **`fettle remove`** changes nothing. It tells you exactly what to delete to remove Fettle, instead of running Mole's remover, which would also move your settings to the Trash.
-- **`mo` and `mole`** run Fettle too, so scripts written for Mole keep working.
 
 ## Install
 
@@ -108,11 +107,11 @@ When a new Fettle release is out, the menu says so. Choose **Update Fettle** to 
 
 ## Uninstall
 
-Delete the `~/.local/share/fettle` folder, and the links Fettle made in `~/.local/bin`: `fettle` and `ft`, and `mo` and `mole` if it made those. Your settings stay in `~/.config/mole` until you delete that too.
+Delete the `~/.local/share/fettle` folder, and the links Fettle made in `~/.local/bin`: `fettle` and `ft`. Your settings stay in `~/.config/mole` until you delete that too.
 
 ## Mole and Fettle
 
-Fettle follows Mole closely: Mole's changes are brought in regularly, and Mole's commands, options and output work the same, so scripts written for Mole keep working. If you'd rather have the official Mole, get it at [github.com/tw93/Mole](https://github.com/tw93/Mole).
+Fettle follows Mole closely: Mole's changes are brought in regularly, and Mole's commands and options work the same under `fettle`, so a script written for Mole works once `mo` becomes `fettle`. If you'd rather have the official Mole, get it at [github.com/tw93/Mole](https://github.com/tw93/Mole).
 
 The full list of changes, and how each part works, is in [FETTLE.md](https://github.com/RosBradley/fettle-cli/blob/fettle/FETTLE.md).
 

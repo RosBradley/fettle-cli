@@ -185,30 +185,27 @@ install() {
 	[[ "$output" == *'Do not remove it with "mo remove"'* ]]
 }
 
-@test "installer links mo and mole to Fettle when nothing else answers to them" {
+@test "installer removes the mo and mole links Fettle made and keeps anyone else's" {
+	mkdir -p "$FAKE_HOME/.local/bin" "$HOME/old-fettle/lib/fettle" "$REPO/lib/core"
+	cp "$PROJECT_ROOT/lib/core/base.sh" "$PROJECT_ROOT/lib/core/log.sh" "$REPO/lib/core/"
+	: > "$HOME/old-fettle/lib/fettle/menu.sh"
+	ln -s "$REPO/mole" "$FAKE_HOME/.local/bin/mo"
+	ln -s "$HOME/old-fettle/mole" "$FAKE_HOME/.local/bin/mole"
 	run install
 	[ "$status" -eq 0 ] || { echo "$output"; return 1; }
-	[ "$(readlink "$FAKE_HOME/.local/bin/mo")" = "$REPO/mole" ] || return 1
-	[ "$(readlink "$FAKE_HOME/.local/bin/mole")" = "$REPO/mole" ] || return 1
-	[[ "$output" == *"mo and mole now run Fettle too."* ]] || return 1
+	[ ! -e "$FAKE_HOME/.local/bin/mo" ] && [ ! -L "$FAKE_HOME/.local/bin/mo" ] || return 1
+	[ ! -e "$FAKE_HOME/.local/bin/mole" ] && [ ! -L "$FAKE_HOME/.local/bin/mole" ] || return 1
+	[[ "$output" == *"Removed $FAKE_HOME/.local/bin/mo: Fettle answers to fettle and ft."* ]] || return 1
+	[[ "$output" == *"Removed $FAKE_HOME/.local/bin/mole: Fettle answers to fettle and ft."* ]] || return 1
+	grep -qF "[install] REMOVED $FAKE_HOME/.local/bin/mo (Mole's name for the command, which Fettle no longer uses)" \
+		"$FAKE_HOME/Library/Logs/mole/operations.log" || return 1
 
-	# Running it again keeps the links and does not take them for another Mole.
-	run env HOME="$FAKE_HOME" PATH="$FAKE_HOME/.local/bin:$STUBS:/usr/bin:/bin" BREW_LOG="$BREW_LOG" \
-		/bin/bash "$REPO/scripts/fettle-install.sh" < /dev/null
-	[ "$status" -eq 0 ] || { echo "$output"; return 1; }
-	[ "$(readlink "$FAKE_HOME/.local/bin/mo")" = "$REPO/mole" ] || return 1
-	[[ "$output" != *"Another Mole is still installed"* && "$output" != *"stays as it is"* ]]
-}
-
-@test "installer leaves mo and mole to another Mole that still answers to them" {
-	printf '#!/bin/bash\n' > "$STUBS/mo"
-	chmod +x "$STUBS/mo"
-	mkdir -p "$FAKE_HOME/.local/bin"
-	ln -s /somewhere/else/mole "$FAKE_HOME/.local/bin/mole"
+	# An official Mole's links are never touched, and Fettle makes no new ones.
+	rm -f "$FAKE_HOME/.local/bin/fettle" "$FAKE_HOME/.local/bin/ft" # SAFE: links in the test-owned fake HOME
+	ln -s /opt/mole/mole "$FAKE_HOME/.local/bin/mole"
 	run install
 	[ "$status" -eq 0 ] || { echo "$output"; return 1; }
-	[ ! -e "$FAKE_HOME/.local/bin/mo" ] || return 1
-	[ "$(readlink "$FAKE_HOME/.local/bin/mole")" = "/somewhere/else/mole" ] || return 1
-	[[ "$output" == *"mo already runs $STUBS/mo, so it stays as it is."* ]] || return 1
-	[[ "$output" == *"mole already runs $FAKE_HOME/.local/bin/mole, so it stays as it is."* ]]
+	[ "$(readlink "$FAKE_HOME/.local/bin/mole")" = "/opt/mole/mole" ] || return 1
+	[ ! -e "$FAKE_HOME/.local/bin/mo" ] && [ ! -L "$FAKE_HOME/.local/bin/mo" ] || return 1
+	[[ "$output" != *"Removed $FAKE_HOME/.local/bin/mole"* ]]
 }

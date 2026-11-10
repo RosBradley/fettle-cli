@@ -7,7 +7,7 @@ set -euo pipefail
 # User state and installed tools must never run with inherited root privileges.
 # Individual maintenance operations request administrator access themselves.
 if [[ "$EUID" -eq 0 ]]; then
-    printf '%s\n' 'Run Mole without sudo; it requests administrator access when needed.' >&2
+    printf '%s\n' 'Run Fettle without sudo; it requests administrator access when needed.' >&2
     exit 1
 fi
 
@@ -906,7 +906,7 @@ perform_installers() {
             if [[ -n "$INSTALLER_SCAN_FAILURE_PATH" ]]; then
                 printf ' (%s)' "$(installer_display_text "$INSTALLER_SCAN_FAILURE_PATH")" >&2
             fi
-            printf '\nCheck that the scan locations are readable and responsive, then retry mo installer.\n' >&2
+            printf '\nCheck that the scan locations are readable and responsive, then retry fettle installer.\n' >&2
             return "$collect_status"
         fi
         echo -e "${GREEN}${ICON_SUCCESS}${NC} No installer files to clean"
@@ -1053,7 +1053,7 @@ main() {
             if [[ $total_delete_failed -gt 0 ]]; then
                 show_summary
                 if mole_rc_timeout "$exit_code"; then
-                    echo -e "${YELLOW}${ICON_WARNING}${NC} A file check timed out, so later selections were left in place. Retry mo installer."
+                    echo -e "${YELLOW}${ICON_WARNING}${NC} A file check timed out, so later selections were left in place. Retry fettle installer."
                 fi
             fi
             return "$exit_code"

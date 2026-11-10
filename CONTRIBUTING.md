@@ -1,4 +1,4 @@
-# Contributing to Mole
+# Contributing to Fettle
 
 ## Setup
 
@@ -114,7 +114,7 @@ stop_inline_spinner "Complete"
 Enable debug output with `--debug`:
 
 ```bash
-mo --debug clean
+fettle --debug clean
 ./bin/clean.sh --debug
 ```
 
@@ -133,11 +133,11 @@ Format: `[MODULE_NAME] message` output to stderr.
 - macOS 12 or newer, works on Intel and Apple Silicon
 - Default macOS Bash 3.2+; administrator privileges are required for system-level cleanup tasks
 - Command Line Tools (`xcode-select --install`) for curl, tar, and standard utilities
-- Go 1.26+ is required to build the `mo status` or `mo analyze` TUI binaries locally.
+- Go 1.26+ is required to build the `fettle status` and `fettle analyze` TUI binaries locally.
 
 ## Go Components
 
-`mo status` and `mo analyze` use Go with Bubble Tea for interactive dashboards.
+`fettle status` and `fettle analyze` use Go with Bubble Tea for interactive dashboards.
 
 **Code organization:**
 
@@ -175,16 +175,14 @@ For releases, GitHub Actions builds architecture-specific binaries automatically
 
 ## Pull Requests
 
-1. Fork and create branch from `main`
+1. Fork and create a branch from `fettle`
 2. Make changes
 3. Run checks: `./scripts/check.sh`
 4. Commit and push
-5. Open PR targeting `main`
+5. Open a PR targeting `fettle`
 
 CI will verify formatting, linting, and tests.
 
 ## Licensing
 
-Mole is GPL-3.0, and that is the licence your contribution carries. There is no CLA. You keep your copyright and I get only what the licence gives me, which means I cannot put your code under a different one.
-
-I also sell a closed-source Mac app at [mole.fit](https://mole.fit). It is a separate codebase rather than a build of this one, and neither program calls the other. What the two share is what anyone can observe about macOS: where a cache lives, what an app leaves behind. If you would rather not contribute alongside a paid product, that is a fair call, and I would rather you made it now than later.
+Fettle is GPL-3.0, like Mole, the project by tw93 it is built on, and that is the licence your contribution carries. There is no CLA, and you keep your copyright.

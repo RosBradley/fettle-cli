@@ -455,7 +455,7 @@ func (m model) View() string {
 				colorGray, colorReset)
 		}
 		if deleteCount > 1 && hasAppBundle {
-			fmt.Fprintf(&b, "%sOnly the app bundle moves to Trash. Use mo uninstall <App> to also remove support files.%s\n",
+			fmt.Fprintf(&b, "%sOnly the app bundle moves to Trash. Use fettle uninstall <App> to also remove support files.%s\n",
 				colorYellow, colorReset)
 		} else if deleteCount <= 1 && isAppBundleEntry(*m.deleteTarget) {
 			fmt.Fprintf(&b, "%sApp bundle: only the bundle moves to Trash. Use %s to also remove its support files.%s\n",
@@ -496,12 +496,12 @@ func uninstallCommandForApp(name string) string {
 		appName = name
 	}
 	if appName == "" || strings.HasPrefix(appName, "-") || strings.IndexFunc(appName, unicode.IsControl) >= 0 {
-		return "mo uninstall <App>"
+		return "fettle uninstall <App>"
 	}
 	if isShellSafeUnquotedAppName(appName) {
-		return "mo uninstall " + appName
+		return "fettle uninstall " + appName
 	}
-	return "mo uninstall '" + strings.ReplaceAll(appName, "'", `'\''`) + "'"
+	return "fettle uninstall '" + strings.ReplaceAll(appName, "'", `'\''`) + "'"
 }
 
 func isShellSafeUnquotedAppName(name string) bool {

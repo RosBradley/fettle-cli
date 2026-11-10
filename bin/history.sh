@@ -12,9 +12,9 @@ HISTORY_JSON=false
 HISTORY_LIMIT="$MOLE_HISTORY_DEFAULT_LIMIT"
 
 show_history_help() {
-    echo "Usage: mo history [OPTIONS]"
+    echo "Usage: fettle history [OPTIONS]"
     echo ""
-    echo "Review recent Mole operation and deletion activity."
+    echo "Review recent Fettle operation and deletion activity."
     echo ""
     echo "Options:"
     echo "  --json           Output history as JSON"
@@ -44,13 +44,13 @@ main() {
                 exit 0
                 ;;
             -*)
-                echo "Unknown option for mo history: $1" >&2
-                echo "Run 'mo history --help' for usage." >&2
+                echo "Unknown option for fettle history: $1" >&2
+                echo "Run 'fettle history --help' for usage." >&2
                 exit 1
                 ;;
             *)
-                echo "Unexpected argument for mo history: $1" >&2
-                echo "Run 'mo history --help' for usage." >&2
+                echo "Unexpected argument for fettle history: $1" >&2
+                echo "Run 'fettle history --help' for usage." >&2
                 exit 1
                 ;;
         esac

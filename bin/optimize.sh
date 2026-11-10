@@ -8,7 +8,7 @@ set -euo pipefail
 # User state and installed tools must never run with inherited root privileges.
 # Individual maintenance operations request administrator access themselves.
 if [[ "$EUID" -eq 0 ]]; then
-    printf '%s\n' 'Run Mole without sudo; it requests administrator access when needed.' >&2
+    printf '%s\n' 'Run Fettle without sudo; it requests administrator access when needed.' >&2
     exit 1
 fi
 
@@ -237,7 +237,7 @@ main() {
                 ;;
             *)
                 echo "Unknown optimize option: $arg" >&2
-                echo "Use 'mo optimize --help' for supported options." >&2
+                echo "Use 'fettle optimize --help' for supported options." >&2
                 exit 1
                 ;;
         esac

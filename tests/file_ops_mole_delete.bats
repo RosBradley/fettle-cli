@@ -1011,7 +1011,7 @@ EOF
     [[ "$output" == *"permission denied|Try running again or check file ownership"* ]] || return 1
     [[ "$output" == *"checks=2"* ]] || return 1
     [[ "$output" != *"detector noise"* ]] || return 1
-    [[ "$output" != *"mole touchid"* ]]
+    [[ "$output" != *"fettle touchid"* ]]
 }
 
 @test "common library wires the production Touch ID detector into diagnosis" {
@@ -1021,7 +1021,7 @@ $(prelude)
 if check_touchid_support; then
     expected="authentication failed|Check your credentials or restart Terminal"
 else
-    expected="authentication failed|Try 'mole touchid' to enable fingerprint auth"
+    expected="authentication failed|Try 'fettle touchid' to enable fingerprint auth"
 fi
 actual=\$(diagnose_removal_failure "\$MOLE_ERR_AUTH_FAILED" "Microsoft Word")
 [[ "\$actual" == "\$expected" ]] || exit 1
@@ -1043,8 +1043,8 @@ diagnose_removal_failure "1" "Microsoft Word"
 EOF
 
     [ "$status" -eq 0 ]
-    [[ "$output" == *"authentication failed|Try 'mole touchid' to enable fingerprint auth"* ]] || return 1
-    [[ "$output" == *"permission denied|Try 'mole touchid' or check with 'ls -l'"* ]]
+    [[ "$output" == *"authentication failed|Try 'fettle touchid' to enable fingerprint auth"* ]] || return 1
+    [[ "$output" == *"permission denied|Try 'fettle touchid' or check with 'ls -l'"* ]]
 }
 
 @test "removal diagnosis ignores a same-named executable when the detector is missing" {
@@ -1067,7 +1067,7 @@ diagnose_removal_failure "\$MOLE_ERR_AUTH_FAILED" "Microsoft Word"
 EOF
 
     [ "$status" -eq 0 ]
-    [[ "$output" == *"authentication failed|Try 'mole touchid' to enable fingerprint auth"* ]] || return 1
+    [[ "$output" == *"authentication failed|Try 'fettle touchid' to enable fingerprint auth"* ]] || return 1
     [[ ! -e "$trace" ]]
 }
 

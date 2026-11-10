@@ -8,7 +8,7 @@ set -euo pipefail
 # User state and installed tools must never run with inherited root privileges.
 # Individual maintenance operations request administrator access themselves.
 if [[ "$EUID" -eq 0 ]]; then
-    printf '%s\n' 'Run Mole without sudo; it requests administrator access when needed.' >&2
+    printf '%s\n' 'Run Fettle without sudo; it requests administrator access when needed.' >&2
     exit 1
 fi
 
@@ -2012,7 +2012,7 @@ uninstall_list_apps() {
             "$size_display"
     done
 
-    printf '\n%d application(s)  |  Remove with: mo uninstall <UNINSTALL NAME>\n\n' "$total"
+    printf '\n%d application(s)  |  Remove with: fettle uninstall <UNINSTALL NAME>\n\n' "$total"
     [[ -z "$brew_inventory_dir" ]] || rm -rf -- "$brew_inventory_dir" # SAFE: private read-only Homebrew inventory directory created above
     return 0
 }
@@ -2055,13 +2055,13 @@ main() {
                 ;;
             "--whitelist")
                 echo "Unknown uninstall option: $arg" >&2
-                echo "Whitelist management is currently supported by: mo clean --whitelist / mo optimize --whitelist" >&2
-                echo "Use 'mo uninstall --help' for supported options." >&2
+                echo "Whitelist management is currently supported by: fettle clean --whitelist / fettle optimize --whitelist" >&2
+                echo "Use 'fettle uninstall --help' for supported options." >&2
                 exit 1
                 ;;
             -*)
                 echo "Unknown uninstall option: $arg" >&2
-                echo "Use 'mo uninstall --help' for supported options." >&2
+                echo "Use 'fettle uninstall --help' for supported options." >&2
                 exit 1
                 ;;
             *)

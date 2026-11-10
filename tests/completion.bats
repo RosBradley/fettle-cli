@@ -43,7 +43,7 @@ setup() {
 @test "completion --help shows usage" {
 	run "$PROJECT_ROOT/bin/completion.sh" --help
 	[ "$status" -eq 0 ]
-	[[ "$output" == *"Usage: mole completion"* ]] || return 1
+	[[ "$output" == *"Usage: fettle completion"* ]] || return 1
 	[[ "$output" == *"Auto-install"* ]]
 }
 
@@ -51,7 +51,7 @@ setup() {
 	run "$PROJECT_ROOT/bin/completion.sh" bash
 	[ "$status" -eq 0 ]
 	[[ "$output" == *"_mole_completions"* ]] || return 1
-	[[ "$output" == *"complete -F _mole_completions mole mo"* ]]
+	[[ "$output" == *"complete -F _mole_completions fettle ft"* ]]
 }
 
 @test "completion bash script includes all commands" {
@@ -68,10 +68,10 @@ setup() {
 	[[ "$output" == *"completion"* ]]
 }
 
-@test "completion bash script supports mo command" {
+@test "completion bash script supports the fettle and ft commands" {
 	run "$PROJECT_ROOT/bin/completion.sh" bash
 	[ "$status" -eq 0 ]
-	[[ "$output" == *"complete -F _mole_completions mole mo"* ]]
+	[[ "$output" == *"complete -F _mole_completions fettle ft"* ]]
 }
 
 @test "completion bash includes current clean, analyze, history, and purge options only" {
@@ -87,7 +87,7 @@ setup() {
 }
 
 @test "completion bash can be loaded in bash" {
-	run /bin/bash -c "eval \"\$(\"$PROJECT_ROOT/bin/completion.sh\" bash)\" && complete -p mole"
+	run /bin/bash -c "eval \"\$(\"$PROJECT_ROOT/bin/completion.sh\" bash)\" && complete -p fettle"
 	[ "$status" -eq 0 ]
 	[[ "$output" == *"_mole_completions"* ]]
 }
@@ -95,7 +95,7 @@ setup() {
 @test "completion zsh generates valid zsh script" {
 	run "$PROJECT_ROOT/bin/completion.sh" zsh
 	[ "$status" -eq 0 ]
-	[[ "$output" == *"#compdef mole mo"* ]] || return 1
+	[[ "$output" == *"#compdef fettle ft"* ]] || return 1
 	[[ "$output" == *"_mole()"* ]]
 }
 

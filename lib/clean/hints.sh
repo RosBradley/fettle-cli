@@ -406,7 +406,7 @@ show_project_artifact_hint_notice() {
     if [[ "$PROJECT_ARTIFACT_HINT_DETECTED" != "true" ]]; then
         if [[ "${PROJECT_ARTIFACT_HINT_SCAN_SKIPPED:-false}" == "true" ]]; then
             note_activity
-            echo -e "  ${YELLOW}${ICON_WARNING}${NC} Build artifacts · scan skipped · ${GRAY}mo purge${NC}"
+            echo -e "  ${YELLOW}${ICON_WARNING}${NC} Build artifacts · scan skipped · ${GRAY}fettle purge${NC}"
         fi
         return 0
     fi
@@ -414,9 +414,9 @@ show_project_artifact_hint_notice() {
     local hint_count_label="$PROJECT_ARTIFACT_HINT_COUNT"
     [[ "$PROJECT_ARTIFACT_HINT_TRUNCATED" == "true" ]] && hint_count_label="${hint_count_label}+"
 
-    local review_command="mo purge"
+    local review_command="fettle purge"
     if [[ $PROJECT_ARTIFACT_HINT_ESTIMATE_SAMPLES -gt 0 && $PROJECT_ARTIFACT_HINT_ESTIMATED_KB -eq 0 ]]; then
-        review_command="mo purge --include-empty"
+        review_command="fettle purge --include-empty"
     fi
 
     # A fully measured estimate below the floor is not worth a row: four

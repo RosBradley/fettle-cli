@@ -2,7 +2,7 @@
 # User state and installed tools must never run with inherited root privileges.
 # Individual maintenance operations request administrator access themselves.
 if [[ "$EUID" -eq 0 ]]; then
-    printf '%s\n' 'Run Mole without sudo; it requests administrator access when needed.' >&2
+    printf '%s\n' 'Run Fettle without sudo; it requests administrator access when needed.' >&2
     exit 1
 fi
 
@@ -64,7 +64,7 @@ emit_fish_completions() {
 # leaves the config untouched and says what to fix.
 _completion_rc_target() {
     mole_resolve_link_chain "$1" && return 0
-    log_error "Could not follow the shell config link $1, so it was left unchanged. Fix or remove that link, then rerun mo completion"
+    log_error "Could not follow the shell config link $1, so it was left unchanged. Fix or remove that link, then rerun fettle completion"
     return 1
 }
 
@@ -141,7 +141,7 @@ if [[ $# -eq 0 ]]; then
             if [[ "${MOLE_DRY_RUN:-0}" != "1" ]]; then
                 remove_stale_completion_entries "$config_fish" "Removed stale completion entries from config.fish" || true
             fi
-            log_error "mole not found in PATH, install Mole before enabling completion"
+            log_error "fettle not found in PATH, install Fettle before enabling completion"
             exit 1
         fi
 
@@ -216,7 +216,7 @@ if [[ $# -eq 0 ]]; then
             ;;
         *)
             log_error "Unsupported shell: $current_shell"
-            echo "  mole completion <bash|zsh|fish>"
+            echo "  fettle completion <bash|zsh|fish>"
             exit 1
             ;;
     esac
@@ -240,7 +240,7 @@ if [[ $# -eq 0 ]]; then
                 echo ""
             fi
         fi
-        log_error "mole not found in PATH, install Mole before enabling completion"
+        log_error "fettle not found in PATH, install Fettle before enabling completion"
         exit 1
     fi
 
@@ -385,11 +385,11 @@ _mole_completions()
     fi
 }
 
-complete -F _mole_completions mole mo fettle ft
+complete -F _mole_completions fettle ft
 EOF
         ;;
     zsh)
-        printf '#compdef mole mo fettle ft\n\n'
+        printf '#compdef fettle ft\n\n'
         printf '_mole() {\n'
         printf '    local -a subcommands\n'
         printf '    subcommands=(\n'
@@ -439,7 +439,7 @@ EOF
         printf '            ;;\n'
         printf '    esac\n'
         printf '}\n\n'
-        printf 'compdef _mole mole mo fettle ft\n'
+        printf 'compdef _mole fettle ft\n'
         ;;
     fish)
         printf '# Completions for mole\n'
@@ -461,31 +461,31 @@ EOF
         ;;
     *)
         cat << 'EOF'
-Usage: mole completion [bash|zsh|fish]
+Usage: fettle completion [bash|zsh|fish]
 
-Setup shell tab completion for mole and mo commands.
+Set up Tab completion for the fettle and ft commands.
 
 Auto-install:
-  mole completion              # Auto-detect shell and install
-  mole completion --dry-run    # Preview config changes without writing files
+  fettle completion              # Auto-detect shell and install
+  fettle completion --dry-run    # Preview config changes without writing files
 
 Manual install:
-  mole completion bash         # Generate bash completion script
-  mole completion zsh          # Generate zsh completion script
-  mole completion fish         # Generate fish completion script
+  fettle completion bash         # Generate bash completion script
+  fettle completion zsh          # Generate zsh completion script
+  fettle completion fish         # Generate fish completion script
 
 Examples:
   # Auto-install (recommended)
-  mole completion
+  fettle completion
 
   # Manual install - Bash
-  eval "$(mole completion bash)"
+  eval "$(fettle completion bash)"
 
   # Manual install - Zsh
-  eval "$(mole completion zsh)"
+  eval "$(fettle completion zsh)"
 
   # Manual install - Fish
-  mole completion fish | source
+  fettle completion fish | source
 EOF
         [[ "$1" == "--help" || "$1" == "-h" ]] && exit 0
         exit 1

@@ -317,7 +317,7 @@ slim_env() {
 	run env HOME="$HOME" "$PROJECT_ROOT/mole" slim --help
 
 	[ "$status" -eq 0 ]
-	[[ "$output" == *"Usage: mo slim"* ]] || return 1
+	[[ "$output" == *"Usage: fettle slim"* ]] || return 1
 	run env HOME="$HOME" "$PROJECT_ROOT/mole" --help
 	# fettle: the help screen names commands "fettle <command>".
 	[[ "$output" == *"fettle slim"* ]]

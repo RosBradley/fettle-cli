@@ -85,7 +85,7 @@ func padViewToHeight(view string, height int) string {
 func newModel() model {
 	return model{
 		collector: NewCollector(processWatchOptionsFromFlags()),
-		catHidden: loadCatHidden(),
+		catHidden: true, // Fettle: Mole's mascot never shows; Fettle's own mark comes later
 		cpuCores:  loadCPUCores(),
 		refresh:   loadRefreshInterval(), // fettle
 	}
@@ -119,11 +119,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch msg.String() {
 		case "q", "esc", "ctrl+c":
 			return m, tea.Quit
-		case "k":
-			// Toggle cat visibility and persist preference
-			m.catHidden = !m.catHidden
-			saveCatHidden(m.catHidden)
-			return m, nil
 		case "c":
 			// Cycle how many CPU cores the card lists (2 → 4 → 8 → all) and persist.
 			m.cpuCores = nextCPUCores(m.cpuCores)
@@ -338,7 +333,7 @@ func parseWatchInterval(raw string) (time.Duration, error) {
 // usageText is the help every other Mole subcommand prints by hand. The Go flag
 // package would otherwise render "Usage of /usr/local/bin/status-go:", naming a
 // bundled binary the user never typed, so the text is written out here instead.
-const usageText = `Usage: mo status [OPTIONS]
+const usageText = `Usage: fettle status [OPTIONS]
 
 Monitor system health. Without options it opens the interactive dashboard, and
 switches to a single JSON snapshot when stdout is not a terminal.
@@ -353,9 +348,9 @@ Options:
   -h, --help                      Show this help message
 
 Examples:
-  mo status                       Interactive dashboard
-  mo status --json                One machine-readable snapshot
-  mo status --watch --interval 2s Continuous NDJSON stream
+  fettle status                       Interactive dashboard
+  fettle status --json                One machine-readable snapshot
+  fettle status --watch --interval 2s Continuous NDJSON stream
 `
 
 // parseArgs applies Mole's CLI conventions to the flag package: help goes to
@@ -363,7 +358,7 @@ Examples:
 // every bash subcommand does, rather than the flag package's stderr-and-2.
 // It returns the exit code and whether main should keep running.
 func parseArgs(args []string, stdout, stderr io.Writer) (int, bool) {
-	flag.CommandLine.Init("mo status", flag.ContinueOnError)
+	flag.CommandLine.Init("fettle status", flag.ContinueOnError)
 	// Parse must not print: this function decides which stream each message
 	// belongs on, and the default handler writes usage to stderr for both.
 	flag.CommandLine.SetOutput(io.Discard)
@@ -376,13 +371,13 @@ func parseArgs(args []string, stdout, stderr io.Writer) (int, bool) {
 		return 0, false
 	case err != nil:
 		_, _ = fmt.Fprintln(stderr, err)
-		_, _ = fmt.Fprintln(stderr, "Use 'mo status --help' for usage information")
+		_, _ = fmt.Fprintln(stderr, "Use 'fettle status --help' for usage information")
 		return 1, false
 	}
 
 	if err := validateFlags(); err != nil {
 		_, _ = fmt.Fprintln(stderr, err)
-		_, _ = fmt.Fprintln(stderr, "Use 'mo status --help' for usage information")
+		_, _ = fmt.Fprintln(stderr, "Use 'fettle status --help' for usage information")
 		return 1, false
 	}
 	return 0, true
@@ -397,7 +392,7 @@ func main() {
 		interval, err := parseWatchInterval(*watchInterval)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err)
-			fmt.Fprintln(os.Stderr, "Use 'mo status --help' for usage information")
+			fmt.Fprintln(os.Stderr, "Use 'fettle status --help' for usage information")
 			os.Exit(1)
 		}
 		runWatchMode(interval)
