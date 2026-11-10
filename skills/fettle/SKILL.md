@@ -51,7 +51,28 @@ reference. Install only after the user agrees.
 6. **Leave Fettle itself alone.** Do not run `fettle update` or
    `fettle remove` unless the user asked for that command.
 
-## 3. Which command answers which question
+## 3. If your shell is sandboxed
+
+Many agent hosts deny writes outside the workspace. Fettle writes under the
+home folder, and removing a file counts as a write, so a sandbox changes what
+its output means. The signs are `Operation not permitted` or `No such file or
+directory` on `clean-list.txt` or `operations.log`, `audit log unavailable`,
+`Unable to create a safe cleanup preview file`, and `top_processes: null` with
+`fork/exec /bin/ps: operation not permitted`.
+
+- A failed preview is the sandbox, not an empty result and not a Fettle bug.
+  Say so.
+- **Never run a removing command inside the sandbox.** `fettle clean` can print
+  `Cleanup complete` and exit 0 with nothing removed, because a denied delete
+  reads as nothing to clean.
+- Ask for wider access through the host's approval flow, for the exact command
+  and with the reason, only if the host offers one. Otherwise give the user the
+  command for their own terminal and stop. Rule 3 still applies either way.
+- `status`, `analyze`, `history` and `uninstall --list` still read inside a
+  sandbox. Without `top_processes`, say which process is using the CPU is
+  unknown and hand the user `fettle status`.
+
+## 4. Which command answers which question
 
 | The user asks | Read first | Then |
 |---|---|---|
@@ -73,7 +94,7 @@ libraries, virtual machines and device backups are the user's data: report
 their size and location and let the user decide, since no Fettle command
 removes them.
 
-## 4. Reporting
+## 5. Reporting
 
 - Quote sizes and counts from Fettle's output, not from your own `du`, and
   keep Fettle's partial or unavailable markers: a partial scan is a lower
