@@ -43,6 +43,7 @@ readonly FETTLE_OWNED=(
     .github/ISSUE_TEMPLATE/bug_report.md .github/ISSUE_TEMPLATE/feature_request.md
     .github/ISSUE_TEMPLATE/config.yml
     llms.txt .claude-plugin/marketplace.json .agents/plugins/marketplace.json
+    gemini-extension.json
     skills/fettle/ plugins/fettle/
 )
 
@@ -82,12 +83,30 @@ settle_fettle_files() {
     [[ -z "$(git diff --name-only --diff-filter=U)" ]]
 }
 
+# In a merge in progress, take out files Mole added where Fettle removed
+# its own (a new file in plugins/mole/, say), so they stay removed.
+drop_removed_additions() {
+    git rev-parse -q --verify MERGE_HEAD > /dev/null || return 0
+    local path
+    local -a dropped=()
+    while IFS= read -r path; do
+        if [[ -z "$path" ]] || ! listed "$path" "${FETTLE_REMOVED[@]}"; then
+            continue
+        fi
+        git rm -q -f -- "$path" || return 1
+        dropped+=("$path")
+    done < <(git diff --cached --name-only --diff-filter=A HEAD)
+    [[ ${#dropped[@]} -eq 0 ]] || printf 'Left out %s, which Mole added where Fettle removed its files.\n' "${dropped[*]}"
+    return 0
+}
+
 # Merge $1 into the current branch, or stop at a conflict and list the files
 # to look at; $2 says where the other changes came from. Conflicts only in
-# files Fettle removed or rewrote settle on their own.
+# files Fettle removed or rewrote settle on their own, and files Mole adds
+# where Fettle removed its own are left out.
 merge_or_stop() {
-    git merge --no-edit "$1" && return 0
-    if settle_fettle_files; then
+    if { git merge --no-edit --no-commit "$1" || settle_fettle_files; } && drop_removed_additions; then
+        git rev-parse -q --verify MERGE_HEAD > /dev/null || return 0
         git commit -q --no-edit && return 0
     fi
     printf '\nThe merge stopped on a conflict: %s changed the same lines as this folder.\n' "$2" >&2
