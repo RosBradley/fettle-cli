@@ -260,13 +260,13 @@ printf "version=2026.10.30\n" > "$SCRIPT_DIR/.fettle-release"
 echo "installed=[$(read_update_message_cache "$cache")]"
 printf "Update 9.9.9 available, run mo update" > "$cache"
 echo "mole=[$(read_update_message_cache "$cache")]"
-show_version | grep "^Fettle:"
+show_version | grep "^Fettle version"
 '
 	[ "$status" -eq 0 ] || { echo "$output"; return 1; }
 	[[ "$output" == *"notice=[Fettle 2026.10.30 available, run fettle update]"* ]] || return 1
 	[[ "$output" == *"stamp=86400"* ]] || return 1
 	[[ "$output" == *"installed=[]"*"mole=[]"* ]] || return 1
-	[[ "$output" == *"Fettle: github.com/RosBradley/fettle-cli (release 2026.10.30)"* ]] || return 1
+	[[ "$output" == *"Fettle version 2026.10.30"* ]] || return 1
 	[ "$(grep -c "releases/latest" "$CURL_LOG")" -eq 1 ]
 }
 

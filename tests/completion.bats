@@ -165,7 +165,7 @@ setup() {
 
 	[ -f "$HOME/.zshrc" ] || skip "Auto-install didn't create .zshrc"
 
-	run grep -E "mole[[:space:]]+completion" "$HOME/.zshrc"
+	run grep -E "fettle[[:space:]]+completion" "$HOME/.zshrc"
 	[ "$status" -eq 0 ]
 }
 
@@ -218,7 +218,7 @@ setup() {
 	[ -L "$HOME/.zshrc" ] || return 1
 	[ "$(readlink "$HOME/.zshrc")" = "$HOME/dotfiles/zshrc" ] || return 1
 	grep -Fq '# user zsh setting' "$HOME/dotfiles/zshrc" || return 1
-	grep -Eq '(mole|mo)[[:space:]]+completion' "$HOME/dotfiles/zshrc"
+	grep -Eq 'fettle[[:space:]]+completion' "$HOME/dotfiles/zshrc"
 }
 
 @test "completion auto-install does not mistake another tool's completion line for Mole" {

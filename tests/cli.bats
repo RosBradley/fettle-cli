@@ -393,14 +393,15 @@ render() {
     MAIN_MENU_SHOW_UPDATE=true
     show_main_menu 1 true
 }
-tagline="${GREEN}${FETTLE_TAGLINE[1]}${NC}"$'\n'
+# The banner prints its tagline uncolored, beside the Fettle lettering.
+tagline="${FETTLE_TAGLINE[1]}"$'\n'
 
 # The real banner is used: command substitution strips its trailing blank line,
 # so the separator has to come from the notice itself.
-out="$(render 'Update 9.8.7 available, run mo update')"
-[[ "$out" == *"${tagline}${line}"$'\n'"${line}Update 9.8.7 available, run ${GREEN}mo update${NC}"$'\n'"${line}"$'\n'"${line}${CYAN}${ICON_ARROW} Status"* ]] || { printf '%q\n' "$out"; exit 1; }
-out="$(render 'New nightly commit abc1234 available, run mo update --nightly')"
-[[ "$out" == *"${tagline}${line}"$'\n'"${line}New nightly commit abc1234 available, run ${GREEN}mo update --nightly${NC}"$'\n'"${line}"$'\n'"${line}${CYAN}${ICON_ARROW} Status"* ]] || { printf '%q\n' "$out"; exit 1; }
+out="$(render 'Update 9.8.7 available, run fettle update')"
+[[ "$out" == *"${tagline}${line}"$'\n'"${line}Update 9.8.7 available, run ${GREEN}fettle update${NC}"$'\n'"${line}"$'\n'"${line}${CYAN}${ICON_ARROW} Status"* ]] || { printf '%q\n' "$out"; exit 1; }
+out="$(render 'New nightly commit abc1234 available, run fettle update --nightly')"
+[[ "$out" == *"${tagline}${line}"$'\n'"${line}New nightly commit abc1234 available, run ${GREEN}fettle update --nightly${NC}"$'\n'"${line}"$'\n'"${line}${CYAN}${ICON_ARROW} Status"* ]] || { printf '%q\n' "$out"; exit 1; }
 
 # Control: without a notice no extra rows appear between banner and options.
 out="$(render '')"
@@ -409,9 +410,9 @@ out="$(render '')"
 # Rendering must not rewrite the stored text: the idle refresh compares it
 # against the plain cache contents on every tick.
 MAIN_MENU_BANNER=""
-MAIN_MENU_UPDATE_MESSAGE='Update 9.8.7 available, run mo update'
+MAIN_MENU_UPDATE_MESSAGE='Update 9.8.7 available, run fettle update'
 show_main_menu 1 true > /dev/null
-[[ "$MAIN_MENU_UPDATE_MESSAGE" == 'Update 9.8.7 available, run mo update' ]] || exit 1
+[[ "$MAIN_MENU_UPDATE_MESSAGE" == 'Update 9.8.7 available, run fettle update' ]] || exit 1
 EOF
 
 	[ "$status" -eq 0 ] || { echo "$output"; return 1; }
