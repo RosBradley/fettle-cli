@@ -46,7 +46,6 @@ PATTERN = re.compile(
 # (file, text on the line, why it stays). Keep each entry to one line it
 # names exactly; a reason says why users never see it or why it must stay.
 ALLOWED = [
-    ("bin/completion.sh", "# Mole completions for mo (alias)", "first line of Fish's file for Mole's names"),
     ("bin/completion.sh", 'echo "# Mole shell completion"', "marker MOLE_COMPLETION_LINE_PATTERN matches in shell rc files"),
     ("lib/core/base.sh", "MOLE_COMPLETION_LINE_PATTERN=", "matches the completion lines Mole and Fettle wrote"),
     ("lib/core/commands.sh", '"remove:Remove Mole from system"', "lib/fettle/commands.sh replaces this description"),

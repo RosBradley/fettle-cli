@@ -125,17 +125,33 @@ setup() {
 @test "completion fish generates valid fish script" {
 	run "$PROJECT_ROOT/bin/completion.sh" fish
 	[ "$status" -eq 0 ]
-	[[ "$output" == *"complete -f -c mole"* ]] || return 1
-	[[ "$output" == *"complete -f -c mo"* ]]
+	[[ "$output" == *"complete -f -c fettle "* ]] || return 1
+	[[ "$output" == *"complete -f -c ft "* ]]
 }
 
-@test "completion fish includes both mole and mo commands" {
+@test "completion fish includes both fettle and ft commands, and not Mole's names" {
 	output="$("$PROJECT_ROOT/bin/completion.sh" fish)"
-	mole_count=$(echo "$output" | grep -c "complete -f -c mole")
-	mo_count=$(echo "$output" | grep -c "complete -f -c mo")
+	fettle_count=$(echo "$output" | grep -c "complete -f -c fettle ")
+	ft_count=$(echo "$output" | grep -c "complete -f -c ft ")
 
-	[ "$mole_count" -gt 0 ]
-	[ "$mo_count" -gt 0 ]
+	[ "$fettle_count" -gt 0 ] || return 1
+	[ "$ft_count" -eq "$fettle_count" ] || return 1
+	[[ "$output" != *"-c mole "* && "$output" != *"-c mo "* ]]
+}
+
+@test "completion fish install writes fettle.fish and ft.fish" {
+	local stub_dir="$BATS_TEST_TMPDIR/fettle-bin"
+	mkdir -p "$stub_dir"
+	printf '#!/bin/bash\nshift\nexec "%s/bin/completion.sh" "$@"\n' "$PROJECT_ROOT" > "$stub_dir/fettle"
+	chmod +x "$stub_dir/fettle"
+
+	run /bin/bash -c "echo 'y' | PATH=\"$stub_dir:\$PATH\" SHELL=/bin/fish \"$PROJECT_ROOT/bin/completion.sh\""
+	[ "$status" -eq 0 ] || { echo "$output"; return 1; }
+	local dir="$HOME/.config/fish/completions"
+	grep -q 'complete -f -c fettle ' "$dir/fettle.fish" || return 1
+	grep -Fxq "source $dir/fettle.fish" "$dir/ft.fish" || return 1
+	[ ! -e "$dir/mole.fish" ] || return 1
+	[ ! -e "$dir/mo.fish" ]
 }
 
 @test "completion fish includes current clean, analyze, history, and purge options only" {
@@ -266,7 +282,7 @@ RC
 	run /bin/bash -c "SHELL=/bin/fish \"$PROJECT_ROOT/bin/completion.sh\" </dev/null"
 	[ "$status" -ne 0 ]
 	[[ "$output" == *"Cancelled"* ]] || return 1
-	[ ! -f "$HOME/.config/fish/completions/mole.fish" ]
-	[ ! -f "$HOME/.config/fish/completions/mo.fish" ]
+	[ ! -f "$HOME/.config/fish/completions/fettle.fish" ] || return 1
+	[ ! -f "$HOME/.config/fish/completions/ft.fish" ]
 }
 

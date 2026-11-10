@@ -129,11 +129,14 @@ if [[ $# -eq 0 ]]; then
     fi
 
     # Fish uses a separate install path: write to ~/.config/fish/completions/ so
-    # both `mole` and `mo` load completions independently on terminal startup.
+    # both `fettle` and `ft` load completions independently on terminal startup.
+    # fettle: Fish loads a command's completions from the file named after it,
+    # so the files are fettle.fish and ft.fish (Mole's mole.fish and mo.fish are
+    # left alone).
     if [[ "$current_shell" == "fish" ]]; then
         fish_dir="${HOME}/.config/fish/completions"
-        mole_file="${fish_dir}/mole.fish"
-        mo_file="${fish_dir}/mo.fish"
+        mole_file="${fish_dir}/fettle.fish"
+        mo_file="${fish_dir}/ft.fish"
         config_fish="${HOME}/.config/fish/config.fish"
 
         if [[ -z "$completion_name" ]]; then
@@ -191,8 +194,8 @@ if [[ $# -eq 0 ]]; then
 
         mkdir -p "$fish_dir"
         "$completion_name" completion fish > "$mole_file"
-        # mo.fish sources mole.fish so Fish loads mo completions on `mo<Tab>`
-        printf '# Mole completions for mo (alias) -- auto-generated, do not edit\n' > "$mo_file"
+        # ft.fish sources fettle.fish so Fish loads ft completions on `ft<Tab>`
+        printf '# Fettle completions for ft (short name) -- auto-generated, do not edit\n' > "$mo_file"
         printf 'source %s\n' "$mole_file" >> "$mo_file"
 
         if [[ -f "$mole_file" ]]; then
@@ -442,10 +445,11 @@ EOF
         printf 'compdef _mole fettle ft\n'
         ;;
     fish)
-        printf '# Completions for mole\n'
-        emit_fish_completions mole
-        printf '\n# Completions for mo (alias)\n'
-        emit_fish_completions mo
+        # fettle: complete the fettle and ft commands, as bash and zsh do.
+        printf '# Completions for fettle\n'
+        emit_fish_completions fettle
+        printf '\n# Completions for ft (short name)\n'
+        emit_fish_completions ft
         printf '\nfunction __fish_mole_no_subcommand\n'
         printf '    for i in (commandline -opc)\n'
         # shellcheck disable=SC2016
