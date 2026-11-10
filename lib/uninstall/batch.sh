@@ -264,7 +264,7 @@ format_uninstall_preview_path() {
     local size_rc=0
     if [[ $# -gt 1 ]]; then
         size_kb="$2"
-    else
+    elif ! mole_sizing_would_ask_for_app_data "$path"; then
         size_kb=$(get_path_size_kb "$path" 2> /dev/null) || size_rc=$?
         mole_rc_timeout_or_signal "$size_rc" && return "$size_rc"
         [[ $size_rc -eq 0 ]] || size_kb="0"
@@ -721,6 +721,46 @@ _uninstall_container_is_stub() {
     [[ $scan_rc -eq 0 && -z "$entry" ]]
 }
 
+# True when a tree holds an entry System Integrity Protection guards, which
+# nothing outside recoveryOS can remove: the restricted or sunlnk flag, the
+# com.apple.rootless attribute, or an entry macOS refuses to stat at all. Moved
+# to the Trash, such a folder fails every Empty Trash afterwards. A scan that
+# cannot prove protection (timeout, any other error) answers no. The system
+# find by full path: a GNU find earlier in PATH rejects these predicates.
+_uninstall_find_system_protected() {
+    LC_ALL=C run_with_timeout "$MOLE_TIMEOUT_QUICK_DETECT_SEC" /usr/bin/find "$1" -maxdepth 4 \
+        \( -flags +restricted -o -flags +sunlnk -o -xattrname com.apple.rootless \) \
+        -print -quit
+}
+
+_uninstall_tree_holds_system_protected_entry() {
+    local errors="" hit="" refusals="" scan_rc=0 line=""
+    errors=$(create_temp_file) || return 1
+    hit=$(_uninstall_find_system_protected "$1" 2> "$errors") || scan_rc=$?
+    refusals=$(cat "$errors" 2> /dev/null) || refusals=""
+    rm -f -- "$errors" 2> /dev/null || true # SAFE: exact tracked temp file created above
+    mole_rc_signal "$scan_rc" && return "$scan_rc"
+    [[ -n "$hit" ]] && return 0
+    while IFS= read -r line; do
+        [[ "$line" == "find: "*": Operation not permitted" ]] && return 0
+    done <<< "$refusals"
+    return 1
+}
+
+# Asked only of a sandbox or group container's own folder, and only with Full
+# Disk Access: the walk reads into another app's container, and without the
+# grant a refused read proves nothing and may raise macOS's own prompt. A dry
+# run moves nothing, so it does not walk.
+_uninstall_container_holds_system_protected_entry() {
+    case "${1%/*}" in
+        "$HOME/Library/Containers" | "$HOME/Library/Group Containers") ;;
+        *) return 1 ;;
+    esac
+    is_uninstall_dry_run && return 1
+    has_full_disk_access || return 1
+    _uninstall_tree_holds_system_protected_entry "$1"
+}
+
 # Remove files (handles symlinks, optional sudo).
 # Security: All paths pass validate_path_for_deletion() before any deletion.
 # Performance: when MOLE_DELETE_MODE=trash and the batch is sudo-free and
@@ -792,6 +832,15 @@ remove_file_list() {
         mole_rc_timeout_or_signal "$validation_rc" && return "$validation_rc"
         if [[ $validation_rc -ne 0 ]]; then
             log_operation "${MOLE_CURRENT_COMMAND:-uninstall}" "SKIPPED" "$file" "${_MOLE_VALIDATION_REASON:-protected}"
+            continue
+        fi
+
+        local system_protected_rc=0
+        _uninstall_container_holds_system_protected_entry "$file" || system_protected_rc=$?
+        mole_rc_signal "$system_protected_rc" && return "$system_protected_rc"
+        if [[ $system_protected_rc -eq 0 ]]; then
+            log_operation "${MOLE_CURRENT_COMMAND:-uninstall}" "SKIPPED" "$file" "system protected"
+            _mole_record_uninstall_refusal "$file" "access-denied"
             continue
         fi
 
@@ -2182,7 +2231,9 @@ _batch_scan_app_details_impl() {
         _batch_scan_stage="application size check"
         local app_size_kb="0"
         local app_size_rc=0
-        app_size_kb=$(get_path_size_kb "$app_path") || app_size_rc=$?
+        if ! mole_sizing_would_ask_for_app_data "$app_path"; then
+            app_size_kb=$(get_path_size_kb "$app_path") || app_size_rc=$?
+        fi
         mole_rc_timeout_or_signal "$app_size_rc" && return "$app_size_rc"
         [[ $app_size_rc -eq 0 && "$app_size_kb" =~ ^[0-9]+$ ]] || app_size_kb=0
         local preview_selector="" preview_selector_rc=0
@@ -2937,7 +2988,7 @@ _batch_execute_removals() {
             # path; the source paths that DID move to Trash are already gone
             # and would just produce stderr noise we discard.
             local leftover_kb=0
-            local -a leftover_paths=()
+            local -a leftover_paths=() leftover_sizable=()
             if ! is_uninstall_dry_run; then
                 while IFS= read -r _lf; do
                     [[ -n "$_lf" && -e "$_lf" ]] || continue
@@ -2953,13 +3004,15 @@ _batch_execute_removals() {
                         mole_rc_signal "$_stub_rc" && return "$_stub_rc"
                     fi
                     leftover_paths+=("$_lf")
+                    # Unmeasured in the total too, so nothing to subtract.
+                    mole_sizing_would_ask_for_app_data "$_lf" || leftover_sizable+=("$_lf")
                 done <<< "$related_files"
 
-                if [[ ${#leftover_paths[@]} -gt 0 ]]; then
+                if [[ ${#leftover_sizable[@]} -gt 0 ]]; then
                     local _du_output="" _du_total=""
                     local _du_rc=0
                     _du_output=$(LC_ALL=C run_with_timeout "$MOLE_TIMEOUT_DISK_VERIFY_SEC" \
-                        du -skcP "${leftover_paths[@]}" 2> /dev/null) || _du_rc=$?
+                        du -skcP "${leftover_sizable[@]}" 2> /dev/null) || _du_rc=$?
                     mole_rc_timeout_or_signal "$_du_rc" && return "$_du_rc"
                     # An unreadable survivor can leave a valid partial total.
                     # Only accept du's final total, never a truncated path row.

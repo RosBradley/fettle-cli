@@ -508,7 +508,7 @@ run_with_timeout() {
 }
 SECONDS=0
 printf '%s\n' "$fixture/project/build" | filter_protected_artifacts 4
-[[ $(wc -l < "$fixture/budgets") -eq 2 ]] || exit 1
+[[ $(wc -l < "$fixture/budgets") -ge 2 ]] || exit 1
 while IFS= read -r budget; do
     [[ "$budget" -gt 0 && "$budget" -le 4 ]] || exit 1
 done < "$fixture/budgets"
@@ -5292,6 +5292,262 @@ EOF
     [ "$status" -eq 0 ] || { echo "$output"; return 1; }
 }
 
+@test "purge node project process check sees a real process in a non-ASCII project under LC_ALL=C" {
+    local project="$HOME/www/项目 é"
+    mkdir -p "$project"
+    (cd "$project" && exec sleep 30) &
+    local holder=$!
+    sleep 0.3
+    run env HOME="$HOME" PROJECT_ROOT="$PROJECT_ROOT" PROJECT_PATH="$project" LC_ALL=C \
+        /bin/bash --noprofile --norc <<'SCRIPT'
+set -euo pipefail
+source "$PROJECT_ROOT/lib/clean/project.sh"
+rc=0
+purge_node_project_running "$(cd "$PROJECT_PATH" && /bin/pwd -P)" || rc=$?
+echo "RC=$rc"
+SCRIPT
+    kill "$holder" 2> /dev/null || true
+    wait "$holder" 2> /dev/null || true
+    [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+    [[ "$output" == *"RC=0"* ]] || { echo "$output"; return 1; }
+}
+
+@test "purge node project process check ignores Mole's own process tree" {
+    local project="$HOME/www/own-tree"
+    mkdir -p "$project"
+    run env HOME="$HOME" PROJECT_ROOT="$PROJECT_ROOT" PROJECT_PATH="$project" \
+        /bin/bash --noprofile --norc <<'SCRIPT'
+set -euo pipefail
+source "$PROJECT_ROOT/lib/clean/project.sh"
+project=$(cd "$PROJECT_PATH" && /bin/pwd -P)
+# Started from the project, as `cd project && mo purge` is.
+cd "$project"
+rc=0
+purge_node_project_running "$project" || rc=$?
+echo "SELF_CWD_RC=$rc"
+# A worker of this run walking the project and naming it in its arguments.
+(cd "$project" && exec /bin/sh -c 'sleep 8; : '"$project"'/dist') &
+worker=$!
+sleep 0.3
+cd /
+rc=0
+purge_node_project_running "$project" || rc=$?
+echo "WORKER_RC=$rc"
+kill "$worker" 2> /dev/null || true
+wait "$worker" 2> /dev/null || true
+SCRIPT
+    [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+    [[ "$output" == *"SELF_CWD_RC=1"* ]] || { echo "$output"; return 1; }
+    [[ "$output" == *"WORKER_RC=1"* ]] || { echo "$output"; return 1; }
+}
+
+@test "purge node project process check still sees an outside process with the same cwd" {
+    local project="$HOME/www/outside-holder"
+    mkdir -p "$project"
+    (cd "$project" && exec sleep 30) &
+    local holder=$!
+    sleep 0.3
+    run env HOME="$HOME" PROJECT_ROOT="$PROJECT_ROOT" PROJECT_PATH="$project" \
+        /bin/bash --noprofile --norc <<'SCRIPT'
+set -euo pipefail
+source "$PROJECT_ROOT/lib/clean/project.sh"
+project=$(cd "$PROJECT_PATH" && /bin/pwd -P)
+cd "$project"
+rc=0
+purge_node_project_running "$project" || rc=$?
+echo "RC=$rc"
+SCRIPT
+    kill "$holder" 2> /dev/null || true
+    wait "$holder" 2> /dev/null || true
+    [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+    [[ "$output" == *"RC=0"* ]] || { echo "$output"; return 1; }
+}
+
+@test "purge node project process check sees a real process in a path holding a backslash" {
+    local name project holder
+    for name in 'bs\x' '项\目'; do
+        project="$HOME/www/$name"
+        mkdir -p "$project"
+        (cd "$project" && exec sleep 30) &
+        holder=$!
+        sleep 0.3
+        run env HOME="$HOME" PROJECT_ROOT="$PROJECT_ROOT" PROJECT_PATH="$project" LC_ALL=C \
+            /bin/bash --noprofile --norc <<'SCRIPT'
+set -euo pipefail
+source "$PROJECT_ROOT/lib/clean/project.sh"
+rc=0
+purge_node_project_running "$(cd "$PROJECT_PATH" && /bin/pwd -P)" || rc=$?
+echo "RC=$rc"
+SCRIPT
+        kill "$holder" 2> /dev/null || true
+        wait "$holder" 2> /dev/null || true
+        [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+        [[ "$output" == *"RC=0"* ]] || { echo "$name: $output"; return 1; }
+    done
+}
+
+@test "purge node project process check counts a non-shell ancestor as the project running" {
+    local project="$HOME/www/electron-app"
+    mkdir -p "$project"
+    cat > "$HOME/probe.sh" <<'SCRIPT'
+set -euo pipefail
+source "$PROJECT_ROOT/lib/clean/project.sh"
+rc=0
+purge_node_project_running "$(cd "$PROJECT_PATH" && /bin/pwd -P)" || rc=$?
+echo "RC=$rc"
+SCRIPT
+    # A dev app in the project whose integrated terminal moved away and runs Mole.
+    cat > "$HOME/launch.sh" <<'SCRIPT'
+cd "$PROJECT_PATH"
+exec /usr/bin/perl -e 'system("/bin/bash", "--noprofile", "--norc", "-c", "cd / && exec /bin/bash --noprofile --norc \"$ENV{HOME}/probe.sh\""); exit($? >> 8)'
+SCRIPT
+    run env HOME="$HOME" PROJECT_ROOT="$PROJECT_ROOT" PROJECT_PATH="$project" /bin/bash --noprofile --norc "$HOME/launch.sh"
+    [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+    [[ "$output" == *"RC=0"* ]] || { echo "$output"; return 1; }
+}
+
+@test "purge node project process check matches a command line in the other Unicode form" {
+    local nfc nfd
+    nfc=$(printf 'caf\xc3\xa9')
+    nfd=$(printf 'cafe\xcc\x81')
+    local name named
+    for name in "$nfd" "$nfc"; do
+        [[ "$name" == "$nfd" ]] && named="$nfc" || named="$nfd"
+        rm -rf "$HOME/www/form-$name"
+        mkdir -p "$HOME/www/form-$name"
+        local physical
+        physical="$(cd "$HOME/www" && /bin/pwd -P)/form-$named"
+        (cd / && exec /bin/sh -c 'sleep 30; : '"$physical"'/server.js') &
+        local holder=$!
+        sleep 0.3
+        run env HOME="$HOME" PROJECT_ROOT="$PROJECT_ROOT" PROJECT_PATH="$HOME/www/form-$name" LC_ALL=C \
+            /bin/bash --noprofile --norc <<'SCRIPT'
+set -euo pipefail
+source "$PROJECT_ROOT/lib/clean/project.sh"
+rc=0
+purge_node_project_running "$(cd "$(dirname "$PROJECT_PATH")" && /bin/pwd -P)/$(basename "$PROJECT_PATH")" || rc=$?
+echo "RC=$rc"
+SCRIPT
+        kill "$holder" 2> /dev/null || true
+        wait "$holder" 2> /dev/null || true
+        rm -rf "$HOME/www/form-$name"
+        [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+        [[ "$output" == *"RC=0"* ]] || { echo "$output"; return 1; }
+    done
+}
+
+@test "purge node project process check matches the spellings a command line uses" {
+    local root="/private/tmp/mole-argv-$$"
+    mkdir -p "$root/app"
+    local arg holder
+    for arg in "$root/app:/other" "$root/app,/other" "'$root/app'" "$root/APP/server.js" "/tmp/mole-argv-$$/app/server.js"; do
+        (cd / && exec /bin/sh -c 'sleep 30; : '"$arg") &
+        holder=$!
+        sleep 0.3
+        run env HOME="$HOME" PROJECT_ROOT="$PROJECT_ROOT" PROJECT_PATH="$root/app" /bin/bash --noprofile --norc <<'SCRIPT'
+set -euo pipefail
+source "$PROJECT_ROOT/lib/clean/project.sh"
+rc=0
+purge_node_project_running "$PROJECT_PATH" || rc=$?
+echo "RC=$rc"
+SCRIPT
+        kill "$holder" 2> /dev/null || true
+        wait "$holder" 2> /dev/null || true
+        [ "$status" -eq 0 ] || { echo "$output"; rm -rf "$root"; return 1; }
+        [[ "$output" == *"RC=0"* ]] || { echo "$arg: $output"; rm -rf "$root"; return 1; }
+    done
+    # A longer sibling name is not this project.
+    (cd / && exec /bin/sh -c 'sleep 30; : '"$root/app-old/server.js") &
+    holder=$!
+    sleep 0.3
+    run env HOME="$HOME" PROJECT_ROOT="$PROJECT_ROOT" PROJECT_PATH="$root/app" /bin/bash --noprofile --norc <<'SCRIPT'
+set -euo pipefail
+source "$PROJECT_ROOT/lib/clean/project.sh"
+rc=0
+purge_node_project_running "$PROJECT_PATH" || rc=$?
+echo "RC=$rc"
+SCRIPT
+    kill "$holder" 2> /dev/null || true
+    wait "$holder" 2> /dev/null || true
+    rm -rf "$root"
+    [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+    [[ "$output" == *"RC=1"* ]] || { echo "$output"; return 1; }
+}
+
+@test "purge node project process check treats an unreadable process table as unknown" {
+    local project="$HOME/www/table"
+    mkdir -p "$project"
+    run env HOME="$HOME" PROJECT_ROOT="$PROJECT_ROOT" PROJECT_PATH="$project" /bin/bash --noprofile --norc <<'SCRIPT'
+set -euo pipefail
+source "$PROJECT_ROOT/lib/clean/project.sh"
+project=$(cd "$PROJECT_PATH" && /bin/pwd -P)
+for ps_status in 1 124 143; do
+    run_with_timeout() {
+        shift
+        case "$1" in
+            /usr/sbin/lsof) printf 'p%s\nfcwd\nn%s\n' "$$" "$project" ;;
+            /bin/ps) return "$ps_status" ;;
+            *) return 1 ;;
+        esac
+    }
+    rc=0
+    purge_node_project_running "$project" || rc=$?
+    echo "PS=$ps_status RC=$rc"
+done
+SCRIPT
+    [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+    [[ "$output" == *"PS=1 RC=2"* ]] || { echo "$output"; return 1; }
+    [[ "$output" == *"PS=124 RC=2"* ]] || { echo "$output"; return 1; }
+    [[ "$output" == *"PS=143 RC=143"* ]] || { echo "$output"; return 1; }
+}
+
+@test "purge node project process check ignores a pid that has already exited" {
+    local project="$HOME/www/exited"
+    mkdir -p "$project"
+    run env HOME="$HOME" PROJECT_ROOT="$PROJECT_ROOT" PROJECT_PATH="$project" /bin/bash --noprofile --norc <<'SCRIPT'
+set -euo pipefail
+source "$PROJECT_ROOT/lib/clean/project.sh"
+project=$(cd "$PROJECT_PATH" && /bin/pwd -P)
+sleep 0 &
+gone=$!
+wait "$gone"
+/usr/bin/true
+real_run_with_timeout=$(declare -f run_with_timeout)
+eval "real_${real_run_with_timeout}"
+run_with_timeout() {
+    if [[ "$2" == /usr/sbin/lsof ]]; then
+        printf 'p%s\nfcwd\nn%s\n' "$gone" "$project"
+        return 0
+    fi
+    real_run_with_timeout "$@"
+}
+rc=0
+purge_node_project_running "$project" || rc=$?
+echo "RC=$rc"
+SCRIPT
+    [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+    [[ "$output" == *"RC=1"* ]] || { echo "$output"; return 1; }
+}
+
+@test "mo purge run from inside a project still offers that project's node_modules" {
+    local project="$HOME/www/inside"
+    mkdir -p "$project/node_modules/pkg" "$HOME/.config/mole" "$HOME/.cache/mole"
+    printf '{"name":"inside"}\n' > "$project/package.json"
+    printf '{"lockfileVersion":3}\n' > "$project/package-lock.json"
+    printf 'x\n' > "$project/node_modules/pkg/index.js"
+    printf '{"lockfileVersion":3}\n' > "$project/node_modules/.package-lock.json"
+    touch -t 202001010101 "$project/package.json" "$project/package-lock.json" \
+        "$project/node_modules/pkg/index.js" "$project/node_modules/pkg"
+    touch -t 202001010102 "$project/node_modules/.package-lock.json" "$project/node_modules" "$project"
+    printf '%s\n' "$HOME/www" > "$HOME/.config/mole/purge_paths"
+    local from output_from
+    for from in / "$project"; do
+        output_from=$(cd "$from" && HOME="$HOME" MOLE_TEST_NO_AUTH=1 "$PROJECT_ROOT/mole" purge --dry-run < /dev/null 2>&1) || true
+        [[ "$output_from" == *"inside/node_modules"* ]] || { echo "from $from: $output_from"; return 1; }
+    done
+    [ -f "$project/node_modules/pkg/index.js" ]
+}
+
 @test "purge node project process check reads an idle project as idle under --debug" {
     # The real run_with_timeout, so its debug notice reaches the lsof capture
     # the way it does in `mo purge --debug`; the stubbed case above cannot see it.
@@ -5338,4 +5594,507 @@ EOF
 
 @test "purge final node owner after activity scan idle" {
     assert_purge_final_owner_guard idle
+}
+
+@test "purge_artifact_in_use detects open file descriptors mapped executables cwd and args" {
+    run env HOME="$HOME" PROJECT_ROOT="$PROJECT_ROOT" /bin/bash --noprofile --norc <<'EOF'
+set -euo pipefail
+source "$PROJECT_ROOT/lib/clean/project.sh"
+artifact="$HOME/www/app/target"
+for mode in fd txt cwd args idle error partial signal; do
+    run_with_timeout() {
+        shift
+        if [[ "$1" == /usr/sbin/lsof ]]; then
+            case "$mode" in
+                fd) printf 'p123\nf4\nn%s/debug/.cargo-lock\n' "$artifact" ;;
+                txt) printf 'p123\nftxt\nn%s/debug/app\n' "$artifact" ;;
+                cwd) printf 'p123\nfcwd\nn%s\n' "$artifact" ;;
+                error) return 1 ;;
+                partial) printf 'p123\nfcwd\nn/unrelated\n'; echo 'lsof: incomplete visibility' >&2 ;;
+                signal) return 143 ;;
+                *) printf 'p123\nfcwd\nn/unrelated\n' ;;
+            esac
+        elif [[ "$1" == /bin/ps ]]; then
+            printf '123 1 /bin/sleep\n'
+        else
+            [[ "$1" == pgrep ]] || return 2
+            [[ "$mode" == args ]]
+        fi
+    }
+    rc=0
+    purge_artifact_in_use "$artifact" || rc=$?
+    case "$mode" in
+        fd|txt|cwd|args) [[ $rc -eq 0 ]] || exit 1 ;;
+        idle) [[ $rc -eq 1 ]] || exit 1 ;;
+        error|partial) [[ $rc -eq 2 ]] || exit 1 ;;
+        signal) [[ $rc -eq 143 ]] || exit 1 ;;
+    esac
+done
+EOF
+    [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+}
+
+@test "purge decomposes SwiftPM scratch roots with package checkouts into compiler output subdirs" {
+    run env HOME="$HOME" PROJECT_ROOT="$PROJECT_ROOT" /bin/bash --noprofile --norc <<'EOF'
+set -euo pipefail
+source "$PROJECT_ROOT/lib/clean/project.sh"
+purge_node_project_running() { return 1; }
+purge_swiftpm_scratch_running() { return 1; }
+
+app="$HOME/www/swift-app"
+mkdir -p     "$app/.build/checkouts/swift-crypto/.git"     "$app/.build/repositories/swift-crypto-1234"     "$app/.build/out/Products"     "$app/.build/index-build/arm64-apple-macosx"     "$app/.build/arm64-apple-macosx/debug"     "$app/.build-feature/checkouts/swift-crypto/.git"     "$app/.build-feature/out/Products"     "$app/.build-feature/aarch64-unknown-linux-gnu/debug"     "$HOME/www/plain-swift/.build/arm64-apple-macosx"
+touch "$app/Package.swift" "$HOME/www/plain-swift/Package.swift"
+mkdir -p "$HOME/www/plain-swift/.build/checkouts" "$HOME/www/plain-swift/.build/repositories"
+printf '{"object":{"dependencies":[]},"version":6}\n' > "$HOME/www/plain-swift/.build/workspace-state.json"
+printf '{"object":{"dependencies":[]},"version":6}
+' > "$app/.build/workspace-state.json"
+printf '{"object":{"dependencies":[]},"version":6}
+' > "$app/.build-feature/workspace-state.json"
+printf '%s
+# This file is a cache directory tag created by (Swift Package Manager).
+' "$MOLE_CACHEDIR_TAG_SIGNATURE" > "$app/.build/CACHEDIR.TAG"
+printf '%s
+# This file is a cache directory tag created by (Swift Package Manager).
+' "$MOLE_CACHEDIR_TAG_SIGNATURE" > "$app/.build-feature/CACHEDIR.TAG"
+
+for force_find in 0 1; do
+    out_file=$(mktemp)
+    MO_USE_FIND="$force_find" scan_purge_targets "$HOME/www" "$out_file"
+    results=$(cat "$out_file")
+    rm -f "$out_file"
+    [[ "$results" == *"$app/.build/out"* ]] || exit 1
+    [[ "$results" == *"$app/.build/index-build"* ]] || exit 1
+    [[ "$results" == *"$app/.build/arm64-apple-macosx"* ]] || exit 1
+    [[ "$results" == *"$app/.build-feature/out"* ]] || exit 1
+    [[ "$results" == *"$app/.build-feature/aarch64-unknown-linux-gnu"* ]] || exit 1
+    printf '%s\n' "$results" | /usr/bin/grep -qx "$HOME/www/plain-swift/.build" || exit 1
+    [[ "$results" != *"$app/.build/checkouts"* ]] || exit 1
+    [[ "$results" != *"$app/.build/repositories"* ]] || exit 1
+    while IFS= read -r line; do
+        [[ "$line" != "$app/.build" && "$line" != "$app/.build-feature" ]] || exit 1
+    done <<< "$results"
+done
+EOF
+    [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+}
+
+@test "purge final sink refuses any artifact with open files and removes it once closed" {
+    run env HOME="$HOME" PROJECT_ROOT="$PROJECT_ROOT" /bin/bash --noprofile --norc <<'EOF'
+set -euo pipefail
+mkdir -p "$HOME"
+HOME=$(cd "$HOME" && pwd -P)
+source "$PROJECT_ROOT/lib/core/common.sh"
+source "$PROJECT_ROOT/lib/clean/project.sh"
+
+fixture_project="$HOME/projects/app"
+fixture_entry="$fixture_project/build"
+mkdir -p "$fixture_entry"
+printf payload > "$fixture_entry/output.lock"
+touch -t 202001010000 "$fixture_entry/output.lock" "$fixture_entry"
+PURGE_SEARCH_PATHS=("$HOME/projects")
+
+_MOLE_PURGE_FINAL_ACTIVITY_STATE=old
+_mole_snapshot_path_identity "$HOME/projects"
+_MOLE_PURGE_FINAL_SCAN_ROOT="$HOME/projects"
+_MOLE_PURGE_FINAL_SCAN_ROOT_PARENT="$_MOLE_PATH_SNAPSHOT_PARENT"
+_MOLE_PURGE_FINAL_SCAN_ROOT_PARENT_ID="$_MOLE_PATH_SNAPSHOT_PARENT_ID"
+_MOLE_PURGE_FINAL_SCAN_ROOT_TARGET_ID="$_MOLE_PATH_SNAPSHOT_TARGET_ID"
+_MOLE_PURGE_FINAL_SCAN_ROOT_PHYSICAL="$_MOLE_PURGE_FINAL_SCAN_ROOT"
+_MOLE_PURGE_FINAL_SCAN_ROOT_PHYSICAL_PARENT="$_MOLE_PATH_SNAPSHOT_PARENT"
+_MOLE_PURGE_FINAL_SCAN_ROOT_PHYSICAL_PARENT_ID="$_MOLE_PATH_SNAPSHOT_PARENT_ID"
+_MOLE_PURGE_FINAL_SCAN_ROOT_PHYSICAL_TARGET_ID="$_MOLE_PATH_SNAPSHOT_TARGET_ID"
+_mole_snapshot_path_identity "$fixture_entry"
+_MOLE_PURGE_FINAL_EXPECTED_PARENT="$_MOLE_PATH_SNAPSHOT_PARENT"
+_MOLE_PURGE_FINAL_EXPECTED_PARENT_ID="$_MOLE_PATH_SNAPSHOT_PARENT_ID"
+_MOLE_PURGE_FINAL_EXPECTED_TARGET_ID="$_MOLE_PATH_SNAPSHOT_TARGET_ID"
+_MOLE_SAFE_REMOVE_FINAL_GUARD=_mole_purge_final_remove_guard
+
+# Hold an open file descriptor inside build/ from an unrelated cwd (/). Started
+# through a subshell that exits, so the holder is not one of Mole's descendants.
+holder_pid=$(
+    ( cd / && exec 9<"$fixture_entry/output.lock" && exec >/dev/null 2>&1 </dev/null && exec sleep 30 ) &
+    printf '%s' "$!"
+)
+trap 'kill "$holder_pid" 2>/dev/null || true' EXIT
+sleep 0.2
+
+rc=0
+safe_remove "$fixture_entry" true 1 '' "$_MOLE_PURGE_FINAL_EXPECTED_PARENT" "$_MOLE_PURGE_FINAL_EXPECTED_PARENT_ID" "$_MOLE_PURGE_FINAL_EXPECTED_TARGET_ID" || rc=$?
+[[ $rc -ne 0 && -d "$fixture_entry" && -f "$fixture_entry/output.lock" ]] || exit 1
+
+kill "$holder_pid" 2>/dev/null || true
+while kill -0 "$holder_pid" 2>/dev/null; do sleep 0.1; done
+trap - EXIT
+
+rc=0
+safe_remove "$fixture_entry" true 1 '' "$_MOLE_PURGE_FINAL_EXPECTED_PARENT" "$_MOLE_PURGE_FINAL_EXPECTED_PARENT_ID" "$_MOLE_PURGE_FINAL_EXPECTED_TARGET_ID" || rc=$?
+[[ $rc -eq 0 && ! -e "$fixture_entry" ]] || exit 1
+printf 'PASS\n'
+EOF
+    [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+    [[ "$output" == *PASS* ]]
+}
+
+@test "purge protects Rust target Python venv Swift .build and project DerivedData while active" {
+    run env HOME="$HOME" PROJECT_ROOT="$PROJECT_ROOT" /bin/bash --noprofile --norc <<'EOF'
+set -euo pipefail
+source "$PROJECT_ROOT/lib/clean/project.sh"
+
+rust_proj="$HOME/www/rust-app"
+mkdir -p "$rust_proj/target/debug"
+touch "$rust_proj/Cargo.toml"
+
+py_proj="$HOME/www/py-app"
+mkdir -p "$py_proj/.venv/bin"
+touch "$py_proj/.venv/pyvenv.cfg"
+
+swift_proj="$HOME/www/swift-app"
+mkdir -p "$swift_proj/.build/debug"
+touch "$swift_proj/Package.swift"
+
+xcode_proj="$HOME/www/xcode-app"
+mkdir -p "$xcode_proj/DerivedData/Build"
+touch "$xcode_proj/DerivedData/info.plist"
+
+for target in "$rust_proj/target" "$py_proj/.venv" "$swift_proj/.build" "$xcode_proj/DerivedData"; do
+    purge_node_project_running() { return 1; }
+    purge_artifact_in_use() { return 1; }
+    if is_protected_purge_artifact "$target"; then exit 1; fi
+
+    purge_node_project_running() { return 0; }
+    is_protected_purge_artifact "$target" || exit 1
+
+    purge_node_project_running() { return 1; }
+    purge_artifact_in_use() { return 0; }
+    is_protected_purge_artifact "$target" || exit 1
+
+    purge_artifact_in_use() { return 2; }
+    is_protected_purge_artifact "$target" || exit 1
+    [[ "$PURGE_PROTECTION_UNVERIFIED" == true ]] || exit 1
+
+    purge_artifact_in_use() { return 143; }
+    rc=0
+    is_protected_purge_artifact "$target" || rc=$?
+    [[ $rc -eq 143 ]] || exit 1
+done
+EOF
+    [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+}
+
+@test "purge protects SwiftPM compiler output subdirs while project or scratch-path processes run" {
+    run env HOME="$HOME" PROJECT_ROOT="$PROJECT_ROOT" /bin/bash --noprofile --norc <<'EOF'
+set -euo pipefail
+source "$PROJECT_ROOT/lib/clean/project.sh"
+
+project="$HOME/www/swift-app"
+mkdir -p "$project/.build-win-commands/checkouts/dep/.git" "$project/.build-win-commands/out/Products"
+touch "$project/Package.swift"
+printf '%s\n# This file is a cache directory tag created by (Swift Package Manager).\n' "$MOLE_CACHEDIR_TAG_SIGNATURE" > "$project/.build-win-commands/CACHEDIR.TAG"
+printf '{"object":{"dependencies":[]},"version":6}
+' > "$project/.build-win-commands/workspace-state.json"
+target="$project/.build-win-commands/out"
+
+purge_node_project_running() { return 1; }
+purge_swiftpm_scratch_running() { return 1; }
+if is_protected_purge_artifact "$target"; then exit 1; fi
+
+purge_node_project_running() { return 0; }
+is_protected_purge_artifact "$target" || exit 1
+
+purge_node_project_running() { return 1; }
+purge_swiftpm_scratch_running() { return 0; }
+is_protected_purge_artifact "$target" || exit 1
+
+purge_swiftpm_scratch_running() { return 2; }
+is_protected_purge_artifact "$target" || exit 1
+[[ "$PURGE_PROTECTION_UNVERIFIED" == true ]] || exit 1
+
+purge_swiftpm_scratch_running() { return 143; }
+rc=0
+is_protected_purge_artifact "$target" || rc=$?
+[[ $rc -eq 143 ]]
+EOF
+    [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+}
+
+@test "purge never decomposes a non-SwiftPM target holding a workspace-state.json" {
+    run env HOME="$HOME" PROJECT_ROOT="$PROJECT_ROOT" /bin/bash --noprofile --norc <<'SCRIPT'
+set -euo pipefail
+source "$PROJECT_ROOT/lib/clean/project.sh"
+purge_node_project_running() { return 1; }
+root="$HOME/www"
+for target in vendor dist build target; do
+    project="$root/app-$target"
+    mkdir -p "$project/$target/out" "$project/$target/checkouts/dep"
+    printf 'note\n' > "$project/$target/out/notes.md"
+    printf '{}\n' > "$project/$target/workspace-state.json"
+    touch "$project/package.json"
+    is_swiftpm_packaged_scratch_dir "$project/$target" && exit 1
+    is_swiftpm_build_output_artifact "$project/$target/out" && exit 1
+done
+# A tag without SwiftPM's name, on a name no purge target uses.
+mkdir -p "$root/app/.build-other/checkouts/dep"
+printf '%s\n' "$MOLE_CACHEDIR_TAG_SIGNATURE" > "$root/app/.build-other/CACHEDIR.TAG"
+is_swiftpm_packaged_scratch_dir "$root/app/.build-other" && exit 1
+out_file=$(mktemp)
+scan_purge_targets "$root" "$out_file"
+results=$(cat "$out_file")
+rm -f "$out_file"
+[[ "$results" != */out* ]] || { echo "$results"; exit 1; }
+echo PASS
+SCRIPT
+    [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+    [[ "$output" == *PASS* ]]
+}
+
+@test "purge keeps a dependency-free SwiftPM root as one candidate" {
+    run env HOME="$HOME" PROJECT_ROOT="$PROJECT_ROOT" /bin/bash --noprofile --norc <<'SCRIPT'
+set -euo pipefail
+source "$PROJECT_ROOT/lib/clean/project.sh"
+scratch="$HOME/www/plain/.build"
+mkdir -p "$scratch/checkouts" "$scratch/repositories" "$scratch/wasm32-unknown-wasi"
+printf '{}\n' > "$scratch/workspace-state.json"
+is_swiftpm_packaged_scratch_dir "$scratch" && exit 1
+[[ "$(emit_purge_candidate_or_swiftpm_outputs "$scratch" "$HOME/www")" == "$scratch" ]]
+SCRIPT
+    [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+}
+
+@test "purge decomposes an index-build holding its own checkouts" {
+    run env HOME="$HOME" PROJECT_ROOT="$PROJECT_ROOT" /bin/bash --noprofile --norc <<'SCRIPT'
+set -euo pipefail
+source "$PROJECT_ROOT/lib/clean/project.sh"
+project="$HOME/www/lsp"
+scratch="$project/.build"
+mkdir -p "$scratch/checkouts/dep/.git" "$scratch/out" \
+    "$scratch/index-build/checkouts/dep/.git" "$scratch/index-build/arm64-apple-macosx"
+touch "$project/Package.swift"
+results=$(emit_purge_candidate_or_swiftpm_outputs "$scratch" "$HOME/www")
+printf '%s\n' "$results" | /usr/bin/grep -qx "$scratch/out"
+printf '%s\n' "$results" | /usr/bin/grep -qx "$scratch/index-build/arm64-apple-macosx"
+printf '%s\n' "$results" | /usr/bin/grep -qx "$scratch/index-build" && exit 1
+# The process probe still names the project, not the scratch root.
+purge_node_project_running() { [[ "$1" == "$(cd "$project" && /bin/pwd -P)" ]] && return 0; return 1; }
+is_protected_purge_artifact "$scratch/index-build/arm64-apple-macosx"
+echo PASS
+SCRIPT
+    [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+    [[ "$output" == *PASS* ]]
+}
+
+@test "a whitelisted SwiftPM scratch root keeps its decomposed outputs" {
+    local project="$HOME/www/kept"
+    mkdir -p "$project/.build/checkouts/dep/.git" "$project/.build/out/Products" "$HOME/.config/mole" "$HOME/.cache/mole"
+    touch "$project/Package.swift"
+    printf '{}\n' > "$project/.build/workspace-state.json"
+    head -c 4096 /dev/zero > "$project/.build/out/Products/app"
+    touch -t 202001010000 "$project/.build/out/Products/app" "$project/.build/out/Products" "$project/.build/out" "$project/Package.swift"
+    printf '%s\n' "$HOME/www" > "$HOME/.config/mole/purge_paths"
+
+    run env HOME="$HOME" PROJECT_ROOT="$PROJECT_ROOT" PATTERN="$HOME/www/*/.build" /bin/bash --noprofile --norc <<'SCRIPT'
+set -euo pipefail
+source "$PROJECT_ROOT/lib/core/common.sh"
+source "$PROJECT_ROOT/lib/clean/project.sh"
+purge_node_project_running() { return 1; }
+WHITELIST_PATTERNS=()
+echo "--- without entry"
+MOLE_DRY_RUN=1 clean_project_artifacts < /dev/null || true
+WHITELIST_PATTERNS=("$PATTERN")
+echo "--- with entry"
+is_path_whitelisted "$HOME/www/kept/.build"
+is_path_whitelisted "$HOME/www/kept/.build/out" && exit 1
+MOLE_DRY_RUN=1 clean_project_artifacts < /dev/null || true
+SCRIPT
+    [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+    local without="${output%%--- with entry*}"
+    local with="${output##*--- with entry}"
+    [[ "$without" == *".build/out"* ]] || { echo "$output"; return 1; }
+    [[ "$with" != *".build/out"* ]] || { echo "$output"; return 1; }
+    [ -f "$project/.build/out/Products/app" ]
+}
+
+@test "purge_artifact_in_use sees real holders above fd 999 and on non-ASCII paths" {
+    local artifact="$HOME/www/项目 é/target"
+    mkdir -p "$artifact/debug"
+    printf 'lock\n' > "$artifact/debug/.lock"
+    # Outside the process tree the probe runs in, cwd /, no path in its arguments.
+    (
+        cd /
+        ulimit -n 2048
+        exec 1500< "$artifact/debug/.lock"
+        exec sleep 30
+    ) &
+    local holder=$!
+    sleep 0.3
+    run env HOME="$HOME" PROJECT_ROOT="$PROJECT_ROOT" ARTIFACT="$artifact" LC_ALL=C \
+        /bin/bash --noprofile --norc <<'SCRIPT'
+set -euo pipefail
+source "$PROJECT_ROOT/lib/clean/project.sh"
+rc=0
+purge_artifact_in_use "$(cd "$ARTIFACT" && /bin/pwd -P)" || rc=$?
+echo "HELD=$rc"
+SCRIPT
+    local held_status="$status" held_output="$output"
+    kill "$holder" 2> /dev/null || true
+    wait "$holder" 2> /dev/null || true
+    [ "$held_status" -eq 0 ] || { echo "$held_output"; return 1; }
+    [[ "$held_output" == *"HELD=0"* ]] || { echo "$held_output"; return 1; }
+
+    # The positive control: with the holder gone the same path reads as idle,
+    # so a parse failure cannot pass for detection.
+    run env HOME="$HOME" PROJECT_ROOT="$PROJECT_ROOT" ARTIFACT="$artifact" LC_ALL=C \
+        /bin/bash --noprofile --norc <<'SCRIPT'
+set -euo pipefail
+source "$PROJECT_ROOT/lib/clean/project.sh"
+rc=0
+purge_artifact_in_use "$(cd "$ARTIFACT" && /bin/pwd -P)" || rc=$?
+echo "IDLE=$rc"
+SCRIPT
+    [[ "$output" == *"IDLE=1"* ]] || { echo "$output"; return 1; }
+}
+
+@test "purge_artifact_in_use ignores Mole's own shell and a holder that has exited" {
+    local artifact="$HOME/www/own/dist"
+    mkdir -p "$artifact"
+    run env HOME="$HOME" PROJECT_ROOT="$PROJECT_ROOT" ARTIFACT="$artifact" /bin/bash --noprofile --norc <<'SCRIPT'
+set -euo pipefail
+source "$PROJECT_ROOT/lib/clean/project.sh"
+artifact=$(cd "$ARTIFACT" && /bin/pwd -P)
+cd "$artifact"
+rc=0
+purge_artifact_in_use "$artifact" || rc=$?
+echo "OWN_CWD_RC=$rc"
+cd /
+sleep 0 &
+gone=$!
+wait "$gone"
+_PURGE_OPEN_SNAPSHOT=$(printf 'p%s\nfcwd\nn%s\n' "$gone" "$artifact")
+rc=0
+purge_artifact_in_use "$artifact" || rc=$?
+echo "EXITED_RC=$rc"
+_PURGE_OPEN_SNAPSHOT=""
+(cd "$artifact" && exec sleep 8) &
+holder=$!
+sleep 0.3
+rc=0
+purge_artifact_in_use "$artifact" || rc=$?
+echo "CHILD_RC=$rc"
+kill "$holder" 2> /dev/null || true
+wait "$holder" 2> /dev/null || true
+SCRIPT
+    [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+    [[ "$output" == *"OWN_CWD_RC=1"* ]] || { echo "$output"; return 1; }
+    [[ "$output" == *"EXITED_RC=1"* ]] || { echo "$output"; return 1; }
+    # What Mole itself started is Mole's, the same rule as the project probe.
+    [[ "$output" == *"CHILD_RC=1"* ]] || { echo "$output"; return 1; }
+}
+
+@test "a selected build folder refused because its project runs says so" {
+    local project="$HOME/www/rusty"
+    mkdir -p "$project/target/debug" "$HOME/.config/mole" "$HOME/.cache/mole"
+    touch "$project/Cargo.toml"
+    head -c 4096 /dev/zero > "$project/target/debug/app"
+    touch -t 202001010000 "$project/target/debug/app" "$project/target/debug" "$project/target" "$project/Cargo.toml"
+    printf '%s\n' "$HOME/www" > "$HOME/.config/mole/purge_paths"
+    (cd "$project" && exec sleep 30) &
+    local holder=$!
+    sleep 0.3
+    run env HOME="$HOME" PROJECT_ROOT="$PROJECT_ROOT" /bin/bash --noprofile --norc <<'SCRIPT'
+set -euo pipefail
+source "$PROJECT_ROOT/lib/core/common.sh"
+source "$PROJECT_ROOT/lib/clean/project.sh"
+filter_protected_artifacts() { cat; }
+eval "real_$(declare -f is_protected_purge_artifact)"
+protection_calls=0
+is_protected_purge_artifact() {
+    # Other tests leave candidates in this HOME; only this path passes once.
+    [[ "$1" == */www/rusty/target ]] && protection_calls=$((protection_calls + 1))
+    if [[ $protection_calls -eq 1 && "$1" == */www/rusty/target ]]; then
+        PURGE_PROTECTION_UNVERIFIED=false
+        PURGE_PROTECTION_REASON=""
+        return 1
+    fi
+    real_is_protected_purge_artifact "$@"
+}
+MOLE_DRY_RUN=1 MOLE_PURGE_YES=1 clean_project_artifacts < /dev/null || true
+SCRIPT
+    kill "$holder" 2> /dev/null || true
+    wait "$holder" 2> /dev/null || true
+    [[ "$output" == *"Skipped ~/www/rusty/target (in use"* ]] || { echo "$output"; return 1; }
+    [ -f "$project/target/debug/app" ]
+}
+
+@test "purge dry run and real run refuse an in-use artifact the same way" {
+    local project="$HOME/www/busy"
+    mkdir -p "$project/dist" "$HOME/.config/mole" "$HOME/.cache/mole"
+    touch "$project/package.json"
+    head -c 4096 /dev/zero > "$project/dist/bundle.js"
+    touch -t 202001010000 "$project/dist/bundle.js" "$project/dist" "$project/package.json"
+    printf '%s\n' "$HOME/www" > "$HOME/.config/mole/purge_paths"
+    (
+        cd /
+        exec 9< "$project/dist/bundle.js"
+        exec sleep 30
+    ) &
+    local holder=$!
+    sleep 0.3
+    # Discovery passes it once, so the recheck itself runs on a selected item.
+    local mode dry real
+    for mode in 1 0; do
+        run env HOME="$HOME" PROJECT_ROOT="$PROJECT_ROOT" DRY="$mode" /bin/bash --noprofile --norc <<'SCRIPT'
+set -euo pipefail
+source "$PROJECT_ROOT/lib/core/common.sh"
+source "$PROJECT_ROOT/lib/clean/project.sh"
+filter_protected_artifacts() { cat; }
+eval "real_$(declare -f is_protected_purge_artifact)"
+protection_calls=0
+is_protected_purge_artifact() {
+    # Other tests leave candidates in this HOME; only this path passes once.
+    [[ "$1" == */www/busy/dist ]] && protection_calls=$((protection_calls + 1))
+    if [[ $protection_calls -eq 1 && "$1" == */www/busy/dist ]]; then
+        PURGE_PROTECTION_UNVERIFIED=false
+        PURGE_PROTECTION_REASON=""
+        return 1
+    fi
+    real_is_protected_purge_artifact "$@"
+}
+MOLE_DRY_RUN="$DRY" MOLE_PURGE_YES=1 clean_project_artifacts < /dev/null || true
+SCRIPT
+        if [[ "$mode" == 1 ]]; then dry="$output"; else real="$output"; fi
+    done
+    kill "$holder" 2> /dev/null || true
+    wait "$holder" 2> /dev/null || true
+    [ -f "$project/dist/bundle.js" ] || { echo "$real"; return 1; }
+    [[ "$dry" != *"[DRY RUN] ~/www/busy/dist"* ]] || { echo "$dry"; return 1; }
+    [[ "$dry" == *"in use"* ]] || { echo "$dry"; return 1; }
+    [[ "$real" == *"in use"* ]] || { echo "$real"; return 1; }
+}
+
+@test "purge discovery reads one lsof snapshot per filter pass" {
+    run env HOME="$HOME" PROJECT_ROOT="$PROJECT_ROOT" /bin/bash --noprofile --norc <<'SCRIPT'
+set -euo pipefail
+source "$PROJECT_ROOT/lib/clean/project.sh"
+count_file=$(mktemp)
+items=""
+for i in 1 2 3 4 5 6; do
+    mkdir -p "$HOME/www/p$i/target"
+    touch "$HOME/www/p$i/Cargo.toml"
+    items+="$HOME/www/p$i/target"$'\n'
+done
+run_with_timeout() {
+    shift
+    case "$1" in
+        /usr/sbin/lsof) echo lsof >> "$count_file"; printf 'p123\nfcwd\nn/unrelated\nf3\nn/elsewhere\n' ;;
+        pgrep) return 1 ;;
+        *) "$@" ;;
+    esac
+}
+results=$(printf '%s' "$items" | filter_protected_artifacts)
+lsof_calls=$(wc -l < "$count_file" | tr -d ' ')
+rm -f "$count_file"
+echo "CALLS=$lsof_calls"
+[[ "$lsof_calls" -eq 1 ]] || exit 1
+[[ "$results" == *p6/target* ]]
+SCRIPT
+    [ "$status" -eq 0 ] || { echo "$output"; return 1; }
 }

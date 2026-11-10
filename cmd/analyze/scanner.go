@@ -43,6 +43,21 @@ type scanFailures struct {
 // PATH rejects -I outright. A var only so tests can point it at a stub.
 var duBinary = "/usr/bin/du"
 
+var (
+	// duTimeout bounds one du while a scan lists a folder, where a slow child
+	// can fall back to a partial size without holding the listing up. It also
+	// bounds an overview row in --json, which prints nothing until every row
+	// lands and whose callers often have shorter tool timeouts of their own.
+	duTimeout = 30 * time.Second
+	// overviewDuTimeout bounds an overview row. It has no fallback after its
+	// deadline and shows a spinner meanwhile, so a normal walk of a large
+	// ~/Library must finish rather than read as unknown (#1956).
+	overviewDuTimeout = 5 * time.Minute
+
+	// activeDu counts running du children so quitting can wait for their kill.
+	activeDu atomic.Int64
+)
+
 func (f *scanFailures) record(err error) {
 	if err != nil {
 		f.once.Do(func() { f.first = err })
@@ -239,10 +254,6 @@ func getDirectorySizeFromDuWithLimiter(ctx context.Context, path string, limiter
 	}
 	defer func() { <-limiter.duSem }()
 	return getDirectorySizeFromDu(ctx, path)
-}
-
-func scanPathConcurrent(ctx context.Context, root string, filesScanned, dirsScanned, bytesScanned *int64, currentPath *atomic.Value) (scanResult, error) {
-	return scanPathConcurrentWithOptions(ctx, root, filesScanned, dirsScanned, bytesScanned, currentPath, true, maxEntries)
 }
 
 func scanPathConcurrentAllEntries(ctx context.Context, root string, filesScanned, dirsScanned, bytesScanned *int64, currentPath *atomic.Value) (scanResult, error) {
@@ -718,11 +729,7 @@ func shouldSkipFileForLargeTracking(path string) bool {
 	return skipExtensions[ext]
 }
 
-// calculateDirSizeFast performs concurrent dir sizing using os.ReadDir.
-func calculateDirSizeFast(ctx context.Context, root string, filesScanned, dirsScanned, bytesScanned *int64, currentPath *atomic.Value) (int64, error) {
-	return calculateDirSizeFastWithLimiter(ctx, root, newScanLimiter(0), filesScanned, dirsScanned, bytesScanned, currentPath)
-}
-
+// calculateDirSizeFastWithLimiter performs concurrent dir sizing using os.ReadDir.
 func calculateDirSizeFastWithLimiter(ctx context.Context, root string, limiter *scanLimiter, filesScanned, dirsScanned, bytesScanned *int64, currentPath *atomic.Value) (int64, error) {
 	var total atomic.Int64
 	var wg sync.WaitGroup
@@ -919,10 +926,10 @@ func measureOverviewSizeWithPublication(ctx context.Context, path string, public
 		excludePath = filepath.Join(home, "Library")
 	}
 
-	ctx, cancel := context.WithTimeout(ctx, duTimeout)
+	ctx, cancel := context.WithTimeout(ctx, overviewDuTimeout)
 	defer cancel()
 	ignoreNames := overviewIgnoreNamesForPath(path)
-	size, err := getDirectorySizeFromDuWithExcludeAndIgnores(ctx, path, excludePath, ignoreNames)
+	size, err := getDirectorySizeFromDuWithExcludeAndIgnores(ctx, path, excludePath, ignoreNames, overviewDuTimeout)
 	if err != nil && size == 0 && ctx.Err() == nil {
 		size, err = getDirectoryLogicalSizeWithExclude(ctx, path, excludePath, ignoreNames)
 	}
@@ -951,7 +958,7 @@ func getDirectorySizeFromDu(ctx context.Context, path string) (int64, error) {
 }
 
 func getDirectorySizeFromDuWithExclude(ctx context.Context, path string, excludePath string) (int64, error) {
-	return getDirectorySizeFromDuWithExcludeAndIgnores(ctx, path, excludePath, nil)
+	return getDirectorySizeFromDuWithExcludeAndIgnores(ctx, path, excludePath, nil, duTimeout)
 }
 
 // duError keeps a short diagnostic separate from paths and the process status.
@@ -991,7 +998,7 @@ func duDiagnosticReason(stderr []byte) string {
 	return ""
 }
 
-func getDirectorySizeFromDuWithExcludeAndIgnores(ctx context.Context, path string, excludePath string, ignoreNames []string) (int64, error) {
+func getDirectorySizeFromDuWithExcludeAndIgnores(ctx context.Context, path string, excludePath string, ignoreNames []string, timeout time.Duration) (int64, error) {
 	// Validate paths.
 	if err := validatePath(path); err != nil {
 		return 0, err
@@ -1012,7 +1019,7 @@ func getDirectorySizeFromDuWithExcludeAndIgnores(ctx context.Context, path strin
 			return 0, err
 		}
 
-		ctx, cancel := context.WithTimeout(ctx, duTimeout)
+		ctx, cancel := context.WithTimeout(ctx, timeout)
 		defer cancel()
 
 		args := []string{"-skPx"}
@@ -1025,7 +1032,9 @@ func getDirectorySizeFromDuWithExcludeAndIgnores(ctx context.Context, path strin
 		cmd.Stdout = &stdout
 		cmd.Stderr = &stderr
 
+		activeDu.Add(1)
 		runErr := cmd.Run()
+		activeDu.Add(-1)
 		fields := strings.Fields(stdout.String())
 		if ctx.Err() != nil {
 			runErr = ctx.Err()

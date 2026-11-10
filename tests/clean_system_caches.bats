@@ -1932,6 +1932,7 @@ printf 'STATUS=%s ELAPSED=%s BYTES=%s\n' \
 	"$scan_rc" "$SECONDS" "$(wc -c < "$OUTPUT_FILE" | tr -d ' ')"
 EOF
 
+	printf '%s\n' "$output" # shown only when this case fails, and it failed once on CI without it
 	[ "$status" -eq 0 ] || return 1
 	local elapsed
 	elapsed=$(printf '%s\n' "$output" | sed -n 's/.*ELAPSED=\([0-9][0-9]*\).*/\1/p')
@@ -1970,7 +1971,7 @@ EOF
 
 @test "scan_project_cache_root prunes build outputs and package stores" {
     local name
-    for name in target .build .gradle Index.noindex _cacache; do
+    for name in target .build .build-worktree .gradle Index.noindex _cacache; do
         mkdir -p "$HOME/Projects/app/$name/sub/__pycache__"
         touch "$HOME/Projects/app/$name/sub/__pycache__/mod.pyc"
     done
@@ -1991,7 +1992,7 @@ cat "$output_file"
 EOF
     [ "$status" -eq 0 ]
     [[ "$output" == *"app/__pycache__"* ]] || return 1
-    for name in target .build .gradle Index.noindex _cacache; do
+    for name in target .build .build-worktree .gradle Index.noindex _cacache; do
         [[ "$output" != *"/$name/"* ]] || return 1
     done
 

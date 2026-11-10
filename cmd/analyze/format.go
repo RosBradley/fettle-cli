@@ -47,7 +47,15 @@ func truncateMiddle(s string, maxWidth int) string {
 	}
 	head := (maxWidth - 3) / 3
 	tail := maxWidth - 3 - head
-	return ansi.Truncate(s, head, "") + "..." + ansi.TruncateLeft(s, width-tail, "")
+	// TruncateLeft keeps a wide grapheme that straddles the cut, so an odd tail
+	// over CJK or flags would overshoot the budget by one cell; cut once more.
+	cut := width - tail
+	right := ansi.TruncateLeft(s, cut, "")
+	for displayWidth(right) > tail {
+		cut++
+		right = ansi.TruncateLeft(s, cut, "")
+	}
+	return ansi.Truncate(s, head, "") + "..." + right
 }
 
 func formatNumber(n int64) string {
@@ -149,15 +157,6 @@ func calculateNameWidth(termWidth int) int {
 		return analyzeNameWidth() // fettle: wider windows get longer names
 	}
 	return available
-}
-
-func trimNameWithWidth(name string, maxWidth int) string {
-	maxWidth = max(0, maxWidth)
-	tail := "..."
-	if maxWidth < len(tail) {
-		tail = ""
-	}
-	return ansi.Truncate(name, maxWidth, tail)
 }
 
 func padName(name string, targetWidth int) string {

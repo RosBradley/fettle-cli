@@ -373,56 +373,6 @@ func TestPadName(t *testing.T) {
 	}
 }
 
-func TestTrimNameWithWidth(t *testing.T) {
-	tests := []struct {
-		name     string
-		input    string
-		maxWidth int
-		check    func(t *testing.T, result string)
-	}{
-		{
-			name:     "Trim ASCII name",
-			input:    "verylongfilename.txt",
-			maxWidth: 10,
-			check: func(t *testing.T, result string) {
-				if displayWidth(result) > 10 {
-					t.Errorf("Width exceeds max: %d > 10", displayWidth(result))
-				}
-				if !strings.HasSuffix(result, "...") {
-					t.Errorf("Expected ellipsis, got %q", result)
-				}
-			},
-		},
-		{
-			name:     "Trim CJK name",
-			input:    "很长的文件名称.txt",
-			maxWidth: 12,
-			check: func(t *testing.T, result string) {
-				if displayWidth(result) > 12 {
-					t.Errorf("Width exceeds max: %d > 12", displayWidth(result))
-				}
-			},
-		},
-		{
-			name:     "No trimming needed",
-			input:    "short.txt",
-			maxWidth: 20,
-			check: func(t *testing.T, result string) {
-				if result != "short.txt" {
-					t.Errorf("Should not trim, got %q", result)
-				}
-			},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := trimNameWithWidth(tt.input, tt.maxWidth)
-			tt.check(t, result)
-		})
-	}
-}
-
 func TestCalculateNameWidth(t *testing.T) {
 	tests := []struct {
 		termWidth int
@@ -501,10 +451,25 @@ func TestUnicodeColumnsPreserveGraphemes(t *testing.T) {
 			t.Errorf("%q padded width=%d", tt.name, got)
 		}
 	}
-	if got := trimNameWithWidth("Cafe\u0301 xyz", 4); got != "C..." {
-		t.Errorf("trim=%q", got)
-	}
 	if got := truncateMiddle("👨‍👩‍👧‍👦abc", 2); got != "👨‍👩‍👧‍👦" {
 		t.Errorf("split grapheme=%q", got)
+	}
+}
+
+func TestTruncateMiddleNeverExceedsTheColumnBudget(t *testing.T) {
+	// A wide grapheme at the tail cut used to leave the name one cell too wide,
+	// which pushed the size column on CJK and flag names.
+	names := []string{
+		"🇯🇵🇯🇵🇯🇵🇯🇵🇯🇵🇯🇵🇯🇵🇯🇵🇯🇵🇯🇵",
+		"资料备份资料备份资料备份资料备份",
+		"abc资料备份def资料备份ghi资料",
+		"report-2023-final-version-archive.tar.gz",
+	}
+	for _, name := range names {
+		for budget := 1; budget <= 24; budget++ {
+			if got := truncateMiddle(name, budget); displayWidth(got) > budget {
+				t.Errorf("truncateMiddle(%q, %d) = %q is %d cells", name, budget, got, displayWidth(got))
+			}
+		}
 	}
 }

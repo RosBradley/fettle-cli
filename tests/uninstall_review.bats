@@ -485,3 +485,85 @@ _uninstall_apply_data_selection
 SH
     [ "$status" -eq 0 ] || { echo "$output"; return 1; }
 }
+
+@test "--with-data holds back UTM and VirtualBuddy virtual machine libraries" {
+    run env HOME="$HOME/vm-holdbacks" PROJECT_ROOT="$PROJECT_ROOT" /bin/bash --noprofile --norc <<'SH'
+set -euo pipefail
+source "$PROJECT_ROOT/lib/core/common.sh"
+source "$PROJECT_ROOT/lib/uninstall/batch.sh"
+utm="$HOME/Library/Containers/com.utmapp.UTM"
+buddy="$HOME/Library/Application Support/VirtualBuddy"
+mkdir -p "$utm/Data/Documents/Linux.utm" "$buddy/Linux.vbvm" "$HOME/Library/Application Support/ExampleChat"
+# Both are rows find_app_files really emits for these apps.
+grep -Fx "$utm" <<< "$(find_app_files com.utmapp.UTM UTM)" || exit 1
+grep -Fx "$buddy" <<< "$(find_app_files codes.rambo.VirtualBuddy VirtualBuddy)" || exit 1
+for path in "$utm" "$utm/Data/Documents/Linux.utm" "$buddy" "$buddy/Linux.vbvm"; do
+    _uninstall_data_preselect_holdback "$path" || { echo "selected: $path"; exit 1; }
+done
+if _uninstall_data_preselect_holdback "$utm-backup"; then exit 1; fi
+if _uninstall_data_preselect_holdback "$buddy-backup"; then exit 1; fi
+files=$(printf '%s\n' "$utm" "$HOME/Library/Application Support/ExampleChat")
+encoded=$(printf '%s' "$files" | base64 | tr -d '\n')
+_review_original_details=("UTM|$HOME/Applications/UTM.app|com.utmapp.UTM|1|$encoded|")
+_review_personal_paths=() _review_selected_paths=() _review_auto_files=() _review_personal_files=() _review_app_sizes=()
+calculate_total_size() { printf '1\n'; }
+MOLE_UNINSTALL_WITH_DATA=1 _uninstall_prepare_data_review
+[[ "${_review_personal_paths[*]}" == *com.utmapp.UTM* ]] || exit 1
+[[ "${_review_selected_paths[*]}" != *com.utmapp.UTM* ]] || exit 1
+[[ "${_review_selected_paths[*]}" == *ExampleChat* ]] || exit 1
+SH
+    [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+}
+
+@test "without Full Disk Access, other apps' container rows are listed unmeasured" {
+    run env HOME="$HOME" PROJECT_ROOT="$PROJECT_ROOT" /bin/bash --noprofile --norc <<'SCRIPT'
+set -euo pipefail
+source "$PROJECT_ROOT/lib/core/common.sh"
+source "$PROJECT_ROOT/lib/uninstall/batch.sh"
+stub="$HOME/du-stub"; log="$HOME/du.log"
+rm -rf "$stub" "$log"; mkdir -p "$stub"
+cat > "$stub/du" <<STUB
+#!/bin/bash
+printf '%s\n' "\$*" >> "$log"
+printf '8\t%s\n' "\${@: -1}"
+STUB
+chmod +x "$stub/du"
+PATH="$stub:$PATH"
+container="$HOME/Library/Containers/com.example.review"
+group="$HOME/Library/Group Containers/group.example.review"
+support="$HOME/Library/Application Support/ExampleReview"
+mkdir -p "$container/Data" "$group/Data" "$support"
+files=$(printf '%s\n%s\n%s' "$container" "$group" "$support")
+
+MOLE_HAS_FDA=0
+[[ "$(format_uninstall_preview_path "$container")" != *", "* ]] || exit 1
+[[ "$(format_uninstall_preview_path "$group")" != *", "* ]] || exit 2
+[[ "$(calculate_total_size "$files")" == 8 ]] || exit 3
+[[ "$(format_uninstall_preview_path "$support")" == *", "* ]] || exit 4
+if grep -F -e "Containers" "$log"; then exit 5; fi
+
+: > "$log"; MOLE_HAS_FDA=unknown
+[[ "$(calculate_total_size "$files")" == 8 ]] || exit 6
+if grep -F -e "Containers" "$log"; then exit 7; fi
+
+# Through the real sink: the row still goes, its log size reads unknown, and
+# only an uninstall skips the probe.
+export MOLE_DELETE_LOG="$HOME/deletions.log"
+: > "$log"; : > "$MOLE_DELETE_LOG"; MOLE_HAS_FDA=0
+MOLE_UNINSTALL_MODE=1 MOLE_DELETE_MODE=permanent mole_delete "$container" false || exit 8
+[[ ! -e "$container" ]] || exit 9
+if grep -F -e "Containers" "$log"; then exit 10; fi
+grep -F "$container" "$MOLE_DELETE_LOG" | grep -qF unknown || exit 15
+MOLE_DELETE_MODE=permanent mole_delete "$group" false || exit 11
+[[ ! -e "$group" ]] || exit 16
+grep -qF "Group Containers" "$log" || exit 12
+mkdir -p "$container/Data" "$group/Data"
+
+: > "$log"; MOLE_HAS_FDA=1
+[[ "$(calculate_total_size "$files")" == 24 ]] || exit 13
+[[ "$(grep -c "Containers" "$log")" == 2 ]] || exit 14
+echo ok
+SCRIPT
+    [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+    [[ "$output" == *"ok"* ]]
+}

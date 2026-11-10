@@ -1,7 +1,7 @@
 ---
 name: fettle
 description: "Drive the Fettle CLI (`fettle`) on macOS: find what uses disk space, preview and run cleanup, uninstall apps, check for software and Ollama model updates, and read system health and cleanup history. Use before running any `fettle` command. Not for editing Fettle source code."
-when_to_use: "磁盘满了, 空间不够, 清理磁盘, 清理缓存, 清理电脑, 卸载应用, 卸载软件, 电脑很卡, 什么占了空间, ディスク容量, 容量不足, 디스크 정리, disk full, free up space, clean my Mac, uninstall an app, what is using my disk, computer is slow, update my apps, did Fettle delete, fettle clean, Fettle"
+when_to_use: "磁盘满了, 空间不够, 清理磁盘, 清理缓存, 卸载应用, 电脑很卡, 什么占了空间, ディスク容量, 디스크 정리, disk full, free up space, clean my Mac, uninstall an app, what is using my disk, computer is slow, update my apps, did Fettle delete, Fettle"
 ---
 
 # Fettle

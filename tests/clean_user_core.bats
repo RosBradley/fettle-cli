@@ -823,6 +823,52 @@ EOF
     rm -rf "$test_home"
 }
 
+@test "the user cache sweep keeps Buzz models and plugins even with a custom whitelist" {
+    # Buzz keeps downloaded Whisper models, installed plugins and the user's
+    # presentation CSS under ~/Library/Caches/Buzz, the folder its FAQ points
+    # users to. clean_user_essentials removes whole children of
+    # ~/Library/Caches, and a saved custom whitelist replaces the defaults, so
+    # only the always-merged safety list can keep the folder.
+    local fixture="$HOME/buzz-sweep-home"
+    mkdir -p "$fixture/.config/mole" \
+        "$fixture/Library/Caches/Buzz/models/whisper" \
+        "$fixture/Library/Caches/Buzz/plugins/example" \
+        "$fixture/Library/Caches/com.example.disposable"
+    printf 'weights\n' > "$fixture/Library/Caches/Buzz/models/whisper/large-v3.pt"
+    printf 'plugin\n' > "$fixture/Library/Caches/Buzz/plugins/example/plugin.py"
+    printf 'cache\n' > "$fixture/Library/Caches/com.example.disposable/data"
+    printf '%s\n' "$fixture/.cache/keep-my-own-thing/*" > "$fixture/.config/mole/whitelist"
+
+    run env -u DENO_DIR HOME="$fixture" PROJECT_ROOT="$PROJECT_ROOT" \
+        MOLE_TEST_MODE=1 MOLE_TEST_NO_AUTH=1 /bin/bash --noprofile --norc <<'EOF'
+set -euo pipefail
+source "$PROJECT_ROOT/bin/clean.sh"
+ps() { printf '  PID  PPID COMM ARGS\n'; }
+start_section_spinner() { :; }
+stop_section_spinner() { :; }
+clean_trash() { :; }
+_clean_recent_items() { :; }
+_clean_mail_downloads() { :; }
+clean_user_essentials
+EOF
+
+    [ "$status" -eq 0 ] || {
+        echo "$output"
+        return 1
+    }
+    # The ordinary cache is the positive control: the sweep really ran.
+    [ ! -e "$fixture/Library/Caches/com.example.disposable/data" ] || {
+        echo "$output"
+        return 1
+    }
+    [ -f "$fixture/Library/Caches/Buzz/models/whisper/large-v3.pt" ] || {
+        echo "$output"
+        return 1
+    }
+    [ -f "$fixture/Library/Caches/Buzz/plugins/example/plugin.py" ] || return 1
+    rm -rf "$fixture"
+}
+
 @test "clean_trash dry run stays silent for compiled-model-only items" {
     mkdir -p "$HOME/.Trash/model/com.apple.e5rt.e5bundlecache"
     touch "$HOME/.Trash/model/com.apple.e5rt.e5bundlecache/weights.bin"
@@ -2493,7 +2539,8 @@ EOF
     [ "$status" -eq 0 ] || return 1
     [[ "$output" == *"Safari cache"* ]] || return 1
     [[ "$output" == *"Firefox cache"* ]] || return 1
-    [[ "$output" == *"Puppeteer browser cache"* ]]
+    # Puppeteer installs its browsers here; removing them breaks launch (#1941).
+    [[ "$output" != *"Puppeteer"* ]]
 }
 
 @test "clean_browsers never enters Firefox cleanup while Firefox is running" {
@@ -5025,4 +5072,37 @@ EOF
     [ "$status" -eq 0 ] || { echo "$output"; return 1; }
     [[ "$output" == *"SPIN:Measuring Trash..."*"Trash · would empty, 1 item"* ]] || { echo "$output"; return 1; }
     [[ "$output" == *"SPINNING_AFTER=false"* ]] || { echo "$output"; return 1; }
+}
+
+@test "browser and external volume root overrides are honored only in test mode" {
+    run env HOME="$HOME" PROJECT_ROOT="$PROJECT_ROOT" \
+        MOLE_CHROME_APP_PATHS="$HOME/override/Chrome.app" \
+        MOLE_EDGE_APP_PATHS="$HOME/override/Edge.app" \
+        MOLE_BRAVE_APP_PATHS="$HOME/override/Brave.app" \
+        MOLE_EXTERNAL_VOLUMES_ROOT="$HOME/override/volumes" \
+        /bin/bash --noprofile --norc << 'EOF'
+set -euo pipefail
+source "$PROJECT_ROOT/lib/core/common.sh"
+source "$PROJECT_ROOT/lib/clean/user.sh"
+# The wrappers only choose the bundle list; record it instead of cleaning.
+_clean_chromium_old_versions() { shift 3; printf 'PATHS:%s\n' "$*"; }
+for mode in 0 1; do
+    echo "MODE:$mode"
+    MOLE_TEST_MODE=$mode MOLE_TEST_NO_AUTH=0 clean_chrome_old_versions
+    MOLE_TEST_MODE=$mode MOLE_TEST_NO_AUTH=0 clean_edge_old_versions
+    MOLE_TEST_MODE=$mode MOLE_TEST_NO_AUTH=0 clean_brave_old_versions
+    printf 'VOLUMES:%s\n' "$(MOLE_TEST_MODE=$mode MOLE_TEST_NO_AUTH=0 external_volume_root)"
+done
+EOF
+
+    [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+    local real_part="${output%%MODE:1*}"
+    local test_part="${output#*MODE:1}"
+    [[ "$real_part" != *"$HOME/override"* ]] || { echo "override used outside test mode: $output"; return 1; }
+    [[ "$real_part" == *"PATHS:/Applications/Google Chrome.app $HOME/Applications/Google Chrome.app"* ]] || return 1
+    [[ "$real_part" == *"VOLUMES:/Volumes"* ]] || return 1
+    [[ "$test_part" == *"PATHS:$HOME/override/Chrome.app"* ]] || return 1
+    [[ "$test_part" == *"PATHS:$HOME/override/Edge.app"* ]] || return 1
+    [[ "$test_part" == *"PATHS:$HOME/override/Brave.app"* ]] || return 1
+    [[ "$test_part" == *"VOLUMES:$HOME/override/volumes"* ]]
 }
