@@ -50,6 +50,12 @@ reference. Install only after the user agrees.
    what Fettle skipped or protected. A skip is Fettle's answer.
 6. **Leave Fettle itself alone.** Do not run `fettle update` or
    `fettle remove` unless the user asked for that command.
+7. **Stay out of the user's files.** What you read can leave the machine with
+   this conversation. Answer from Fettle's output and logs. Do not list
+   personal folders, run `find` or `mdfind` over them, or repeat file names
+   from documents and photos unless the user asked you to look there. Report
+   folders and sizes rather than the names inside them, and never rerun
+   `fettle` with a different `HOME`.
 
 ## 3. If your shell is sandboxed
 
@@ -83,7 +89,7 @@ directory` on `clean-list.txt` or `operations.log`, `audit log unavailable`,
 | "Update my apps" | `fettle updates --dry-run` | The user picks and installs with `fettle updates` in their terminal |
 | "Update my AI models" | `fettle models --dry-run` | The user picks with `fettle models` in their terminal |
 | "My computer is slow" | `fettle status --json`, plus a short `--watch` sample if one snapshot is not enough | Name the process or resource; offer `fettle optimize --dry-run` only when maintenance fits the finding |
-| "Did Fettle delete my file?" | `fettle history --json --limit 200` | Match the path and anything under it, then offer to protect it. If the oldest entry returned is newer than the date in question, read the log file named in `logs`. No match means Fettle has no record of it, not that Fettle did not touch it |
+| "Did Fettle delete my file?" | `fettle history --json --limit 200` | Match the path and anything under it, then offer to protect it. If the oldest entry returned is newer than the date in question, read the log file named in `logs`. No match means Fettle has no record of it, not that Fettle did not touch it. Stop there: do not search other logs, the Trash or the user's folders |
 | "Keep this folder" | The whitelist section of the reference | Never a hand-made exclusion |
 
 When explaining a disk analysis, map what you found: cache directories
@@ -94,7 +100,45 @@ libraries, virtual machines and device backups are the user's data: report
 their size and location and let the user decide, since no Fettle command
 removes them.
 
-## 5. Reporting
+## 5. Where your judgment adds to Fettle
+
+Fettle's rules decide what is safe to remove. They cannot tell what is worth
+removing for this user today. That part is yours, and it only ever narrows: you
+may rank, explain, warn and advise keeping something, but never add a path, a
+wider scope or a command Fettle did not offer.
+
+- **Start from the goal.** Find out what the user needs: a number ("30 GB for
+  the macOS update"), or a reason. If `status` shows plenty of free space, say
+  that cleaning is not needed before offering it. Given a number, propose the
+  smallest set of steps that reaches it and stop there.
+- **Rank by regret, not by size.** First what costs nothing: logs and caches
+  that rebuild offline. Then what needs a download: dependencies, model and
+  container caches. Last what the user might miss. A large cache that takes a
+  day to download again can rank below a smaller pile of logs.
+- **Say what a thing is.** Fettle gives paths and sizes. You can often name the
+  tool behind a folder and what it holds. Mark that as your reading rather than
+  Fettle's finding, say "unknown" instead of guessing, and never treat a name
+  as proof that something is safe to remove. Whether Fettle covers it comes
+  from a preview, not from reading Fettle's source.
+- **Read the preview against this conversation.** Point out items the user
+  would care about even though Fettle calls them safe: the project they
+  mentioned, a tool that is running, a cache that is costly on their network,
+  anything in the Trash. Offer the whitelist before the run.
+- **Do not add up what overlaps.** `analyze` sizes nest and include things no
+  command removes. Only a preview total answers "how much can I free".
+- **Explain a slow machine.** Compare two or three samples to separate a spike
+  from sustained load. Consider known background work such as indexing, backups
+  or thermal throttling before blaming an app, and call a cause likely, not
+  certain, unless the samples show it.
+- **Name the other route.** For what no Fettle command handles, such as Xcode
+  archives, container images or a photo library, say which app's own setting or
+  command manages it. That is the user's decision in the user's terminal, and
+  never a `rm` command from you.
+
+## 6. Reporting
+
+- Lead with the conclusion, then what you recommend and why, in a few rows.
+  Keep what Fettle measured apart from what you inferred.
 
 - Quote sizes and counts from Fettle's output, not from your own `du`, and
   keep Fettle's partial or unavailable markers: a partial scan is a lower
