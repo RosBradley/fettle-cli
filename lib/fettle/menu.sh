@@ -927,12 +927,14 @@ show_version() {
 }
 
 # Whether this copy runs from the root of a git folder holding the sync script.
+# Compared as the same folder on disk (-ef), not as text: macOS paths ignore
+# case, so /Users/brad/developer/fettle-cli is the same folder as git's
+# /Users/brad/Developer/fettle-cli.
 _fettle_is_git_folder() {
-    local toplevel="" here=""
+    local toplevel=""
     [[ -f "$SCRIPT_DIR/scripts/fettle-sync.sh" ]] || return 1
     toplevel="$(git -C "$SCRIPT_DIR" rev-parse --show-toplevel 2> /dev/null)" || return 1
-    here="$(cd "$SCRIPT_DIR" && pwd -P)" || return 1
-    [[ -n "$toplevel" && "$(cd "$toplevel" && pwd -P)" == "$here" ]]
+    [[ -n "$toplevel" && "$toplevel" -ef "$SCRIPT_DIR" ]]
 }
 
 # Mole's own updater and update check, kept only for Mole's tests of them:

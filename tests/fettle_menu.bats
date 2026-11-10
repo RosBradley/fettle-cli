@@ -442,6 +442,15 @@ show_brand_banner
 	[[ "$output" != *"Mole version"* ]]
 }
 
+@test "the git folder is recognized when its path is typed in another case" {
+	local other
+	other="$(dirname "$PROJECT_ROOT")/$(basename "$PROJECT_ROOT" | tr '[:lower:]' '[:upper:]')"
+	[[ "$other" != "$PROJECT_ROOT" && -x "$other/mole" ]] || skip "the file system tells case apart"
+	run env HOME="$HOME" "$other/mole" --version
+	[ "$status" -eq 0 ] || { echo "$output"; return 1; }
+	[[ "$output" == *"Fettle version "* ]] || { echo "$output"; return 1; }
+}
+
 @test "fettle remove changes nothing and says what to remove instead" {
 	mkdir -p "$HOME/.local/bin" "$HOME/.config/mole"
 	printf 'keep\n' > "$HOME/.config/mole/my_commands"
