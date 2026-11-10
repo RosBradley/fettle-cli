@@ -32,6 +32,7 @@ The Fettle changes live in their own files, so Mole's updates merge cleanly:
 | `cmd/fettle-view/` | The command screen: runs a command inside the fixed frame, then shows its results |
 | `scripts/fettle-sync.sh` | Brings in Mole's latest changes, keeping Fettle's side of the Mole files Fettle removed or rewrote |
 | `scripts/fettle_brand_audit.py`, `tests/fettle_brand.bats` | Fail when text users see names Mole or `mo`, or the colors aren't Fettle's |
+| `skills/fettle/`, `plugins/fettle/`, `.claude-plugin/marketplace.json`, `.agents/plugins/marketplace.json`, `llms.txt` | The agent skill for Fettle (macOS only) and its Claude Code and Codex plugin, in place of Mole's `skills/mole` and `plugins/mole`: `npx skills add RosBradley/fettle-cli`, or `/plugin marketplace add RosBradley/fettle-cli` then `/plugin install fettle@fettle`. `scripts/audit_skill_commands.py` checks its commands and that the plugin copy matches |
 | `fettle-get.sh` | The installer: installs the newest Fettle release, and updates a copy it installed |
 | `scripts/fettle-release.sh`, `scripts/fettle-release-build.sh`, `.github/workflows/fettle-release.yml` | Publishing a release: you tag it, GitHub tests, builds and publishes it |
 | `.github/README.md` | The front page on GitHub, shown instead of Mole's README |

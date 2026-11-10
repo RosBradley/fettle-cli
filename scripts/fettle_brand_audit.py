@@ -9,7 +9,8 @@ Mole's name fails this check, which lists each line to change.
 
 Scans the router, bin/, lib/ and the Go commands (not their tests). Comment
 lines, trailing "# SAFE:" notes, Go trailing comments and Go import paths
-are skipped. Mole's updater and remover (lib/manage/update.sh and
+are skipped. The agent skill, its plugin copy and manifests, and llms.txt
+are read whole, since other people's agents read them. Mole's updater and remover (lib/manage/update.sh and
 lib/manage/remove.sh) are skipped because Fettle replaces them
 (lib/fettle/menu.sh); tests/fettle_brand.bats checks the screens Fettle
 still takes from them, help and version, as printed.
@@ -71,6 +72,12 @@ def code_part(path: str, line: str) -> str:
     return line.split(" # SAFE:", 1)[0]
 
 
+def text_files() -> list[pathlib.Path]:
+    found = sorted(ROOT.glob("skills/fettle/**/*.md")) + sorted(ROOT.glob("plugins/fettle/**/*"))
+    found += [ROOT / "llms.txt", ROOT / ".claude-plugin/marketplace.json", ROOT / ".agents/plugins/marketplace.json"]
+    return [p for p in found if p.is_file()]
+
+
 def files() -> list[pathlib.Path]:
     found = [ROOT / "mole"]
     found += sorted(ROOT.glob("bin/*.sh"))
@@ -82,15 +89,17 @@ def files() -> list[pathlib.Path]:
 def main() -> int:
     used = set()
     problems = []
-    for path in files():
+    text_set = set(text_files())
+    for path in files() + sorted(text_set):
         rel = path.relative_to(ROOT).as_posix()
         if rel in SKIPPED_FILES:
             continue
+        whole = path in text_set
         for number, line in enumerate(path.read_text(errors="replace").splitlines(), 1):
             stripped = line.strip()
-            if stripped.startswith("#") or stripped.startswith("//"):
+            if not whole and (stripped.startswith("#") or stripped.startswith("//")):
                 continue
-            if not PATTERN.search(code_part(rel, line)):
+            if not PATTERN.search(line if whole else code_part(rel, line)):
                 continue
             allowed = [i for i, (f, text, _) in enumerate(ALLOWED) if f == rel and text in line]
             if allowed:

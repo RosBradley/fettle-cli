@@ -23,8 +23,10 @@ die() {
 }
 
 # Mole's files Fettle removed because they carry Mole's name, links or
-# contacts: its READMEs, images, sponsor and owner files, trademark notice
-# and Mole Mac issue forms. When Mole changes one, it stays removed.
+# contacts: its READMEs, images, sponsor and owner files, trademark notice,
+# Mole Mac issue forms, and its agent skill and plugin (Fettle's are
+# skills/fettle and plugins/fettle). When Mole changes one, it stays
+# removed. An entry ending in / covers everything under it.
 readonly FETTLE_REMOVED=(
     README.md README_CN.md README_DE.md README_FR.md README_JA.md README_KR.md
     README_PL.md README_RU.md README_TW.md README_UA.md
@@ -32,6 +34,7 @@ readonly FETTLE_REMOVED=(
     docs/img/big-mole.png docs/img/mole-love.png docs/img/mole-banner.png
     .github/FUNDING.yml .github/CODEOWNERS
     .github/ISSUE_TEMPLATE/mac_app_bug.yml .github/ISSUE_TEMPLATE/mac_app_feature.yml
+    skills/mole/ plugins/mole/ .claude/skills/mole .agents/skills/mole
 )
 # Mole's files Fettle rewrote for itself. When Mole changes one, Fettle's
 # version stays.
@@ -39,14 +42,17 @@ readonly FETTLE_OWNED=(
     SECURITY.md CONTRIBUTING.md
     .github/ISSUE_TEMPLATE/bug_report.md .github/ISSUE_TEMPLATE/feature_request.md
     .github/ISSUE_TEMPLATE/config.yml
+    llms.txt .claude-plugin/marketplace.json .agents/plugins/marketplace.json
+    skills/fettle/ plugins/fettle/
 )
 
-# Whether $1 is one of the remaining arguments.
+# Whether $1 is one of the remaining arguments, or under one ending in /.
 listed() {
     local path="$1" entry
     shift
     for entry in "$@"; do
         [[ "$entry" == "$path" ]] && return 0
+        [[ "$entry" == */ && "$path" == "$entry"* ]] && return 0
     done
     return 1
 }

@@ -6,10 +6,10 @@ name: Validation
 on:
   push:
     branches: [main, dev]
-    paths: ['**', '!**.md', '!docs/**', '!CONTRIBUTORS.svg', '!LICENSE', '!llms.txt', '!.claude/**', '!.agents/**', '!.cursor/**', '!.github/ISSUE_TEMPLATE/**', '!.github/CODEOWNERS', '!skills/**', '!plugins/**', 'README.md', 'CONTRIBUTING.md', 'docs/incidents.md', '.claude/hooks/**', '.agents/**', '.claude/skills/*', '.claude/skills/*/SKILL.md', '.claude/skills/release-notes/**', 'skills/mole/SKILL.md', '**.sh', '**.bash', '**.bats', '**.go', '**.nix', '**.py', '**.ps1', '**/mole', '**/mo']
+    paths: ['**', '!**.md', '!docs/**', '!CONTRIBUTORS.svg', '!LICENSE', '!llms.txt', '!.claude/**', '!.agents/**', '!.cursor/**', '!.github/ISSUE_TEMPLATE/**', '!.github/CODEOWNERS', '!skills/**', '!plugins/**', 'README.md', 'CONTRIBUTING.md', 'docs/incidents.md', '.claude/hooks/**', '.agents/**', '.claude/skills/*', '.claude/skills/*/SKILL.md', '.claude/skills/release-notes/**', 'skills/fettle/SKILL.md', '**.sh', '**.bash', '**.bats', '**.go', '**.nix', '**.py', '**.ps1', '**/mole', '**/mo']
   pull_request:
     branches: [main, dev]
-    paths: ['**', '!**.md', '!docs/**', '!CONTRIBUTORS.svg', '!LICENSE', '!llms.txt', '!.claude/**', '!.agents/**', '!.cursor/**', '!.github/ISSUE_TEMPLATE/**', '!.github/CODEOWNERS', '!skills/**', '!plugins/**', 'README.md', 'CONTRIBUTING.md', 'docs/incidents.md', '.claude/hooks/**', '.agents/**', '.claude/skills/*', '.claude/skills/*/SKILL.md', '.claude/skills/release-notes/**', 'skills/mole/SKILL.md', '**.sh', '**.bash', '**.bats', '**.go', '**.nix', '**.py', '**.ps1', '**/mole', '**/mo']
+    paths: ['**', '!**.md', '!docs/**', '!CONTRIBUTORS.svg', '!LICENSE', '!llms.txt', '!.claude/**', '!.agents/**', '!.cursor/**', '!.github/ISSUE_TEMPLATE/**', '!.github/CODEOWNERS', '!skills/**', '!plugins/**', 'README.md', 'CONTRIBUTING.md', 'docs/incidents.md', '.claude/hooks/**', '.agents/**', '.claude/skills/*', '.claude/skills/*/SKILL.md', '.claude/skills/release-notes/**', 'skills/fettle/SKILL.md', '**.sh', '**.bash', '**.bats', '**.go', '**.nix', '**.py', '**.ps1', '**/mole', '**/mo']
   workflow_dispatch:
 
 permissions:

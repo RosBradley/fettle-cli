@@ -1,14 +1,14 @@
 {
-  "name": "mole",
+  "name": "fettle",
   "interface": {
-    "displayName": "Mole"
+    "displayName": "Fettle"
   },
   "plugins": [
     {
-      "name": "mole",
+      "name": "fettle",
       "source": {
         "source": "local",
-        "path": "./plugins/mole"
+        "path": "./plugins/fettle"
       },
       "policy": {
         "installation": "AVAILABLE",
