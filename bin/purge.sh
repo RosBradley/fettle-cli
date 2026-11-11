@@ -169,7 +169,7 @@ perform_purge() {
     # Show scanning with spinner below the title line
     if [[ -t 1 ]]; then
         # Print title ONCE with newline; spinner occupies the line below
-        printf '%s\n' "${PURPLE_BOLD}Purge Project Artifacts${NC}"
+        printf '%s\n' "${FETTLE_BADGE}${PURPLE_BOLD}Purge Project Artifacts${NC}" # fettle: badge
 
         # Capture terminal width in parent (most reliable before forking)
         local _parent_cols=80
@@ -231,7 +231,7 @@ perform_purge() {
         ) &
         monitor_pid=$!
     else
-        echo -e "${PURPLE_BOLD}Purge Project Artifacts${NC}"
+        echo -e "${FETTLE_BADGE}${PURPLE_BOLD}Purge Project Artifacts${NC}" # fettle: badge
     fi
 
     clean_project_artifacts

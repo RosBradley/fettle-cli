@@ -500,7 +500,7 @@ fettle_run_and_return() {
         labels="$(_fettle_summary_labels "$@")"
         [[ -z "$note" ]] || extra_args+=(--note "$note")
         [[ -z "$labels" ]] || extra_args+=(--summary "$labels")
-        FETTLE_CANCEL_FILE="$work/cancelled" "$pane" --title "$title" \
+        FETTLE_IN_PANE=1 FETTLE_CANCEL_FILE="$work/cancelled" "$pane" --title "$title" \
             "${extra_args[@]+"${extra_args[@]}"}" --file "$HOME/.config/mole/clean-list.txt" \
             --unstarted "$work/unstarted" -- "$@" || true
         [[ -e "$work/unstarted" ]] || in_pane=true
@@ -510,9 +510,9 @@ fettle_run_and_return() {
         local heading
         heading="$(_fettle_command_heading "$1")"
         if [[ -n "$note" ]]; then
-            printf '%s%s%s\n%s%s%s\n\n' "$BLUE" "$title" "$NC" "$GRAY" "$note" "$NC"
+            printf '%s%s%s%s\n%s%s%s\n\n' "${FETTLE_BADGE:-}" "$BLUE" "$title" "$NC" "$GRAY" "$note" "$NC"
         elif [[ -n "$heading" ]]; then
-            printf '%s%s%s\n' "$PURPLE_BOLD" "$heading" "$NC"
+            printf '%s%s%s%s\n' "${FETTLE_BADGE:-}" "$PURPLE_BOLD" "$heading" "$NC"
             # Touch ID's own screen already starts with a blank line.
             [[ "$1" == */bin/touchid.sh && $# -eq 1 ]] || printf '\n'
         fi

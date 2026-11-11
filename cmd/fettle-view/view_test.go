@@ -65,7 +65,7 @@ func TestViewOpensAtTheEndAndScrolls(t *testing.T) {
 	}
 	view := ansi.Strip(m.View())
 	rows := strings.Split(view, "\n")
-	if len(rows) != 12 || !strings.HasPrefix(rows[0], "Clean · Preview") || !strings.HasSuffix(rows[0], "93-100 of 100") {
+	if len(rows) != 12 || !strings.HasPrefix(rows[0], " F▪   Clean · Preview") || !strings.HasSuffix(rows[0], "93-100 of 100") {
 		t.Fatalf("view rows %d, title %q", len(rows), rows[0])
 	}
 	if rows[1] != strings.Repeat("─", 40) || rows[10] != strings.Repeat("─", 40) {
@@ -113,7 +113,7 @@ func TestViewFileListOnF(t *testing.T) {
 		t.Fatal("F did not open the file list")
 	}
 	view := ansi.Strip(m.View())
-	if !strings.HasPrefix(view, "File list: /tmp/clean-list.txt") || !strings.Contains(view, "Q Back to results") {
+	if !strings.HasPrefix(view, " F▪   File list: /tmp/clean-list.txt") || !strings.Contains(view, "Q Back to results") {
 		t.Errorf("file view %q", view)
 	}
 	// The long path wraps instead of being cut.
@@ -423,5 +423,24 @@ func TestBackToMenuScreenOnlyWhenTheMenuHasOne(t *testing.T) {
 	backToMenuScreen(&out)
 	if out.String() != "\x1b[?1049h\x1b[H\x1b[2J" {
 		t.Errorf("wrote %q", out.String())
+	}
+}
+
+func TestTitleRowCarriesTheFettleBadgeAndFitsTheWidth(t *testing.T) {
+	for _, width := range []int{12, 19, 20, 40} {
+		row := header("Clean · Preview", "1 of 9", width)
+		if got := ansi.StringWidth(row); got > width {
+			t.Fatalf("width %d: title row is %d columns: %q", width, got, ansi.Strip(row))
+		}
+		plain := ansi.Strip(row)
+		if width >= 20 && !strings.HasPrefix(plain, " F▪   ") {
+			t.Fatalf("width %d: title row should start with the badge, got %q", width, plain)
+		}
+		if width < 20 && strings.Contains(plain, "F▪") {
+			t.Fatalf("width %d: a narrow title row should drop the badge, got %q", width, plain)
+		}
+	}
+	if !strings.Contains(badge, "48;5;30") {
+		t.Fatalf("badge should sit on verdigris (color 30), got %q", badge)
 	}
 }

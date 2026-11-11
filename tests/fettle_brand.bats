@@ -77,3 +77,26 @@ router() {
 	grep -qF 'titleStyle  = "\x1b[1;38;5;30m"' "$PROJECT_ROOT/cmd/fettle-view/view.go" || return 1
 	grep -qF 'titleStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("30")).Bold(true)' "$PROJECT_ROOT/cmd/status/view.go"
 }
+
+@test "command titles carry the Fettle badge only on a color terminal outside the Fettle screen" {
+	# shellcheck disable=SC2016  # The inner bash expands these.
+	local probe='source "$PROJECT_ROOT/lib/core/common.sh"; printf "[%s]\n" "$FETTLE_BADGE"'
+	run env PROJECT_ROOT="$PROJECT_ROOT" script -q /dev/null /bin/bash -c "$probe" < /dev/null
+	[[ "$output" == *$'\033[1;97;48;5;30m F'* ]] || { printf '%q\n' "$output"; return 1; }
+	run env PROJECT_ROOT="$PROJECT_ROOT" FETTLE_IN_PANE=1 script -q /dev/null /bin/bash -c "$probe" < /dev/null
+	[[ "$output" == *"[]"* ]] || { printf '%q\n' "$output"; return 1; }
+	run env PROJECT_ROOT="$PROJECT_ROOT" NO_COLOR=1 script -q /dev/null /bin/bash -c "$probe" < /dev/null
+	[[ "$output" == *"[]"* ]] || { printf '%q\n' "$output"; return 1; }
+	run env PROJECT_ROOT="$PROJECT_ROOT" /bin/bash -c "$probe"
+	[ "$output" = "[]" ]
+}
+
+# shellcheck disable=SC2016  # Literal source text to find.
+@test "each command title and the Fettle screen use the badge" {
+	grep -Fq '${FETTLE_BADGE}${PURPLE_BOLD}Clean Your Mac' "$PROJECT_ROOT/bin/clean.sh" || return 1
+	grep -Fq '${FETTLE_BADGE}${PURPLE_BOLD}Clean External Volume' "$PROJECT_ROOT/bin/clean.sh" || return 1
+	grep -Fq '${FETTLE_BADGE}${PURPLE_BOLD}Optimize' "$PROJECT_ROOT/bin/optimize.sh" || return 1
+	[ "$(grep -Fc '${FETTLE_BADGE}${PURPLE_BOLD}Purge Project Artifacts' "$PROJECT_ROOT/bin/purge.sh")" -eq 2 ] || return 1
+	grep -Fq '${FETTLE_BADGE}${PURPLE_BOLD}Software updates' "$PROJECT_ROOT/bin/fettle-updates.sh" || return 1
+	grep -Fq 'FETTLE_IN_PANE=1 FETTLE_CANCEL_FILE=' "$PROJECT_ROOT/lib/fettle/menu.sh"
+}

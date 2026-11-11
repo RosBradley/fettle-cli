@@ -893,7 +893,7 @@ main() {
         return 1
     fi
 
-    echo -e "${PURPLE_BOLD}Software updates${NC}"
+    echo -e "${FETTLE_BADGE}${PURPLE_BOLD}Software updates${NC}"
     printf '\n'
     if [[ "${MOLE_DRY_RUN:-0}" == "1" ]]; then
         echo -e "${YELLOW}${ICON_DRY_RUN} DRY RUN MODE${NC}, nothing will be installed"

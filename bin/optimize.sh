@@ -31,7 +31,7 @@ source "$SCRIPT_DIR/lib/manage/whitelist.sh"
 
 print_header() {
     printf '\n'
-    echo -e "${PURPLE_BOLD}Optimize${NC}"
+    echo -e "${FETTLE_BADGE}${PURPLE_BOLD}Optimize${NC}" # fettle: badge
 }
 
 # Extract a simple numeric value from JSON by key without a jq dependency.

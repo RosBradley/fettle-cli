@@ -86,3 +86,9 @@ func TestAnalyzeFrameFillsTheWindowWithTheKeysOnTheLastRow(t *testing.T) {
 		}
 	}
 }
+
+func TestAnalyzeTitleCarriesTheFettleBadge(t *testing.T) {
+	if !strings.HasPrefix(fettleBadge, "\033[1;97;48;5;30m F") || !strings.Contains(fettleBadge, "38;5;166") {
+		t.Fatalf("badge should be a white F on verdigris with a copper dot, got %q", fettleBadge)
+	}
+}

@@ -27,6 +27,7 @@ source "$_MOLE_CORE_DIR/bundle_resolver.sh"
 source "$_MOLE_CORE_DIR/pkg_receipts.sh"
 # Fettle: cancel signal for the menu.
 source "$_MOLE_CORE_DIR/../fettle/cancel.sh"
+source "$_MOLE_CORE_DIR/../fettle/badge.sh" # fettle: the Fettle badge
 
 # Load sudo management if available
 if [[ -f "$_MOLE_CORE_DIR/sudo.sh" ]]; then

@@ -112,7 +112,7 @@ func TestPaneKeepsTheSummaryAtTheTopAndTheBarAtTheBottom(t *testing.T) {
 	}
 	top := p.top(70)
 	want := []string{
-		"Clean · Preview",
+		" F▪   Clean · Preview",
 		"Potential space: ⠖ | Items: ⠖ | Categories: ⠖",
 		strings.Repeat("─", 70),
 	}

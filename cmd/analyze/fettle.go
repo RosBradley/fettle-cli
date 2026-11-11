@@ -56,3 +56,8 @@ func fillWindowHeight(body, footer string, height int) string {
 	}
 	return body + strings.Repeat("\n", height-1-lines) + footer
 }
+
+// fettleBadge is the Fettle mark in front of the Analyze title: a white F and
+// a copper dot on verdigris, as on the Status title. Four columns, then two
+// spaces.
+const fettleBadge = "\033[1;97;48;5;30m F\033[0;38;5;166;48;5;30m▪\033[0;48;5;30m \033[0m  "

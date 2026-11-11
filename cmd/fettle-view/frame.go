@@ -82,13 +82,18 @@ func liveBar(spin string, width int) string {
 	return fitBar(spin+" Running", []string{"Keys go to the command", "Ctrl-C Stop"}, []string{"Keys go to the command"}, width)
 }
 
-// header is the title row: the title, and a gray note on the right.
+// header is the title row: the Fettle badge and the title, and a gray note
+// on the right. A window too narrow for the badge drops it.
 func header(title, note string, width int) string {
-	room := width - ansi.StringWidth(note) - 1
+	mark := badge
+	if width < 20 {
+		mark = ""
+	}
+	room := width - ansi.StringWidth(mark) - ansi.StringWidth(note) - 1
 	title = ansi.Truncate(title, max(1, room), "…")
-	row := titleStyle + title + resetStyle
+	row := mark + titleStyle + title + resetStyle
 	if note != "" {
-		gap := max(1, width-ansi.StringWidth(title)-ansi.StringWidth(note))
+		gap := max(1, width-ansi.StringWidth(mark)-ansi.StringWidth(title)-ansi.StringWidth(note))
 		row += strings.Repeat(" ", gap) + grayStyle + note + resetStyle
 	}
 	return row

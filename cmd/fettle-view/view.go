@@ -17,11 +17,14 @@ var (
 	yellowStyle = "\x1b[0;33m"
 	markStyle   = "\x1b[7m" // a search match
 	resetStyle  = "\x1b[0m"
+	// The Fettle mark in front of the title: a white F and a copper dot on
+	// verdigris, as on the Status title and in lib/fettle/badge.sh.
+	badge = "\x1b[1;97;48;5;30m F\x1b[0;38;5;166;48;5;30m▪\x1b[0;48;5;30m \x1b[0m  "
 )
 
 func init() {
 	if os.Getenv("NO_COLOR") != "" {
-		titleStyle, grayStyle, greenStyle, yellowStyle, markStyle, resetStyle = "", "", "", "", "", ""
+		titleStyle, grayStyle, greenStyle, yellowStyle, markStyle, resetStyle, badge = "", "", "", "", "", "", ""
 	}
 }
 

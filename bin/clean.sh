@@ -1590,7 +1590,7 @@ start_cleanup() {
         write_clean_preview_header
     fi
     if [[ -n "$EXTERNAL_VOLUME_TARGET" ]]; then
-        echo -e "${PURPLE_BOLD}Clean External Volume${NC}"
+        echo -e "${FETTLE_BADGE}${PURPLE_BOLD}Clean External Volume${NC}" # fettle: badge
         echo -e "${GRAY}${EXTERNAL_VOLUME_TARGET}${NC}"
         echo ""
 
@@ -1602,7 +1602,7 @@ start_cleanup() {
         return 0
     fi
 
-    echo -e "${PURPLE_BOLD}Clean Your Mac${NC}"
+    echo -e "${FETTLE_BADGE}${PURPLE_BOLD}Clean Your Mac${NC}" # fettle: badge
     echo ""
 
     if [[ "$DRY_RUN" != "true" && -t 0 ]]; then

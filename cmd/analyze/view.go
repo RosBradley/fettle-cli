@@ -30,7 +30,7 @@ func (m model) View() string {
 		if m.diskFree > 0 {
 			freeLabel = fmt.Sprintf("  %s(%s free)%s", colorGray, humanizeBytes(m.diskFree), colorReset)
 		}
-		fmt.Fprintf(&b, "%sAnalyze Disk%s%s\n", colorPurpleBold, colorReset, freeLabel)
+		fmt.Fprintf(&b, "%s%sAnalyze Disk%s%s\n", fettleBadge, colorPurpleBold, colorReset, freeLabel) // fettle: badge
 		if m.localSnapshotCount > 0 {
 			snapshotLabel := "snapshot"
 			if m.localSnapshotCount != 1 {
@@ -59,7 +59,7 @@ func (m model) View() string {
 			}
 		}
 	} else {
-		fmt.Fprintf(&b, "%sAnalyze Disk%s  %s%s%s", colorPurpleBold, colorReset, colorGray, displayPath(m.path), colorReset)
+		fmt.Fprintf(&b, "%s%sAnalyze Disk%s  %s%s%s", fettleBadge, colorPurpleBold, colorReset, colorGray, displayPath(m.path), colorReset) // fettle: badge
 		if !m.scanning || m.totalSize > 0 {
 			fmt.Fprintf(&b, "  |  Total: %s", measuredSizeLabel(m.totalSize, m.scanState))
 		}
