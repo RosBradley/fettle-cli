@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="512" height="512" role="img" aria-label="Fettle">
+  <!-- Fettle mark: a white F on a verdigris tile, its middle bar ending in copper (Patina palette). -->
+  <rect width="100" height="100" rx="22" fill="#0E766E"/>
+  <rect x="31" y="22" width="14" height="56" fill="#F5F7F6"/>
+  <rect x="31" y="22" width="40" height="13" fill="#F5F7F6"/>
+  <rect x="31" y="44" width="26" height="12" fill="#F5F7F6"/>
+  <rect x="61" y="44" width="10" height="12" fill="#E39363"/>
+</svg>
