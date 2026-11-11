@@ -45,7 +45,7 @@ The Fettle changes live in their own files, so Mole's updates merge cleanly:
 | `tests/update.bats` | One marked line in its setup, so Mole's tests of its own updater keep running it; Fettle never runs Mole's updater, which would install the official Mole over Fettle |
 | Mole's commands: `bin/clean.sh`, `bin/completion.sh`, `bin/installer.sh`, `bin/purge.sh`, `bin/slim.sh`, `bin/touchid.sh`, `bin/uninstall.sh`, `lib/uninstall/batch.sh`, `lib/manage/whitelist.sh` | One `fettle_note_cancel` line at each place the user cancels (`tests/fettle_cancel.bats` checks they're all there) |
 
-Mole's engineering documents (`SYNC.md`, `AGENTS.md`, `SECURITY_AUDIT.md`, `docs/SECURITY_DESIGN.md` and `.claude/rules/`) are kept exactly as Mole writes them, so Mole's updates to them merge without conflicts. Where they say Mole or `mo`, read Fettle or `fettle`. Fettle's own changes are listed above.
+Mole's engineering documents (`SYNC.md`, `AGENTS.md`, `SECURITY_AUDIT.md`, `docs/SECURITY_DESIGN.md` and `.claude/rules/`) are kept as Mole writes them (apart from one Fettle line about the agent skill in `AGENTS.md`), so Mole's updates to them merge without conflicts. Where they say Mole or `mo`, read Fettle or `fettle`. Fettle's own changes are listed above.
 
 ## Running it
 
