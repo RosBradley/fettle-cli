@@ -1,7 +1,7 @@
 package main
 
 // fettle: Status stretches its bars to fill the window, shows a GPU card,
-// and lets R change how often it refreshes.
+// lets R change how often it refreshes, and shows the Fettle mark in its title.
 // Kept in its own file so upstream Mole updates merge with few conflicts; the
 // other files only call into it.
 
@@ -264,4 +264,17 @@ func (m model) refreshMode(mode collectionMode) collectionMode {
 		return collectionProcess
 	}
 	return mode
+}
+
+// The Fettle mark as a badge in front of the Status title: a white F and a
+// copper dot on verdigris, as in assets/fettle/mark.svg, in the terminal's
+// Patina colors (30 and 166). Four columns, then two spaces.
+var (
+	fettleBadgeTile   = lipgloss.NewStyle().Background(lipgloss.Color("30"))
+	fettleBadgeLetter = fettleBadgeTile.Foreground(lipgloss.Color("15")).Bold(true)
+	fettleBadgeDot    = fettleBadgeTile.Foreground(lipgloss.Color("166"))
+)
+
+func fettleBadge() string {
+	return fettleBadgeLetter.Render(" F") + fettleBadgeDot.Render("▪") + fettleBadgeTile.Render(" ") + "  "
 }

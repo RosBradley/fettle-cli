@@ -8,6 +8,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 )
 
 // fettleSnapshot is a 16-core Apple-silicon Mac with one internal disk.
@@ -308,5 +309,27 @@ func TestKeysSitOnTheWindowsLastRow(t *testing.T) {
 	short := model{width: 120, height: 5, schedule: collectionSchedule{hasSnapshot: true}}
 	if lipgloss.Height(short.View()) != 5 {
 		t.Error("a short window's frame isn't the window's height")
+	}
+}
+
+func TestStatusTitleStartsWithTheFettleBadge(t *testing.T) {
+	header, _ := renderHeader(MetricsSnapshot{HealthScore: 90}, "", 0, 120, true)
+	first := ansi.Strip(strings.Split(header, "\n")[0])
+	if !strings.HasPrefix(first, " F▪   Status  Health") {
+		t.Fatalf("Status title should start with the Fettle badge, got %q", first)
+	}
+	if got := lipgloss.Width(fettleBadge()); got != 6 {
+		t.Fatalf("badge and its gap should take 6 columns, got %d", got)
+	}
+}
+
+func TestStatusBadgeKeepsANarrowHeaderInsideTheWindow(t *testing.T) {
+	for _, width := range []int{20, 38, 80} {
+		header, _ := renderHeader(MetricsSnapshot{HealthScore: 90}, "", 0, width, true)
+		for line := range strings.SplitSeq(header, "\n") {
+			if lipgloss.Width(line) > width {
+				t.Fatalf("width %d: header line is %d columns wide: %q", width, lipgloss.Width(line), ansi.Strip(line))
+			}
+		}
 	}
 }
