@@ -114,9 +114,9 @@ setup() {
 @test "mole --help prints command overview" {
 	run env HOME="$HOME" "$PROJECT_ROOT/mole" --help
 	[ "$status" -eq 0 ]
-	[[ "$output" == *"fettle clean"* ]] || return 1
-	[[ "$output" == *"fettle optimize"* ]] || return 1
-	[[ "$output" == *"fettle analyze"* ]] || return 1
+	[[ "$output" == *"glimwell clean"* ]] || return 1
+	[[ "$output" == *"glimwell optimize"* ]] || return 1
+	[[ "$output" == *"glimwell analyze"* ]] || return 1
 	[[ "$output" != *"mo optimise"* ]]
 }
 
@@ -152,7 +152,7 @@ EOF
 	[[ "$output" == *"HELP_RC=0"* ]] || { echo "$output"; cat "$HOME/probe-help.out"; return 1; }
 	# Every other command keeps refusing an unknown working directory.
 	[[ "$output" == *"CLEAN_RC=1"* ]] || { echo "$output"; return 1; }
-	grep -q '^Based on Mole ' "$HOME/probe-version.out" || return 1 # Fettle: its version screen credits Mole's version
+	grep -q '^Based on Mole ' "$HOME/probe-version.out" || return 1 # Glimwell: its version screen credits Mole's version
 	! grep -q 'Cannot access the current directory' "$HOME/probe-version.out" || return 1
 }
 
@@ -207,7 +207,7 @@ SCRIPT
 	ln -s "$PROJECT_ROOT/mole" "$link_dir/mole"
 	run env HOME="$HOME" "$link_dir/mole" --help
 	[ "$status" -eq 0 ] || { echo "$output"; return 1; }
-	[[ "$output" == *"fettle clean"* ]] || return 1
+	[[ "$output" == *"glimwell clean"* ]] || return 1
 }
 
 @test "mole invoked through a Homebrew-style prefix symlink still sources lib" {
@@ -221,7 +221,7 @@ SCRIPT
 	ln -s "$cellar/mole" "$prefix/bin/mole"
 	run env HOME="$HOME" "$prefix/bin/mole" --help
 	[ "$status" -eq 0 ] || { echo "$output"; return 1; }
-	[[ "$output" == *"fettle clean"* ]] || return 1
+	[[ "$output" == *"glimwell clean"* ]] || return 1
 }
 
 @test "mole --version shows nightly channel metadata" {
@@ -233,7 +233,7 @@ EOF
 
 	run env HOME="$HOME" "$PROJECT_ROOT/mole" --version
 	[ "$status" -eq 0 ]
-	[[ "$output" == *"Based on Mole $expected_version by tw93"* ]] || return 1 # Fettle: its version screen credits Mole's version
+	[[ "$output" == *"Based on Mole $expected_version by tw93"* ]] || return 1 # Glimwell: its version screen credits Mole's version
 	[[ "$output" == *"Channel: Nightly"* ]]
 }
 
@@ -298,7 +298,7 @@ EOF
 @test "mole --help documents history command" {
 	run env HOME="$HOME" "$PROJECT_ROOT/mole" --help
 	[ "$status" -eq 0 ]
-	[[ "$output" == *"fettle history"* ]]
+	[[ "$output" == *"glimwell history"* ]]
 }
 
 @test "mole check is not a public command" {
@@ -354,14 +354,14 @@ EOF
 	[[ "$output" == *"U Update"* ]] || return 1
 }
 
-@test "show_main_menu lists every command from the More screen (fettle)" {
+@test "show_main_menu lists every command from the More screen (glimwell)" {
 	run /bin/bash --noprofile --norc <<'EOF'
 set -euo pipefail
 HOME="$(mktemp -d)"
 export HOME MOLE_TEST_MODE=1 MOLE_SKIP_MAIN=1
 source "$PROJECT_ROOT/mole"
 show_brand_banner() { printf 'banner\n'; }
-_fettle_terminal_size() { echo "40 120"; }
+_glimwell_terminal_size() { echo "40 120"; }
 MAIN_MENU_BANNER=""
 MAIN_MENU_UPDATE_MESSAGE=""
 MAIN_MENU_SHOW_UPDATE=false
@@ -373,7 +373,7 @@ EOF
 	[[ "$output" == *"History"*"Export"* ]] || return 1
 	[[ "$output" == *"Purge"*"Preview"*"Choose folders"* ]] || return 1
 	[[ "$output" == *"Shell completion"*"Preview"* ]] || return 1
-	[[ "$output" == *"Update Fettle"* ]] || return 1
+	[[ "$output" == *"Update Glimwell"* ]] || return 1
 	[[ "$output" == *"Add a command"* ]]
 }
 
@@ -385,7 +385,7 @@ HOME="$(mktemp -d)"
 export HOME MOLE_TEST_MODE=1 MOLE_SKIP_MAIN=1
 source "$PROJECT_ROOT/mole"
 [[ -n "$GREEN" && -n "$NC" ]] || exit 1
-_fettle_terminal_size() { echo "40 120"; }
+_glimwell_terminal_size() { echo "40 120"; }
 line=$'\r\033[2K'
 render() {
     MAIN_MENU_BANNER=""
@@ -393,15 +393,15 @@ render() {
     MAIN_MENU_SHOW_UPDATE=true
     show_main_menu 1 true
 }
-# The banner prints its tagline uncolored, beside the Fettle lettering.
-tagline="${FETTLE_TAGLINE[1]}"$'\n'
+# The banner prints its tagline uncolored, beside the Glimwell lettering.
+tagline="${GLIMWELL_TAGLINE[1]}"$'\n'
 
 # The real banner is used: command substitution strips its trailing blank line,
 # so the separator has to come from the notice itself.
-out="$(render 'Update 9.8.7 available, run fettle update')"
-[[ "$out" == *"${tagline}${line}"$'\n'"${line}Update 9.8.7 available, run ${GREEN}fettle update${NC}"$'\n'"${line}"$'\n'"${line}${CYAN}${ICON_ARROW} Status"* ]] || { printf '%q\n' "$out"; exit 1; }
-out="$(render 'New nightly commit abc1234 available, run fettle update --nightly')"
-[[ "$out" == *"${tagline}${line}"$'\n'"${line}New nightly commit abc1234 available, run ${GREEN}fettle update --nightly${NC}"$'\n'"${line}"$'\n'"${line}${CYAN}${ICON_ARROW} Status"* ]] || { printf '%q\n' "$out"; exit 1; }
+out="$(render 'Update 9.8.7 available, run glimwell update')"
+[[ "$out" == *"${tagline}${line}"$'\n'"${line}Update 9.8.7 available, run ${GREEN}glimwell update${NC}"$'\n'"${line}"$'\n'"${line}${CYAN}${ICON_ARROW} Status"* ]] || { printf '%q\n' "$out"; exit 1; }
+out="$(render 'New nightly commit abc1234 available, run glimwell update --nightly')"
+[[ "$out" == *"${tagline}${line}"$'\n'"${line}New nightly commit abc1234 available, run ${GREEN}glimwell update --nightly${NC}"$'\n'"${line}"$'\n'"${line}${CYAN}${ICON_ARROW} Status"* ]] || { printf '%q\n' "$out"; exit 1; }
 
 # Control: without a notice no extra rows appear between banner and options.
 out="$(render '')"
@@ -410,9 +410,9 @@ out="$(render '')"
 # Rendering must not rewrite the stored text: the idle refresh compares it
 # against the plain cache contents on every tick.
 MAIN_MENU_BANNER=""
-MAIN_MENU_UPDATE_MESSAGE='Update 9.8.7 available, run fettle update'
+MAIN_MENU_UPDATE_MESSAGE='Update 9.8.7 available, run glimwell update'
 show_main_menu 1 true > /dev/null
-[[ "$MAIN_MENU_UPDATE_MESSAGE" == 'Update 9.8.7 available, run fettle update' ]] || exit 1
+[[ "$MAIN_MENU_UPDATE_MESSAGE" == 'Update 9.8.7 available, run glimwell update' ]] || exit 1
 EOF
 
 	[ "$status" -eq 0 ] || { echo "$output"; return 1; }
@@ -598,7 +598,7 @@ EOF
 	DEBUG_LOG="$HOME/Library/Logs/mole/mole_debug_session.log"
 	[ -f "$DEBUG_LOG" ]
 
-	run grep "Fettle Debug Session" "$DEBUG_LOG"
+	run grep "Glimwell Debug Session" "$DEBUG_LOG"
 	[ "$status" -eq 0 ]
 
 	[[ "$MOLE_OUTPUT" =~ "Debug session log saved to" ]]
@@ -636,7 +636,7 @@ EOF
 @test "mo uninstall --help directs leftover-only cleanup to clean" {
 	run env HOME="$HOME" "$PROJECT_ROOT/mole" uninstall --help
 	[ "$status" -eq 0 ]
-	[[ "$output" == *"already gone, use fettle clean"* ]]
+	[[ "$output" == *"already gone, use glimwell clean"* ]]
 }
 
 @test "mo clean --external accepts canonicalized custom root" {
@@ -1051,7 +1051,7 @@ PY
         # so the test never requests root or runs a maintenance command.
         run /bin/bash -c "${prefix//\$EUID/0}"
         [ "$status" -eq 1 ] || return 1
-        [[ "$output" == *"Run Fettle without sudo"* ]] || return 1
+        [[ "$output" == *"Run Glimwell without sudo"* ]] || return 1
         run /bin/bash -c "${prefix//\$EUID/501}"
         [ "$status" -eq 0 ] || return 1
     done

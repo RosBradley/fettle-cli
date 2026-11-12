@@ -17,7 +17,7 @@ func resetFlags(t *testing.T) {
 	savedThreshold, savedWindow := *procCPUThreshold, *procCPUWindow
 	savedInterval := *watchInterval
 	t.Cleanup(func() {
-		flag.CommandLine.Init("fettle status", flag.ExitOnError)
+		flag.CommandLine.Init("glimwell status", flag.ExitOnError)
 		*jsonOutput, *watchMode = savedJSON, savedWatch
 		*procCPUThreshold, *procCPUWindow = savedThreshold, savedWindow
 		*watchInterval = savedInterval
@@ -41,8 +41,8 @@ func TestParseArgsHelpGoesToStdout(t *testing.T) {
 			if stderr.Len() != 0 {
 				t.Errorf("stderr = %q, want empty: help is data, not an error", stderr.String())
 			}
-			if !strings.HasPrefix(stdout.String(), "Usage: fettle status") {
-				t.Errorf("stdout = %q, want it to start with the fettle status usage line", stdout.String())
+			if !strings.HasPrefix(stdout.String(), "Usage: glimwell status") {
+				t.Errorf("stdout = %q, want it to start with the glimwell status usage line", stdout.String())
 			}
 		})
 	}
@@ -113,8 +113,8 @@ func TestParseArgsRejectsBadInvocations(t *testing.T) {
 			if !strings.Contains(stderr.String(), tc.want) {
 				t.Errorf("stderr = %q, want it to mention %q", stderr.String(), tc.want)
 			}
-			if !strings.Contains(stderr.String(), "fettle status --help") {
-				t.Errorf("stderr = %q, want it to point at fettle status --help", stderr.String())
+			if !strings.Contains(stderr.String(), "glimwell status --help") {
+				t.Errorf("stderr = %q, want it to point at glimwell status --help", stderr.String())
 			}
 		})
 	}

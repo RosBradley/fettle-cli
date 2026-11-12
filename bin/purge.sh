@@ -8,7 +8,7 @@ set -euo pipefail
 # User state and installed tools must never run with inherited root privileges.
 # Individual maintenance operations request administrator access themselves.
 if [[ "$EUID" -eq 0 ]]; then
-    printf '%s\n' 'Run Fettle without sudo; it requests administrator access when needed.' >&2
+    printf '%s\n' 'Run Glimwell without sudo; it requests administrator access when needed.' >&2
     exit 1
 fi
 
@@ -169,7 +169,7 @@ perform_purge() {
     # Show scanning with spinner below the title line
     if [[ -t 1 ]]; then
         # Print title ONCE with newline; spinner occupies the line below
-        printf '%s\n' "${FETTLE_BADGE}${PURPLE_BOLD}Purge Project Artifacts${NC}" # fettle: badge
+        printf '%s\n' "${GLIMWELL_BADGE}${PURPLE_BOLD}Purge Project Artifacts${NC}" # glimwell: badge
 
         # Capture terminal width in parent (most reliable before forking)
         local _parent_cols=80
@@ -231,7 +231,7 @@ perform_purge() {
         ) &
         monitor_pid=$!
     else
-        echo -e "${FETTLE_BADGE}${PURPLE_BOLD}Purge Project Artifacts${NC}" # fettle: badge
+        echo -e "${GLIMWELL_BADGE}${PURPLE_BOLD}Purge Project Artifacts${NC}" # glimwell: badge
     fi
 
     clean_project_artifacts
@@ -244,7 +244,7 @@ perform_purge() {
     case "$purge_outcome" in
         no_candidates) return 0 ;;
         cancelled)
-            fettle_note_cancel
+            glimwell_note_cancel
             return 0
             ;;
         scan_failed) return 1 ;;
@@ -313,9 +313,9 @@ perform_purge() {
 
 # Show help message
 show_help() {
-    echo -e "${PURPLE_BOLD}Fettle Purge${NC}, Clean old project build artifacts"
+    echo -e "${PURPLE_BOLD}Glimwell Purge${NC}, Clean old project build artifacts"
     echo ""
-    echo -e "${YELLOW}Usage:${NC} fettle purge [options]"
+    echo -e "${YELLOW}Usage:${NC} glimwell purge [options]"
     echo ""
     echo -e "${YELLOW}Options:${NC}"
     echo "  --paths         Edit custom scan directories"
@@ -359,7 +359,7 @@ main() {
                 ;;
             *)
                 echo "Unknown option: $arg" >&2
-                echo "Use 'fettle purge --help' for usage information" >&2
+                echo "Use 'glimwell purge --help' for usage information" >&2
                 exit 1
                 ;;
         esac

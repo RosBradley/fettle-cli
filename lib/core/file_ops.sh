@@ -4250,7 +4250,7 @@ diagnose_removal_failure() {
             if declare -F check_touchid_support > /dev/null 2>&1 && check_touchid_support > /dev/null 2>&1; then
                 suggestion="Check your credentials or restart Terminal"
             else
-                suggestion="Try 'fettle touchid' to enable fingerprint auth"
+                suggestion="Try 'glimwell touchid' to enable fingerprint auth"
             fi
             ;;
         "$MOLE_ERR_READONLY_FS")
@@ -4258,22 +4258,22 @@ diagnose_removal_failure() {
             suggestion="Check if disk needs repair"
             ;;
         "$MOLE_ERR_PROTECTED_PATH")
-            reason="protected by Fettle safety rules"
+            reason="protected by Glimwell safety rules"
             ;;
         "$MOLE_ERR_PRIVACY_DENIED")
             reason="macOS denied Trash access"
             suggestion="Try moving the item to Trash in Finder. Run with --debug for details"
             ;;
         "$MOLE_ERR_MUTABLE_PARENT")
-            reason="Fettle cannot safely use elevated deletion below a user-writable parent"
-            suggestion="Move the app to Trash in Finder; Fettle will leave protected containers and app data untouched"
+            reason="Glimwell cannot safely use elevated deletion below a user-writable parent"
+            suggestion="Move the app to Trash in Finder; Glimwell will leave protected containers and app data untouched"
             ;;
         *)
             reason="permission denied"
             if declare -F check_touchid_support > /dev/null 2>&1 && check_touchid_support > /dev/null 2>&1; then
                 suggestion="Try running again or check file ownership"
             else
-                suggestion="Try 'fettle touchid' or check with 'ls -l'"
+                suggestion="Try 'glimwell touchid' or check with 'ls -l'"
             fi
             ;;
     esac

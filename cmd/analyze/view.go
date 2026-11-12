@@ -13,7 +13,7 @@ import (
 
 // View renders the TUI.
 func (m model) View() string {
-	analyzeTermWidth = m.width // fettle: the frame fills the window
+	analyzeTermWidth = m.width // glimwell: the frame fills the window
 	defer func() { analyzeTermWidth = 0 }()
 	var b strings.Builder
 	fmt.Fprintln(&b)
@@ -30,7 +30,7 @@ func (m model) View() string {
 		if m.diskFree > 0 {
 			freeLabel = fmt.Sprintf("  %s(%s free)%s", colorGray, humanizeBytes(m.diskFree), colorReset)
 		}
-		fmt.Fprintf(&b, "%s%sAnalyze Disk%s%s\n", fettleBadge, colorPurpleBold, colorReset, freeLabel) // fettle: badge
+		fmt.Fprintf(&b, "%s%sAnalyze Disk%s%s\n", glimwellBadge, colorPurpleBold, colorReset, freeLabel) // glimwell: badge
 		if m.localSnapshotCount > 0 {
 			snapshotLabel := "snapshot"
 			if m.localSnapshotCount != 1 {
@@ -59,7 +59,7 @@ func (m model) View() string {
 			}
 		}
 	} else {
-		fmt.Fprintf(&b, "%s%sAnalyze Disk%s  %s%s%s", fettleBadge, colorPurpleBold, colorReset, colorGray, displayPath(m.path), colorReset) // fettle: badge
+		fmt.Fprintf(&b, "%s%sAnalyze Disk%s  %s%s%s", glimwellBadge, colorPurpleBold, colorReset, colorGray, displayPath(m.path), colorReset) // glimwell: badge
 		if !m.scanning || m.totalSize > 0 {
 			fmt.Fprintf(&b, "  |  Total: %s", measuredSizeLabel(m.totalSize, m.scanState))
 		}
@@ -373,7 +373,7 @@ func (m model) View() string {
 		}
 	}
 
-	body := b.String() // fettle: the keys go to the bottom of the window
+	body := b.String() // glimwell: the keys go to the bottom of the window
 	b.Reset()
 	fmt.Fprintln(&b)
 	if m.inOverviewMode() {
@@ -455,14 +455,14 @@ func (m model) View() string {
 				colorGray, colorReset)
 		}
 		if deleteCount > 1 && hasAppBundle {
-			fmt.Fprintf(&b, "%sOnly the app bundle moves to Trash. Use fettle uninstall <App> to also remove support files.%s\n",
+			fmt.Fprintf(&b, "%sOnly the app bundle moves to Trash. Use glimwell uninstall <App> to also remove support files.%s\n",
 				colorYellow, colorReset)
 		} else if deleteCount <= 1 && isAppBundleEntry(*m.deleteTarget) {
 			fmt.Fprintf(&b, "%sApp bundle: only the bundle moves to Trash. Use %s to also remove its support files.%s\n",
 				colorYellow, uninstallCommandForApp(m.deleteTarget.Name), colorReset)
 		}
 	}
-	return fillWindowHeight(body, b.String(), m.height) // fettle
+	return fillWindowHeight(body, b.String(), m.height) // glimwell
 }
 
 func (m model) writeOverviewStatus(b *strings.Builder) {
@@ -496,12 +496,12 @@ func uninstallCommandForApp(name string) string {
 		appName = name
 	}
 	if appName == "" || strings.HasPrefix(appName, "-") || strings.IndexFunc(appName, unicode.IsControl) >= 0 {
-		return "fettle uninstall <App>"
+		return "glimwell uninstall <App>"
 	}
 	if isShellSafeUnquotedAppName(appName) {
-		return "fettle uninstall " + appName
+		return "glimwell uninstall " + appName
 	}
-	return "fettle uninstall '" + strings.ReplaceAll(appName, "'", `'\''`) + "'"
+	return "glimwell uninstall '" + strings.ReplaceAll(appName, "'", `'\''`) + "'"
 }
 
 func isShellSafeUnquotedAppName(name string) bool {
@@ -589,6 +589,6 @@ func calculateViewport(termHeight int, isLargeFiles bool) int {
 	if available < 1 {
 		return 1
 	}
-	// fettle: no 30-row cap, so the list fills the window.
+	// glimwell: no 30-row cap, so the list fills the window.
 	return available
 }

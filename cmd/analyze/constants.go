@@ -299,14 +299,14 @@ var skipExtensions = map[string]bool{
 var spinnerFrames = []string{"⠖", "⠲", "⠴", "⠦"}
 
 const (
-	colorPurple     = "\033[0;38;5;30m" // Fettle: the Patina accent
-	colorPurpleBold = "\033[1;38;5;30m" // Fettle: the Patina accent
+	colorPurple     = "\033[0;38;5;30m" // Glimwell: the Patina accent
+	colorPurpleBold = "\033[1;38;5;30m" // Glimwell: the Patina accent
 	colorGray       = "\033[0;38;5;244m"
 	colorRed        = "\033[0;31m"
 	colorYellow     = "\033[0;33m"
 	colorGreen      = "\033[0;32m"
 	colorBlue       = "\033[0;34m"
-	colorCyan       = "\033[0;38;5;30m" // Fettle: the Patina accent
+	colorCyan       = "\033[0;38;5;30m" // Glimwell: the Patina accent
 	colorReset      = "\033[0m"
 	colorBold       = "\033[1m"
 )

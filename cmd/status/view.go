@@ -22,7 +22,7 @@ func renderTerminalTooSmall(width, height int) string {
 		Render("Terminal too small. Enlarge the window to view status.")
 }
 
-// Fettle: the Patina colors of lib/core/base.sh. The accent is xterm-256
+// Glimwell: the Patina colors of lib/core/base.sh. The accent is xterm-256
 // color 30 and gray is 244; green, yellow and red are the terminal's own, so
 // Status reads on a light window too.
 var (
@@ -165,7 +165,7 @@ func renderHeader(m MetricsSnapshot, errMsg string, animFrame int, termWidth int
 	}
 	compactHeader := termWidth <= 80
 
-	title := fettleBadge() + titleStyle.Render("Status") // fettle: the Fettle mark
+	title := glimwellBadge() + titleStyle.Render("Status") // glimwell: the Glimwell mark
 
 	scoreStyle := getScoreStyle(m.HealthScore)
 	scoreText := subtleStyle.Render("Health ") + scoreStyle.Render(fmt.Sprintf("● %d", m.HealthScore))
@@ -293,13 +293,13 @@ func renderHeader(m MetricsSnapshot, errMsg string, animFrame int, termWidth int
 func getScoreStyle(score int) lipgloss.Style {
 	switch {
 	case score >= scoreExcellentThreshold:
-		return lipgloss.NewStyle().Foreground(lipgloss.Color("2")).Bold(true) // Fettle: terminal green
+		return lipgloss.NewStyle().Foreground(lipgloss.Color("2")).Bold(true) // Glimwell: terminal green
 	case score >= scoreGoodThreshold:
-		return lipgloss.NewStyle().Foreground(lipgloss.Color("2")).Bold(true) // Fettle: terminal green
+		return lipgloss.NewStyle().Foreground(lipgloss.Color("2")).Bold(true) // Glimwell: terminal green
 	case score >= scoreFairThreshold:
-		return lipgloss.NewStyle().Foreground(lipgloss.Color("3")).Bold(true) // Fettle: terminal yellow
+		return lipgloss.NewStyle().Foreground(lipgloss.Color("3")).Bold(true) // Glimwell: terminal yellow
 	default:
-		return lipgloss.NewStyle().Foreground(lipgloss.Color("1")).Bold(true) // Fettle: terminal red
+		return lipgloss.NewStyle().Foreground(lipgloss.Color("1")).Bold(true) // Glimwell: terminal red
 	}
 }
 
@@ -548,7 +548,7 @@ func formatDiskLine(label string, d DiskStatus) string {
 	if label == "" {
 		label = "DISK"
 	}
-	bar := diskProgressBar(d.UsedPercent) // fettle: leaves room for the text
+	bar := diskProgressBar(d.UsedPercent) // glimwell: leaves room for the text
 	used := humanBytesShort(d.Used)
 	free := uint64(0)
 	if d.Total > d.Used {
@@ -664,7 +664,7 @@ func renderProcessCard(procs []ProcessInfo, cardWidth int) cardData {
 
 func processBar(percent float64, cardWidth int) string {
 	if cardWidth >= processWideMinWidth {
-		return classicProgressBar(percent) // fettle: names keep their room
+		return classicProgressBar(percent) // glimwell: names keep their room
 	}
 	return miniBar(percent)
 }
@@ -725,7 +725,7 @@ func buildCards(m MetricsSnapshot, width int, cpuCores int, batteryProbed bool) 
 		processCard,
 		renderNetworkCard(m.Network, m.NetworkHistory, m.Proxy, width),
 	}
-	if gpuCard, ok := renderGPUCard(m.GPU); ok { // fettle
+	if gpuCard, ok := renderGPUCard(m.GPU); ok { // glimwell
 		cards = append(cards, gpuCard)
 	}
 	// Sensors card disabled - redundant with CPU temp
@@ -996,12 +996,12 @@ func progressBar(percent float64) string {
 }
 
 func plainProgressBar(percent float64) string {
-	// fettle: bars stretch to fill the card.
+	// glimwell: bars stretch to fill the card.
 	return barOfWidth(percent, statusBarWidth())
 }
 
 func batteryProgressBar(percent float64) string {
-	total := statusBarWidth() // fettle: stretches like the other bars
+	total := statusBarWidth() // glimwell: stretches like the other bars
 	if percent < 0 {
 		percent = 0
 	}

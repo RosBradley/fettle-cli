@@ -38,15 +38,15 @@ mod-download:
 	exit 1
 
 # Local build (current architecture)
-# Fettle: also builds the Software updates and Ollama models helpers and the
+# Glimwell: also builds the Software updates and Ollama models helpers and the
 # command screen.
 build: mod-download
 	@echo "Building for local architecture..."
 	$(GO) build -ldflags="$(LDFLAGS)" -o $(BIN_DIR)/$(ANALYZE)-go $(ANALYZE_SRC)
 	$(GO) build -ldflags="$(LDFLAGS)" -o $(BIN_DIR)/$(STATUS)-go $(STATUS_SRC)
-	$(GO) build -ldflags="$(LDFLAGS)" -o $(BIN_DIR)/fettle-updates-go ./cmd/fettle-updates
-	$(GO) build -ldflags="$(LDFLAGS)" -o $(BIN_DIR)/fettle-view-go ./cmd/fettle-view
-	$(GO) build -ldflags="$(LDFLAGS)" -o $(BIN_DIR)/fettle-models-go ./cmd/fettle-models
+	$(GO) build -ldflags="$(LDFLAGS)" -o $(BIN_DIR)/glimwell-updates-go ./cmd/glimwell-updates
+	$(GO) build -ldflags="$(LDFLAGS)" -o $(BIN_DIR)/glimwell-view-go ./cmd/glimwell-view
+	$(GO) build -ldflags="$(LDFLAGS)" -o $(BIN_DIR)/glimwell-models-go ./cmd/glimwell-models
 
 check:
 	./scripts/check.sh --no-format

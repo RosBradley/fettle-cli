@@ -12,9 +12,9 @@ HISTORY_JSON=false
 HISTORY_LIMIT="$MOLE_HISTORY_DEFAULT_LIMIT"
 
 show_history_help() {
-    echo "Usage: fettle history [OPTIONS]"
+    echo "Usage: glimwell history [OPTIONS]"
     echo ""
-    echo "Review recent Fettle operation and deletion activity."
+    echo "Review recent Glimwell operation and deletion activity."
     echo ""
     echo "Options:"
     echo "  --json           Output history as JSON"
@@ -44,13 +44,13 @@ main() {
                 exit 0
                 ;;
             -*)
-                echo "Unknown option for fettle history: $1" >&2
-                echo "Run 'fettle history --help' for usage." >&2
+                echo "Unknown option for glimwell history: $1" >&2
+                echo "Run 'glimwell history --help' for usage." >&2
                 exit 1
                 ;;
             *)
-                echo "Unexpected argument for fettle history: $1" >&2
-                echo "Run 'fettle history --help' for usage." >&2
+                echo "Unexpected argument for glimwell history: $1" >&2
+                echo "Run 'glimwell history --help' for usage." >&2
                 exit 1
                 ;;
         esac

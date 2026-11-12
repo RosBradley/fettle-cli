@@ -263,12 +263,12 @@ class FiltersMatchTheGate(unittest.TestCase):
     def sample_paths(self) -> list[str]:
         tracked = subprocess.run(["git", "-C", str(ROOT), "ls-files"], capture_output=True,
                                  text=True, check=True).stdout.split()
-        synthetic = ["docs/img/new.png", "docs/new-note.md", "docs/sub/deep.md", "skills/fettle/new.md",
+        synthetic = ["docs/img/new.png", "docs/new-note.md", "docs/sub/deep.md", "skills/glimwell/new.md",
                      ".claude/rules/new.md", ".claude/hooks/new.sh", ".claude/skills/x/run.sh",
                      ".github/ISSUE_TEMPLATE/new.yml", ".github/workflows/new.yml", "lib/new/x.sh",
-                     "tests/new.bats", "cmd/x/new.go", "README_XX.md", "plugins/fettle/x.json",
+                     "tests/new.bats", "cmd/x/new.go", "README_XX.md", "plugins/glimwell/x.json",
                      "docs/tools/fix.sh", ".claude/skills/new/SKILL.md", ".claude/skills/new",
-                     ".claude/rules/x.py", "skills/fettle/SKILL.md", "docs/mole"]
+                     ".claude/rules/x.py", "skills/glimwell/SKILL.md", "docs/mole"]
         return sorted(set(tracked + synthetic))
 
     def test_every_required_workflow_filters_push_and_pull_request(self):

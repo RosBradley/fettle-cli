@@ -401,7 +401,7 @@ func (c *Collector) collectFast(includeProcesses bool) (MetricsSnapshot, error) 
 
 	snapshot := c.snapshotFromMetrics(now, hostInfo, collected)
 	c.applyEnrichment(&snapshot, collected.hasProcesses)
-	refreshLiveGPUUsage(&snapshot, now) // fettle: GPU use every refresh
+	refreshLiveGPUUsage(&snapshot, now) // glimwell: GPU use every refresh
 	if collected.hasProcesses {
 		c.cacheProcessEnrichment(snapshot)
 	}

@@ -73,11 +73,11 @@ mole-analyze
 # Go binaries
 bin/analyze-go
 bin/status-go
-bin/fettle-updates-go
-bin/fettle-models-go
-bin/fettle-view-go
-# Fettle: names the release in a download from the installer
-.fettle-release
+bin/glimwell-updates-go
+bin/glimwell-models-go
+bin/glimwell-view-go
+# Glimwell: names the release in a download from the installer
+.glimwell-release
 bin/analyze-darwin-*
 bin/status-darwin-*
 

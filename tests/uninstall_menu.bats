@@ -31,7 +31,7 @@ run_selector() {
 
 @test "uninstall sorts full app names when their displayed prefixes match" {
     export WITH_METADATA=1 COLUMNS=40
-    # Fettle: the list opens A-Z, so no S is needed.
+    # Glimwell: the list opens A-Z, so no S is needed.
     run_selector DOWN ENTER
     [[ "$output" == *"SELECTED=/fixture/LongAlpha.app"* ]] || return 1
 }

@@ -933,7 +933,7 @@ PURGE_CATEGORY_SIZES="100,50,25"
 PURGE_CATEGORY_PROJECT_IDS_ARRAY=("project-a" "project-a" "project-b")
 PURGE_CATEGORY_PROJECT_PATHS_ARRAY=("~/work/obelisk" "~/work/obelisk" "~/work/atlas")
 PURGE_CATEGORY_SIZE_UNKNOWN_FLAGS_ARRAY=("false" "false" "false")
-# Fettle: nothing starts selected, so A selects all first.
+# Glimwell: nothing starts selected, so A selects all first.
 select_purge_categories "A node_modules" "A dist" "B target" <<< $'ax\n'
 printf 'RESULT=%s\n' "$PURGE_SELECTION_RESULT"
 EOF
@@ -954,7 +954,7 @@ source "$PROJECT_ROOT/lib/clean/project.sh"
 
 PURGE_CATEGORY_SIZES="1,2,3"
 PURGE_CATEGORY_PROJECT_IDS_ARRAY=("project-a" "project-a" "project-b")
-# Fettle: nothing starts selected, so A selects all first.
+# Glimwell: nothing starts selected, so A selects all first.
 select_purge_categories "A node_modules" "A dist" "B target" <<< $'ax\n' > /dev/null
 printf 'RESULT=%s\n' "$PURGE_SELECTION_RESULT"
 EOF
@@ -970,7 +970,7 @@ source "$PROJECT_ROOT/lib/clean/project.sh"
 
 PURGE_CATEGORY_SIZES="1,2"
 PURGE_CATEGORY_PROJECT_IDS_ARRAY=("" "project-a")
-# Fettle: nothing starts selected, so A selects all first.
+# Glimwell: nothing starts selected, so A selects all first.
 select_purge_categories "Unknown node_modules" "A dist" <<< $'ax\n' > /dev/null
 printf 'RESULT=%s\n' "$PURGE_SELECTION_RESULT"
 EOF
@@ -986,7 +986,7 @@ source "$PROJECT_ROOT/lib/clean/project.sh"
 
 PURGE_CATEGORY_SIZES="1,2"
 PURGE_CATEGORY_PROJECT_IDS_ARRAY=("inode:1:10" "inode:1:20")
-# Fettle: nothing starts selected, so A selects all first.
+# Glimwell: nothing starts selected, so A selects all first.
 select_purge_categories "~/client-a/obelisk node_modules" "~/client-b/obelisk dist" <<< $'ax\n' > /dev/null
 printf 'RESULT=%s\n' "$PURGE_SELECTION_RESULT"
 EOF
@@ -1003,7 +1003,7 @@ PURGE_CATEGORY_SIZES="1,2,3"
 PURGE_CATEGORY_PROJECT_IDS_ARRAY=("a" "b" "c")
 PURGE_CATEGORY_PROJECT_PATHS_ARRAY=("~/client-a/obelisk" "~/client-b/obelisk" "~/client-c/atlas")
 # Search is case-insensitive and accepts vim navigation letters as query text.
-# Fettle: nothing starts selected, so A selects all first.
+# Glimwell: nothing starts selected, so A selects all first.
 select_purge_categories "node_modules" "dist" "target" <<< $'a/CLIENT-B\n \n' >/dev/null
 [[ "$PURGE_SELECTION_RESULT" == "0,2" ]] || exit 1
 # Searching must restore the caller's shell matching mode.
@@ -1062,7 +1062,7 @@ EOF
 
 	[ "$status" -eq 0 ] || return 1
 	[[ "$output" == *"Cloud-synced artifacts may also be removed from other devices."* ]] || return 1
-	[[ "$output" == *"fettle purge --paths"* ]] || return 1
+	[[ "$output" == *"glimwell purge --paths"* ]] || return 1
 	local warning_count
 	warning_count=$(printf '%s\n' "$output" | grep -cF "Cloud-synced artifacts may also be removed from other devices.")
 	[ "$warning_count" -eq 1 ] || return 1
@@ -2713,7 +2713,7 @@ echo "SIZE=$(cat "$stats_dir/purge_stats" 2> /dev/null || echo missing)"
 EOF
 
 	[ "$status" -eq 0 ]
-	[[ "$output" == *"Skipped ~/www/test-project/node_modules (final removal check failed; re-run fettle purge to review it again)"* ]] || return 1
+	[[ "$output" == *"Skipped ~/www/test-project/node_modules (final removal check failed; re-run glimwell purge to review it again)"* ]] || return 1
 	[[ "$output" == *"COUNT=0"* ]] || return 1
 	[[ "$output" == *"SIZE=0"* ]]
 }
@@ -3038,8 +3038,8 @@ EOF
 @test "mo purge: shows in help text" {
 	run env HOME="$HOME" "$PROJECT_ROOT/mole" --help
 	[ "$status" -eq 0 ]
-	# Fettle: help shows the fettle command name.
-	[[ "$output" == *"fettle purge"* ]]
+	# Glimwell: help shows the glimwell command name.
+	[[ "$output" == *"glimwell purge"* ]]
 }
 
 @test "mo purge --help includes include-empty option" {
@@ -3052,7 +3052,7 @@ EOF
 @test "mo purge -h shows usage and exits 0" {
 	run env HOME="$HOME" "$PROJECT_ROOT/mole" purge -h
 	[ "$status" -eq 0 ]
-	[[ "$output" == *"Usage:"* && "$output" == *"fettle purge [options]"* ]] || return 1
+	[[ "$output" == *"Usage:"* && "$output" == *"glimwell purge [options]"* ]] || return 1
 	[[ "$output" == *"-h, --help"* ]]
 }
 

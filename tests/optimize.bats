@@ -1684,7 +1684,7 @@ EOF
 
 	[ "$status" -eq 0 ]
 	[[ "$output" == *"Likely bottleneck: CloudShell / AliEntSafe"* ]] || return 1
-	[[ "$output" == *"Fettle will not terminate enterprise security processes"* ]]
+	[[ "$output" == *"Glimwell will not terminate enterprise security processes"* ]]
 }
 
 @test "run_optimize_diagnostics treats CoreSimulator images as informational for syspolicyd" {

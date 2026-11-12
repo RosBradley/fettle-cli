@@ -910,7 +910,7 @@ EOF
     run_clean_dry_run
     [ "$status" -eq 0 ]
     [[ "$output" == *"Dry Run Mode"* ]] || return 1
-    [[ "$output" == *"sudo -v && fettle clean --dry-run"* ]] || return 1
+    [[ "$output" == *"sudo -v && glimwell clean --dry-run"* ]] || return 1
     [[ "$output" != *"system preview included"* ]]
 }
 
@@ -937,7 +937,7 @@ MOCK
 
     run_clean_dry_run
     [ "$status" -eq 0 ]
-    [[ "$output" == *"sudo -v && fettle clean --dry-run"* ]] || return 1
+    [[ "$output" == *"sudo -v && glimwell clean --dry-run"* ]] || return 1
     [[ "$output" != *"sudo should not be called"* ]]
 }
 
@@ -947,7 +947,7 @@ MOCK
         run env HOME="$HOME" MOLE_TEST_MODE=1 "$PROJECT_ROOT/mole" clean "$removed_flag"
         [ "$status" -eq 1 ]
         [[ "$output" == *"was removed in this release"* ]] || return 1
-        [[ "$output" == *"fettle clean --dry-run"* ]] || return 1
+        [[ "$output" == *"glimwell clean --dry-run"* ]] || return 1
     done
 }
 

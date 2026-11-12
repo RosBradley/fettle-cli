@@ -325,7 +325,7 @@ EOF
         ' < /dev/null
         [ "$status" -eq 0 ] || { echo "$output"; return 1; }
         local hints
-        hints=$(grep -c 'fettle touchid' <<< "$output" || true)
+        hints=$(grep -c 'glimwell touchid' <<< "$output" || true)
         [[ "$hints" == "$expected" ]] || { echo "case=$case_spec hints=$hints $output"; return 1; }
     done
 }

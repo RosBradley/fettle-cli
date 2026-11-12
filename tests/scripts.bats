@@ -284,7 +284,7 @@ BATS
 
     [[ "$go_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || return 1
     [[ "$release_minos" =~ ^[0-9]+\.[0-9]+$ ]] || return 1
-    # Fettle: Mole's README.md is removed; GitHub shows .github/README.md.
+    # Glimwell: Mole's README.md is removed; GitHub shows .github/README.md.
     for requirements_doc in "$PROJECT_ROOT/.github/README.md" "$PROJECT_ROOT/CONTRIBUTING.md"; do
         run grep -F "macOS $macos_major or newer" "$requirements_doc"
         [ "$status" -eq 0 ]

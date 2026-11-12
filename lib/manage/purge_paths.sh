@@ -18,7 +18,7 @@ PURGE_PATHS_CONFIG="${PURGE_PATHS_CONFIG:-${PURGE_CONFIG_FILE:-$HOME/.config/mol
 # Ensure config file exists with helpful template
 ensure_config_template() {
     if [[ ! -f "$PURGE_PATHS_CONFIG" ]]; then
-        if ! write_purge_config "# Fettle Purge Paths - Directories to scan for project artifacts
+        if ! write_purge_config "# Glimwell Purge Paths - Directories to scan for project artifacts
 # Add one path per line (supports ~ for home directory)
 # Delete all paths to use defaults
 #
@@ -113,7 +113,7 @@ manage_purge_paths() {
 
     echo ""
     echo -e "${GREEN}${ICON_SUCCESS}${NC} Configuration updated"
-    echo -e "${GRAY}Run 'fettle purge' to clean with new paths${NC}"
+    echo -e "${GRAY}Run 'glimwell purge' to clean with new paths${NC}"
     echo ""
 }
 

@@ -1,8 +1,8 @@
-# Fettle
+# Glimwell
 
-Fettle is a macOS cleanup and maintenance tool for the terminal, built on [Mole](https://github.com/tw93/Mole) by tw93. It does everything Mole does, from one menu, and adds software updates and Ollama model management.
+Glimwell is a macOS cleanup and maintenance tool for the terminal, built on [Mole](https://github.com/tw93/Mole) by tw93. It does everything Mole does, from one menu, and adds software updates and Ollama model management.
 
-Fettle was called MoreMole until November 2026.
+Glimwell was called MoreMole until November 2026.
 
 ```
 ➤ Status
@@ -21,7 +21,7 @@ Fettle was called MoreMole until November 2026.
   Add Ollama models       Preview
   Add Hugging Face MLX    Preview
   Ollama model removal    Preview
-  Update Fettle
+  Update Glimwell
 ───────────────────────── My commands ─────────────────────────
   Add a command
 ```
@@ -30,7 +30,7 @@ Fettle was called MoreMole until November 2026.
 
 ### One menu for everything
 
-Mole's menu shows five commands and keeps the rest behind a help screen. Fettle's menu lists every one, Status first, then Clean, Optimize, Analyze, History, Purge, Installer files, Slim, Touch ID and Shell completion, plus Fettle's own Software updates and Ollama models.
+Mole's menu shows five commands and keeps the rest behind a help screen. Glimwell's menu lists every one, Status first, then Clean, Optimize, Analyze, History, Purge, Installer files, Slim, Touch ID and Shell completion, plus Glimwell's own Software updates and Ollama models.
 
 - **Each row has its variants beside it.** Preview shows what a command would do without doing anything. Other variants include Analyze's External drives, History's Export and Purge's Choose folders.
 - **A bar at the bottom** describes the highlighted row and lists the keys.
@@ -45,18 +45,18 @@ Commands started from the menu run inside a fixed frame. The title and summary s
 - **Scroll back** through everything it printed, and **search** it with `/`. After Clean's Preview, **F** opens the full list of files Clean would remove.
 - **Cancel** a command and you're back in the menu straight away, with nothing to dismiss.
 
-### Software updates (`fettle updates`)
+### Software updates (`glimwell updates`)
 
-Mole leaves app updates out on purpose. Fettle brings every source into one list:
+Mole leaves app updates out on purpose. Glimwell brings every source into one list:
 
 - Homebrew apps and command-line tools, App Store apps, macOS, and apps with their own updater (Sparkle).
 - Each row names its source. **Preview** only lists what's available.
 - A confirm screen says what each pick will do: an app will quit, your copy will be replaced, or a password is needed.
 - **It never updates the terminal app it's running in** (iTerm2, Ghostty, WezTerm, Warp, kitty and others), because that could stop the update partway. Instead it gives the steps: for Homebrew, the command to run in Terminal; otherwise the app's Check for Updates or the App Store.
 - The summary says what updated, what didn't and why, with the tool's own error line. Each one is recorded in History.
-- Occasionally an app you installed yourself has a newer Homebrew version. Fettle offers to move that app to Homebrew, but only when the app, its location and its bundle ID all match exactly.
+- Occasionally an app you installed yourself has a newer Homebrew version. Glimwell offers to move that app to Homebrew, but only when the app, its location and its bundle ID all match exactly.
 
-### Ollama models (`fettle models`)
+### Ollama models (`glimwell models`)
 
 For [Ollama](https://ollama.com):
 
@@ -86,33 +86,33 @@ Software removal, Slim, Installer files, Software updates and the Ollama model i
 ### And smaller things
 
 - **Optimize** names what it applied, or would apply in a Preview, in its summary.
-- **Update Fettle** installs the newest Fettle release, checked against its published checksums. Mole's own updater never runs, because it would replace Fettle with Mole.
-- **`fettle remove`** changes nothing. It tells you exactly what to delete to remove Fettle, instead of running Mole's remover, which would also move your settings to the Trash.
+- **Update Glimwell** installs the newest Glimwell release, checked against its published checksums. Mole's own updater never runs, because it would replace Glimwell with Mole.
+- **`glimwell remove`** changes nothing. It tells you exactly what to delete to remove Glimwell, instead of running Mole's remover, which would also move your settings to the Trash.
 
 ## Install
 
 Paste this into Terminal:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/RosBradley/fettle-cli/fettle/fettle-get.sh | bash
+curl -fsSL https://raw.githubusercontent.com/RosBradley/glimwell-cli/glimwell/glimwell-get.sh | bash
 ```
 
-Then open a new Terminal window and type `fettle`, or `ft` for short.
+Then open a new Terminal window and type `glimwell`, or `gw` for short.
 
 It needs macOS 12 or newer, on Apple silicon or Intel. It installs in your home folder and asks for no password. Every download is checked against the checksums published with its release.
 
 ## Update
 
-When a new Fettle release is out, the menu says so. Choose **Update Fettle** to install it; your own commands and settings stay.
+When a new Glimwell release is out, the menu says so. Choose **Update Glimwell** to install it; your own commands and settings stay.
 
 ## Uninstall
 
-Delete the `~/.local/share/fettle` folder, and the links Fettle made in `~/.local/bin`: `fettle` and `ft`. Your settings stay in `~/.config/mole` until you delete that too.
+Delete the `~/.local/share/glimwell` folder, and the links Glimwell made in `~/.local/bin`: `glimwell` and `gw`. Your settings stay in `~/.config/mole` until you delete that too.
 
-## Mole and Fettle
+## Mole and Glimwell
 
-Fettle follows Mole closely: Mole's changes are brought in regularly, and Mole's commands and options work the same under `fettle`, so a script written for Mole works once `mo` becomes `fettle`. If you'd rather have the official Mole, get it at [github.com/tw93/Mole](https://github.com/tw93/Mole).
+Glimwell follows Mole closely: Mole's changes are brought in regularly, and Mole's commands and options work the same under `glimwell`, so a script written for Mole works once `mo` becomes `glimwell`. If you'd rather have the official Mole, get it at [github.com/tw93/Mole](https://github.com/tw93/Mole).
 
-The full list of changes, and how each part works, is in [FETTLE.md](https://github.com/RosBradley/fettle-cli/blob/fettle/FETTLE.md).
+The full list of changes, and how each part works, is in [GLIMWELL.md](https://github.com/RosBradley/glimwell-cli/blob/glimwell/GLIMWELL.md).
 
-Fettle is not affiliated with or endorsed by the Mole project. Like Mole, it is licensed under [GPL-3.0](https://github.com/RosBradley/fettle-cli/blob/fettle/LICENSE).
+Glimwell is not affiliated with or endorsed by the Mole project. Like Mole, it is licensed under [GPL-3.0](https://github.com/RosBradley/glimwell-cli/blob/glimwell/LICENSE).

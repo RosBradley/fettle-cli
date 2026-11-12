@@ -710,7 +710,7 @@ EOF
     [[ -d "$app_bundle" ]] || return 1
     [[ -d "$leftover" ]] || return 1
     [[ ! -e "$fixture_home/brew-manual-side-effects.log" ]] || return 1
-    [[ "$output" == *"Fettle cannot safely use elevated deletion below a user-writable parent"* ]] || return 1
+    [[ "$output" == *"Glimwell cannot safely use elevated deletion below a user-writable parent"* ]] || return 1
     [[ "$output" == *"Move the app to Trash in Finder"* ]] || return 1
 }
 

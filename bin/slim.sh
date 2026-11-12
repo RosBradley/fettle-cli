@@ -8,7 +8,7 @@ set -euo pipefail
 
 # User state and installed tools must never run with inherited root privileges.
 if [[ "$EUID" -eq 0 ]]; then
-    printf '%s\n' 'Run Fettle without sudo; fettle slim only changes apps you own.' >&2
+    printf '%s\n' 'Run Glimwell without sudo; glimwell slim only changes apps you own.' >&2
     exit 1
 fi
 
@@ -55,7 +55,7 @@ SLIM_FAILED_NAMES=()
 SLIM_FAILED_REASONS=()
 
 show_slim_help() {
-    echo "Usage: fettle slim [OPTIONS]"
+    echo "Usage: glimwell slim [OPTIONS]"
     echo ""
     echo "Remove the Intel code from universal apps on Apple Silicon."
     echo "Each app is slimmed on a copy that must pass code signing and Gatekeeper"
@@ -730,7 +730,7 @@ select_slim_apps() {
     export MOLE_MENU_META_SIZEKB
     MOLE_MENU_FILTER_NAMES=$(printf '%s\n' "${names[@]}")
     export MOLE_MENU_FILTER_NAMES
-    # Fettle: lists open A-Z; S sorts by size.
+    # Glimwell: lists open A-Z; S sorts by size.
     export MOLE_MENU_SORT_MODE=name
     export MOLE_MENU_SORT_REVERSE=false
 
@@ -772,7 +772,7 @@ confirm_slim_selection() {
         "" | $'\n' | $'\r') return 0 ;;
     esac
     printf '\n'
-    fettle_note_cancel
+    glimwell_note_cancel
     return 1
 }
 
@@ -821,7 +821,7 @@ show_slim_summary() {
         if [[ "$reason" == "still running" ]]; then
             local them="them"
             [[ "$names" == *", "* ]] || them="it"
-            details+=("${GRAY}${ICON_REVIEW} Quit ${them}, then run fettle slim again${NC}")
+            details+=("${GRAY}${ICON_REVIEW} Quit ${them}, then run glimwell slim again${NC}")
         fi
     done
 
@@ -835,7 +835,7 @@ show_slim_summary() {
 
 slim_preflight() {
     if ! slim_host_is_apple_silicon; then
-        printf 'fettle slim needs an Apple Silicon Mac; on an Intel Mac the Intel code is the code that runs.\n' >&2
+        printf 'glimwell slim needs an Apple Silicon Mac; on an Intel Mac the Intel code is the code that runs.\n' >&2
         return "$SLIM_EXIT_UNSUPPORTED"
     fi
     load_mole_whitelist "$HOME" || return 1
@@ -855,7 +855,7 @@ main() {
             "--dry-run" | "-n") export MOLE_DRY_RUN=1 ;;
             *)
                 echo "Unknown option: $arg" >&2
-                echo "Use 'fettle slim --help' for supported options." >&2
+                echo "Use 'glimwell slim --help' for supported options." >&2
                 exit 1
                 ;;
         esac
@@ -884,7 +884,7 @@ main() {
     if [[ "${MOLE_DRY_RUN:-0}" == "1" || ! -t 0 || ! -t 1 ]]; then
         print_slim_list
         if [[ "${MOLE_DRY_RUN:-0}" != "1" ]]; then
-            printf 'Run fettle slim in a terminal to choose apps.\n'
+            printf 'Run glimwell slim in a terminal to choose apps.\n'
         fi
         return 0
     fi
@@ -893,7 +893,7 @@ main() {
     if ! select_slim_apps; then
         show_cursor
         printf '\n'
-        fettle_note_cancel
+        glimwell_note_cancel
         return 0
     fi
     show_cursor

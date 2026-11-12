@@ -1,7 +1,7 @@
 #!/bin/bash
 
 show_clean_help() {
-    echo "Usage: fettle clean [OPTIONS]"
+    echo "Usage: glimwell clean [OPTIONS]"
     echo ""
     echo "Clean up disk space by removing caches, logs, temporary files, and app leftovers from already-uninstalled apps."
     echo ""
@@ -14,7 +14,7 @@ show_clean_help() {
 }
 
 show_installer_help() {
-    echo "Usage: fettle installer [OPTIONS]"
+    echo "Usage: glimwell installer [OPTIONS]"
     echo ""
     echo "Find and remove installer files (.dmg, .pkg, .iso, .xip, .zip)."
     echo ""
@@ -25,7 +25,7 @@ show_installer_help() {
 }
 
 show_optimize_help() {
-    echo "Usage: fettle optimize [OPTIONS]"
+    echo "Usage: glimwell optimize [OPTIONS]"
     echo ""
     echo "Refresh system caches and services, repair safe maintenance issues."
     echo ""
@@ -37,7 +37,7 @@ show_optimize_help() {
 }
 
 show_touchid_help() {
-    echo "Usage: fettle touchid [COMMAND]"
+    echo "Usage: glimwell touchid [COMMAND]"
     echo ""
     echo "Configure Touch ID for sudo authentication."
     echo ""
@@ -54,22 +54,22 @@ show_touchid_help() {
 }
 
 show_uninstall_help() {
-    echo "Usage: fettle uninstall [OPTIONS] [APP_NAME ...]"
+    echo "Usage: glimwell uninstall [OPTIONS] [APP_NAME ...]"
     echo ""
     echo "Interactively remove applications and their leftover files."
     echo "Optionally specify one or more app names to uninstall directly."
-    echo "For leftovers from apps that are already gone, use fettle clean."
+    echo "For leftovers from apps that are already gone, use glimwell clean."
     echo ""
     echo "Examples:"
-    echo "  fettle uninstall                   Open interactive app selector"
-    echo "  fettle uninstall slack             Uninstall Slack"
-    echo "  fettle uninstall slack zoom        Uninstall Slack and Zoom"
-    echo "  fettle uninstall --dry-run slack   Preview Slack uninstallation"
-    echo "  fettle uninstall --with-data slack Uninstall Slack with its data selected"
-    echo "  fettle uninstall --list            Show installed apps and the names fettle uninstall accepts"
+    echo "  glimwell uninstall                   Open interactive app selector"
+    echo "  glimwell uninstall slack             Uninstall Slack"
+    echo "  glimwell uninstall slack zoom        Uninstall Slack and Zoom"
+    echo "  glimwell uninstall --dry-run slack   Preview Slack uninstallation"
+    echo "  glimwell uninstall --with-data slack Uninstall Slack with its data selected"
+    echo "  glimwell uninstall --list            Show installed apps and the names glimwell uninstall accepts"
     echo ""
     echo "Options:"
-    echo "  --list            List installed apps with the exact name fettle uninstall accepts"
+    echo "  --list            List installed apps with the exact name glimwell uninstall accepts"
     echo "  --dry-run         Preview app uninstallation without making changes"
     echo "  --permanent       Bypass macOS Trash and rm -rf immediately"
     echo "  --with-data       Start with personal data selected; press D to keep any"

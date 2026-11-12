@@ -8,7 +8,7 @@ set -euo pipefail
 # User state and installed tools must never run with inherited root privileges.
 # Individual maintenance operations request administrator access themselves.
 if [[ "$EUID" -eq 0 ]]; then
-    printf '%s\n' 'Run Fettle without sudo; it requests administrator access when needed.' >&2
+    printf '%s\n' 'Run Glimwell without sudo; it requests administrator access when needed.' >&2
     exit 1
 fi
 
@@ -25,7 +25,7 @@ if ! /bin/pwd -P > /dev/null 2>&1; then
             ;;
     esac
     if ! /bin/pwd -P > /dev/null 2>&1; then
-        printf '%s\n' 'Cannot access the current directory. Run cd ~, then retry Fettle.' >&2
+        printf '%s\n' 'Cannot access the current directory. Run cd ~, then retry Glimwell.' >&2
         exit 1
     fi
 fi
@@ -124,9 +124,9 @@ is_touchid_configured() {
 # and the update banner call them in-process.
 source "$SCRIPT_DIR/lib/manage/update.sh"
 source "$SCRIPT_DIR/lib/manage/remove.sh"
-# fettle: full main menu, the user's own commands, and an update_mole that
-# keeps fettle's changes. Sourced last so its update_mole wins.
-source "$SCRIPT_DIR/lib/fettle/menu.sh"
+# glimwell: full main menu, the user's own commands, and an update_mole that
+# keeps glimwell's changes. Sourced last so its update_mole wins.
+source "$SCRIPT_DIR/lib/glimwell/menu.sh"
 
 # Build the main-menu controls hint line. Pure so the show/hide logic can be
 # tested without a tty (the caller only renders it inside `[[ -t 0 ]]`).
@@ -150,8 +150,8 @@ _main_menu_controls_line() {
 _main_menu_update_notice() {
     local message="$1"
     case "$message" in
-        *"fettle update --nightly") message="${message%fettle update --nightly}${GREEN}fettle update --nightly${NC}" ;;
-        *"fettle update") message="${message%fettle update}${GREEN}fettle update${NC}" ;;
+        *"glimwell update --nightly") message="${message%glimwell update --nightly}${GREEN}glimwell update --nightly${NC}" ;;
+        *"glimwell update") message="${message%glimwell update}${GREEN}glimwell update${NC}" ;;
     esac
     printf '\n%s' "$message"
 }
@@ -170,7 +170,7 @@ show_main_menu() {
 
     printf '\033[H'
 
-    # fettle: no blank line above the banner, to leave room for the list.
+    # glimwell: no blank line above the banner, to leave room for the list.
     local line=""
 
     while IFS= read -r line || [[ -n "$line" ]]; do
@@ -184,7 +184,7 @@ show_main_menu() {
         done <<< "$update_message"
     fi
 
-    # fettle: the list draws the line under the banner itself, holding
+    # glimwell: the list draws the line under the banner itself, holding
     # "more above" when it has scrolled, and the bar at the bottom of the
     # window with the description and these controls.
     local controls=""
@@ -193,7 +193,7 @@ show_main_menu() {
         is_touchid_configured && touchid_state=true
         controls=$(_main_menu_controls_line "$touchid_state" "${MAIN_MENU_SHOW_UPDATE:-false}")
     fi
-    fettle_show_menu_items "$selected" "$controls"
+    glimwell_show_menu_items "$selected" "$controls"
 }
 
 interactive_main_menu() {
@@ -219,22 +219,22 @@ interactive_main_menu() {
         if [[ -n "$original_stty" ]]; then
             stty "$original_stty" 2> /dev/null || true
         fi
-        # fettle: back to the terminal as it was before the menu.
-        fettle_menu_leave_screen
+        # glimwell: back to the terminal as it was before the menu.
+        glimwell_menu_leave_screen
         show_cursor
         exit 0
     }
 
-    # fettle: commands return to the menu when they finish.
+    # glimwell: commands return to the menu when they finish.
     launch_menu_command() {
-        fettle_run_and_return "$@"
+        glimwell_run_and_return "$@"
     }
 
     trap cleanup_and_exit INT
-    # fettle: the menu has a screen of its own (lib/fettle/menu.sh).
-    fettle_menu_enter_screen
+    # glimwell: the menu has a screen of its own (lib/glimwell/menu.sh).
+    glimwell_menu_enter_screen
     hide_cursor
-    fettle_load_menu_items
+    glimwell_load_menu_items
 
     while true; do
         update_message="$(read_update_message_cache "$msg_cache")"
@@ -256,11 +256,11 @@ interactive_main_menu() {
 
         case "$key" in
             "UP" | "DOWN" | "LEFT" | "RIGHT" | "TOP" | "BOTTOM")
-                current_option=$(fettle_menu_move "$current_option" "$key")
+                current_option=$(glimwell_menu_move "$current_option" "$key")
                 ;;
             "ENTER")
-                fettle_menu_activate "$current_option"
-                current_option="$FETTLE_MENU_SELECTED"
+                glimwell_menu_activate "$current_option"
+                current_option="$GLIMWELL_MENU_SELECTED"
                 ;;
             "CHAR:1")
                 launch_menu_command "$SCRIPT_DIR/bin/clean.sh"
@@ -277,16 +277,16 @@ interactive_main_menu() {
             "CHAR:5")
                 launch_menu_command "$SCRIPT_DIR/bin/status.sh"
                 ;;
-            "MORE") fettle_show_and_return show_help ;;       # fettle
-            "VERSION") fettle_show_and_return show_version ;; # fettle
+            "MORE") glimwell_show_and_return show_help ;;       # glimwell
+            "VERSION") glimwell_show_and_return show_version ;; # glimwell
             "TOUCHID")
-                fettle_menu_leave_screen # fettle
+                glimwell_menu_leave_screen # glimwell
                 show_cursor
                 exec "$SCRIPT_DIR/bin/touchid.sh"
                 ;;
             "UPDATE")
                 [[ "${MAIN_MENU_SHOW_UPDATE:-false}" == "true" ]] || continue
-                fettle_menu_leave_screen # fettle
+                glimwell_menu_leave_screen # glimwell
                 show_cursor
                 clear
                 update_mole
@@ -333,13 +333,13 @@ main() {
         "slim")
             run_mole_command "$SCRIPT_DIR/bin/slim.sh" "${args[@]:1}"
             ;;
-        # Fettle: Software updates.
+        # Glimwell: Software updates.
         "updates")
-            run_mole_command "$SCRIPT_DIR/bin/fettle-updates.sh" "${args[@]:1}"
+            run_mole_command "$SCRIPT_DIR/bin/glimwell-updates.sh" "${args[@]:1}"
             ;;
-        # Fettle: Ollama models.
+        # Glimwell: Ollama models.
         "models")
-            run_mole_command "$SCRIPT_DIR/bin/fettle-models.sh" "${args[@]:1}"
+            run_mole_command "$SCRIPT_DIR/bin/glimwell-models.sh" "${args[@]:1}"
             ;;
         "touchid")
             exec "$SCRIPT_DIR/bin/touchid.sh" "${args[@]:1}"
@@ -356,9 +356,9 @@ main() {
                     --nightly) nightly_update=true ;;
                     --help | -h)
                         cat << 'EOF'
-Usage: fettle update
+Usage: glimwell update
 
-Update Fettle to its newest release.
+Update Glimwell to its newest release.
 
 Options:
   -h, --help        Show this help message
@@ -367,7 +367,7 @@ EOF
                         ;;
                     *)
                         echo "Unknown update option: $arg" >&2
-                        echo "Use 'fettle update --help' for supported options." >&2
+                        echo "Use 'glimwell update --help' for supported options." >&2
                         exit 1
                         ;;
                 esac
@@ -382,9 +382,9 @@ EOF
                     "--dry-run" | "-n") dry_run_remove=true ;;
                     "--help" | "-h")
                         cat << 'EOF'
-Usage: fettle remove
+Usage: glimwell remove
 
-Show how to remove Fettle. Nothing is changed.
+Show how to remove Glimwell. Nothing is changed.
 
 Options:
   -h, --help        Show this help message
@@ -393,7 +393,7 @@ EOF
                         ;;
                     *)
                         echo "Unknown remove option: $arg" >&2
-                        echo "Use 'fettle remove --help' for supported options." >&2
+                        echo "Use 'glimwell remove --help' for supported options." >&2
                         exit 1
                         ;;
                 esac
@@ -416,7 +416,7 @@ EOF
             # Errors belong on stderr so `mo $cmd > out` leaves the diagnostic
             # visible instead of burying it in the redirected file.
             echo "Unknown command: ${args[0]}" >&2
-            echo "Use 'fettle --help' for usage information." >&2
+            echo "Use 'glimwell --help' for usage information." >&2
             exit 1
             ;;
     esac

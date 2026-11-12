@@ -94,7 +94,7 @@ _mole_touchid_hint() {
     local enrolled=""
     enrolled=$(run_with_timeout "$MOLE_TIMEOUT_QUICK_DETECT_SEC" bioutil -c 2> /dev/null) || return 0
     [[ "$enrolled" =~ [1-9][0-9]*\ biometric\ template ]] || return 0
-    echo -e "${GRAY}Tip: run ${NC}fettle touchid${GRAY} to use Touch ID instead of the password${NC}"
+    echo -e "${GRAY}Tip: run ${NC}glimwell touchid${GRAY} to use Touch ID instead of the password${NC}"
 }
 
 _request_password() {
@@ -154,7 +154,7 @@ request_sudo_access() {
         local escaped_msg=""
         mole_applescript_escape escaped_msg "$prompt_msg"
         local password
-        password=$(osascript -e "display dialog \"$escaped_msg\" default answer \"\" with title \"Fettle\" with icon caution with hidden answer" -e 'text returned of result' 2> /dev/null)
+        password=$(osascript -e "display dialog \"$escaped_msg\" default answer \"\" with title \"Glimwell\" with icon caution with hidden answer" -e 'text returned of result' 2> /dev/null)
 
         if [[ -z "$password" ]]; then
             # User cancelled the dialog

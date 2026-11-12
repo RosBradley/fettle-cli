@@ -42,9 +42,9 @@ MACOS_SOURCES = {
     "status": ["cmd/status/main.go"],
     "update": ["lib/manage/update.sh"],
     "remove": ["lib/manage/remove.sh"],
-    # Fettle: its own commands run these scripts.
-    "updates": ["bin/fettle-updates.sh"],
-    "models": ["bin/fettle-models.sh"],
+    # Glimwell: its own commands run these scripts.
+    "updates": ["bin/glimwell-updates.sh"],
+    "models": ["bin/glimwell-models.sh"],
 }
 WINDOWS_SOURCES = {
     "analyze": ["bin/analyze.ps1", "cmd/analyze/cli.go"],
@@ -63,8 +63,8 @@ def mo_commands(text: str) -> list[tuple[int, str, list[str]]]:
         snippets = [line.strip()] if in_block else INLINE_CODE.findall(line)
         for snippet in snippets:
             # mo(?![\w-]) keeps "mole" and "mo-foo" from counting as commands.
-            # Fettle: its skill names the same commands as `fettle ...`.
-            for match in re.finditer(r"(?:^|[\s(|])(?:mo|fettle)(?![\w-])((?:\s+\S+)*)", snippet):
+            # Glimwell: its skill names the same commands as `glimwell ...`.
+            for match in re.finditer(r"(?:^|[\s(|])(?:mo|glimwell)(?![\w-])((?:\s+\S+)*)", snippet):
                 command = ""
                 flags: list[str] = []
                 for token in match.group(1).split():
@@ -203,13 +203,13 @@ def version_problems(root: Path) -> list[str]:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--skill-dir", type=Path, default=PROJECT_ROOT / "skills" / "fettle")  # Fettle
+    parser.add_argument("--skill-dir", type=Path, default=PROJECT_ROOT / "skills" / "glimwell")  # Glimwell
     parser.add_argument("--windows-ref", default="origin/windows")
     parser.add_argument("--require-windows", action="store_true")
     parser.add_argument("--plugin-copy", type=Path)
     args = parser.parse_args()
-    if args.plugin_copy is None and args.skill_dir == PROJECT_ROOT / "skills" / "fettle":  # Fettle
-        args.plugin_copy = PROJECT_ROOT / "plugins" / "fettle" / "skills" / "fettle"
+    if args.plugin_copy is None and args.skill_dir == PROJECT_ROOT / "skills" / "glimwell":  # Glimwell
+        args.plugin_copy = PROJECT_ROOT / "plugins" / "glimwell" / "skills" / "glimwell"
 
     macos = macos_platform()
     windows = windows_platform(args.windows_ref)
@@ -229,7 +229,7 @@ def main() -> int:
     for relative, platforms in targets.items():
         path = args.skill_dir / relative
         if relative == "references/windows.md" and windows is None and not path.is_file():
-            continue  # Fettle: a macOS-only skill has no Windows reference
+            continue  # Glimwell: a macOS-only skill has no Windows reference
         if not path.is_file():
             failures.append(f"{path}: missing")
             continue

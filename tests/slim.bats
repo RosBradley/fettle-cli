@@ -143,7 +143,7 @@ assert_slim_whitelist_change() {
 }
 
 @test "slim name sorting keeps identities when displayed prefixes match" {
-	# Fettle: the list opens A-Z, so no S is needed.
+	# Glimwell: the list opens A-Z, so no S is needed.
 	run_slim_selector DOWN ENTER
 	[[ "$output" == *"RESULT=1 RC=0"* ]] || return 1
 }
@@ -317,10 +317,10 @@ slim_env() {
 	run env HOME="$HOME" "$PROJECT_ROOT/mole" slim --help
 
 	[ "$status" -eq 0 ]
-	[[ "$output" == *"Usage: fettle slim"* ]] || return 1
+	[[ "$output" == *"Usage: glimwell slim"* ]] || return 1
 	run env HOME="$HOME" "$PROJECT_ROOT/mole" --help
-	# fettle: the help screen names commands "fettle <command>".
-	[[ "$output" == *"fettle slim"* ]]
+	# glimwell: the help screen names commands "glimwell <command>".
+	[[ "$output" == *"glimwell slim"* ]]
 }
 
 @test "slim refuses on an Intel host and says why" {

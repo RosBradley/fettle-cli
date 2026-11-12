@@ -19,5 +19,5 @@ MOLE_COMMANDS=(
     "version:Show version"
 )
 
-# Fettle: fork-only commands.
-source "$(dirname "${BASH_SOURCE[0]}")/../fettle/commands.sh"
+# Glimwell: fork-only commands.
+source "$(dirname "${BASH_SOURCE[0]}")/../glimwell/commands.sh"

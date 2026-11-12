@@ -1,16 +1,16 @@
 # Security Policy
 
-Fettle is a local system maintenance tool, built on Mole by tw93. It includes high-risk operations such as cleanup, uninstall, optimization, and artifact removal. We treat safety boundaries, deletion logic, and release integrity as security-sensitive areas.
+Glimwell is a local system maintenance tool, built on Mole by tw93. It includes high-risk operations such as cleanup, uninstall, optimization, and artifact removal. We treat safety boundaries, deletion logic, and release integrity as security-sensitive areas.
 
 ## Reporting a Vulnerability
 
-Please report suspected security issues privately, through GitHub's private vulnerability reporting: <https://github.com/RosBradley/fettle-cli/security/advisories/new>.
+Please report suspected security issues privately, through GitHub's private vulnerability reporting: <https://github.com/RosBradley/glimwell-cli/security/advisories/new>.
 
 Do not open a public GitHub issue for an unpatched vulnerability.
 
 Include as much of the following as possible:
 
-- Fettle version (`fettle --version`) and install method
+- Glimwell version (`glimwell --version`) and install method
 - macOS version
 - Exact command or workflow involved
 - Reproduction steps or proof of concept
@@ -28,8 +28,8 @@ Response times are best-effort for a maintainer-led open source project, but sec
 
 Security fixes are only guaranteed for:
 
-- The latest published Fettle release
-- The current `fettle` branch
+- The latest published Glimwell release
+- The current `glimwell` branch
 
 Older releases may not receive security fixes. Users running high-risk commands should stay current.
 
@@ -50,14 +50,14 @@ Examples of security-relevant issues include:
 The following are usually normal bugs, feature requests, or documentation issues rather than security issues:
 
 - Cleanup misses that leave recoverable junk behind
-- False negatives where Fettle refuses to clean something
+- False negatives where Glimwell refuses to clean something
 - Cosmetic UI problems
 - Requests for broader or more aggressive cleanup behavior
 - Compatibility issues without a plausible security impact
 
 If you are unsure whether something is security-relevant, report it privately first.
 
-## Security-Focused Areas in Fettle
+## Security-Focused Areas in Glimwell
 
 The project pays particular attention to:
 

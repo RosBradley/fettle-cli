@@ -260,7 +260,7 @@ fi
 printf '%s\n' "$skill_audit_output"
 echo -e "${GREEN}${ICON_SUCCESS} Agent skill command check passed${NC}\n"
 
-diagnostic_public_files=(README.md .github/README.md CONTRIBUTING.md docs/*.md .github/ISSUE_TEMPLATE/*) # Fettle: .github/README.md is the front page
+diagnostic_public_files=(README.md .github/README.md CONTRIBUTING.md docs/*.md .github/ISSUE_TEMPLATE/*) # Glimwell: .github/README.md is the front page
 if ! diagnostic_placement_output=$(check_diagnostic_placement "${diagnostic_public_files[@]}"); then
     [[ -n "$diagnostic_placement_output" ]] && printf '%s\n' "$diagnostic_placement_output"
     echo -e "${RED}${ICON_ERROR} The diagnostic script must stay off public pages and issue templates${NC}\n"

@@ -1568,7 +1568,7 @@ EOF
         esac
         [[ "$output" == *"$label"* ]] || { echo "$scenario: $output"; return 1; }
         [[ "$(printf '%s\n' "$output" | grep -cF 'Kept (')" -eq 1 ]] || { echo "$scenario: $output"; return 1; }
-        [[ "$output" != *"protected by Fettle"* && "$output" != *"Could not remove"* ]] || { echo "$scenario: $output"; return 1; }
+        [[ "$output" != *"protected by Glimwell"* && "$output" != *"Could not remove"* ]] || { echo "$scenario: $output"; return 1; }
         [[ "$output" == *"FREED_KB=1000"* ]] || { echo "$scenario: $output"; return 1; }
     done
 }

@@ -2400,8 +2400,8 @@ _batch_scan_app_details_impl() {
     if [[ ${#manual_removal_apps[@]} -gt 0 ]]; then
         local manual_name
         for manual_name in "${manual_removal_apps[@]}"; do
-            log_warning "$(_uninstall_display_text "$manual_name") cannot be removed safely by Fettle from this location"
-            log_info "Move it to Trash in Finder; Fettle left protected containers and app data untouched"
+            log_warning "$(_uninstall_display_text "$manual_name") cannot be removed safely by Glimwell from this location"
+            log_info "Move it to Trash in Finder; Glimwell left protected containers and app data untouched"
         done
     fi
 }
@@ -2522,7 +2522,7 @@ _batch_preview_and_confirm() {
                 return 4
             fi
             log_error "Uninstall confirmation needs an interactive terminal; no apps were removed."
-            log_info "Run fettle uninstall from an interactive terminal, or use fettle uninstall --list to inspect apps"
+            log_info "Run glimwell uninstall from an interactive terminal, or use glimwell uninstall --list to inspect apps"
             return 3
         fi
 
@@ -2540,7 +2540,7 @@ _batch_preview_and_confirm() {
             else
                 echo ""
                 log_error "Could not read the uninstall confirmation; no apps were removed."
-                log_info "Run fettle uninstall from an interactive terminal; nothing was changed"
+                log_info "Run glimwell uninstall from an interactive terminal; nothing was changed"
                 return 3
             fi
         fi
@@ -3116,7 +3116,7 @@ _batch_execute_removals() {
                     done
                     local kept_label="Could not remove"
                     case "$kept_reason" in
-                        protected) kept_label="Kept (protected by Fettle)" ;;
+                        protected) kept_label="Kept (protected by Glimwell)" ;;
                         live-cache) kept_label="Kept (app may be active)" ;;
                         access-denied) kept_label="macOS denied access" ;;
                         ownership-unverified) kept_label="Kept (agent ownership unverified; review the plist)" ;;
@@ -3333,7 +3333,7 @@ _batch_render_summary() {
         local kept_count=${#review_only_system_leftovers[@]}
         local kept_label="paths"
         [[ $kept_count -eq 1 ]] && kept_label="path"
-        summary_details+=("${ICON_REVIEW} Kept ${kept_count} system-level ${kept_label}, which Fettle never removes")
+        summary_details+=("${ICON_REVIEW} Kept ${kept_count} system-level ${kept_label}, which Glimwell never removes")
     fi
 
     if [[ ${#system_extension_warning_apps[@]} -gt 0 ]]; then
@@ -3487,11 +3487,11 @@ batch_uninstall_applications() {
         local brew_failure=""
         if [[ "$_batch_scan_stage" == "Homebrew ownership check" ]] &&
             brew_failure=$(_mole_brew_failure_line 2> /dev/null); then
-            log_info "Homebrew itself failed: $brew_failure; fix Homebrew, then retry fettle uninstall"
+            log_info "Homebrew itself failed: $brew_failure; fix Homebrew, then retry glimwell uninstall"
         elif [[ "$_batch_scan_stage" == "Homebrew ownership check" ]]; then
-            log_info "'$_batch_scan_app_name' matches a Homebrew cask brew cannot read; run brew info --cask <cask>, fix or untap it, then retry fettle uninstall --debug"
+            log_info "'$_batch_scan_app_name' matches a Homebrew cask brew cannot read; run brew info --cask <cask>, fix or untap it, then retry glimwell uninstall --debug"
         else
-            log_info "Run fettle uninstall --debug to see which scan failed"
+            log_info "Run glimwell uninstall --debug to see which scan failed"
         fi
         return 1
     fi
@@ -3515,7 +3515,7 @@ batch_uninstall_applications() {
         0) ;;
         2)
             _abort_uninstall_batch
-            fettle_note_cancel
+            glimwell_note_cancel
             return 0
             ;;
         3)
@@ -3568,7 +3568,7 @@ batch_uninstall_applications() {
         else
             log_error "Uninstall stopped at ${_batch_exec_app_name} during ${_batch_exec_stage} (exit ${_execute_rc}); apps after it were not touched"
         fi
-        log_info "Run fettle uninstall --debug to see which step failed"
+        log_info "Run glimwell uninstall --debug to see which step failed"
         return 1
     fi
 

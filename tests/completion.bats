@@ -43,7 +43,7 @@ setup() {
 @test "completion --help shows usage" {
 	run "$PROJECT_ROOT/bin/completion.sh" --help
 	[ "$status" -eq 0 ]
-	[[ "$output" == *"Usage: fettle completion"* ]] || return 1
+	[[ "$output" == *"Usage: glimwell completion"* ]] || return 1
 	[[ "$output" == *"Auto-install"* ]]
 }
 
@@ -51,7 +51,7 @@ setup() {
 	run "$PROJECT_ROOT/bin/completion.sh" bash
 	[ "$status" -eq 0 ]
 	[[ "$output" == *"_mole_completions"* ]] || return 1
-	[[ "$output" == *"complete -F _mole_completions fettle ft"* ]]
+	[[ "$output" == *"complete -F _mole_completions glimwell gw"* ]]
 }
 
 @test "completion bash script includes all commands" {
@@ -68,10 +68,10 @@ setup() {
 	[[ "$output" == *"completion"* ]]
 }
 
-@test "completion bash script supports the fettle and ft commands" {
+@test "completion bash script supports the glimwell and gw commands" {
 	run "$PROJECT_ROOT/bin/completion.sh" bash
 	[ "$status" -eq 0 ]
-	[[ "$output" == *"complete -F _mole_completions fettle ft"* ]]
+	[[ "$output" == *"complete -F _mole_completions glimwell gw"* ]]
 }
 
 @test "completion bash includes current clean, analyze, history, and purge options only" {
@@ -87,7 +87,7 @@ setup() {
 }
 
 @test "completion bash can be loaded in bash" {
-	run /bin/bash -c "eval \"\$(\"$PROJECT_ROOT/bin/completion.sh\" bash)\" && complete -p fettle"
+	run /bin/bash -c "eval \"\$(\"$PROJECT_ROOT/bin/completion.sh\" bash)\" && complete -p glimwell"
 	[ "$status" -eq 0 ]
 	[[ "$output" == *"_mole_completions"* ]]
 }
@@ -95,7 +95,7 @@ setup() {
 @test "completion zsh generates valid zsh script" {
 	run "$PROJECT_ROOT/bin/completion.sh" zsh
 	[ "$status" -eq 0 ]
-	[[ "$output" == *"#compdef fettle ft"* ]] || return 1
+	[[ "$output" == *"#compdef glimwell gw"* ]] || return 1
 	[[ "$output" == *"_mole()"* ]]
 }
 
@@ -125,31 +125,31 @@ setup() {
 @test "completion fish generates valid fish script" {
 	run "$PROJECT_ROOT/bin/completion.sh" fish
 	[ "$status" -eq 0 ]
-	[[ "$output" == *"complete -f -c fettle "* ]] || return 1
-	[[ "$output" == *"complete -f -c ft "* ]]
+	[[ "$output" == *"complete -f -c glimwell "* ]] || return 1
+	[[ "$output" == *"complete -f -c gw "* ]]
 }
 
-@test "completion fish includes both fettle and ft commands, and not Mole's names" {
+@test "completion fish includes both glimwell and gw commands, and not Mole's names" {
 	output="$("$PROJECT_ROOT/bin/completion.sh" fish)"
-	fettle_count=$(echo "$output" | grep -c "complete -f -c fettle ")
-	ft_count=$(echo "$output" | grep -c "complete -f -c ft ")
+	glimwell_count=$(echo "$output" | grep -c "complete -f -c glimwell ")
+	ft_count=$(echo "$output" | grep -c "complete -f -c gw ")
 
-	[ "$fettle_count" -gt 0 ] || return 1
-	[ "$ft_count" -eq "$fettle_count" ] || return 1
+	[ "$glimwell_count" -gt 0 ] || return 1
+	[ "$ft_count" -eq "$glimwell_count" ] || return 1
 	[[ "$output" != *"-c mole "* && "$output" != *"-c mo "* ]]
 }
 
-@test "completion fish install writes fettle.fish and ft.fish" {
-	local stub_dir="$BATS_TEST_TMPDIR/fettle-bin"
+@test "completion fish install writes glimwell.fish and gw.fish" {
+	local stub_dir="$BATS_TEST_TMPDIR/glimwell-bin"
 	mkdir -p "$stub_dir"
-	printf '#!/bin/bash\nshift\nexec "%s/bin/completion.sh" "$@"\n' "$PROJECT_ROOT" > "$stub_dir/fettle"
-	chmod +x "$stub_dir/fettle"
+	printf '#!/bin/bash\nshift\nexec "%s/bin/completion.sh" "$@"\n' "$PROJECT_ROOT" > "$stub_dir/glimwell"
+	chmod +x "$stub_dir/glimwell"
 
 	run /bin/bash -c "echo 'y' | PATH=\"$stub_dir:\$PATH\" SHELL=/bin/fish \"$PROJECT_ROOT/bin/completion.sh\""
 	[ "$status" -eq 0 ] || { echo "$output"; return 1; }
 	local dir="$HOME/.config/fish/completions"
-	grep -q 'complete -f -c fettle ' "$dir/fettle.fish" || return 1
-	grep -Fxq "source $dir/fettle.fish" "$dir/ft.fish" || return 1
+	grep -q 'complete -f -c glimwell ' "$dir/glimwell.fish" || return 1
+	grep -Fxq "source $dir/glimwell.fish" "$dir/gw.fish" || return 1
 	[ ! -e "$dir/mole.fish" ] || return 1
 	[ ! -e "$dir/mo.fish" ]
 }
@@ -181,7 +181,7 @@ setup() {
 
 	[ -f "$HOME/.zshrc" ] || skip "Auto-install didn't create .zshrc"
 
-	run grep -E "fettle[[:space:]]+completion" "$HOME/.zshrc"
+	run grep -E "glimwell[[:space:]]+completion" "$HOME/.zshrc"
 	[ "$status" -eq 0 ]
 }
 
@@ -234,7 +234,7 @@ setup() {
 	[ -L "$HOME/.zshrc" ] || return 1
 	[ "$(readlink "$HOME/.zshrc")" = "$HOME/dotfiles/zshrc" ] || return 1
 	grep -Fq '# user zsh setting' "$HOME/dotfiles/zshrc" || return 1
-	grep -Eq 'fettle[[:space:]]+completion' "$HOME/dotfiles/zshrc"
+	grep -Eq 'glimwell[[:space:]]+completion' "$HOME/dotfiles/zshrc"
 }
 
 @test "completion auto-install does not mistake another tool's completion line for Mole" {
@@ -256,10 +256,10 @@ RC
     cat "$HOME/expected-user-lines" > "$HOME/.zshrc"
     # shellcheck disable=SC2016 # Assert literal shell configuration, not execution.
     printf '%s\n' '# Mole shell completion' 'eval "$(mole completion zsh)"' >> "$HOME/.zshrc"
-    # Fettle: fettle wins over mole when both exist, so pin it for every machine.
+    # Glimwell: glimwell wins over mole when both exist, so pin it for every machine.
     mkdir -p "$HOME/stub-bin"
-    printf '#!/bin/sh\n' > "$HOME/stub-bin/fettle"
-    chmod +x "$HOME/stub-bin/fettle"
+    printf '#!/bin/sh\n' > "$HOME/stub-bin/glimwell"
+    chmod +x "$HOME/stub-bin/glimwell"
     run env SHELL=/bin/zsh PATH="$HOME/stub-bin:$PATH" "$PROJECT_ROOT/bin/completion.sh"
     [ "$status" -eq 0 ] || { echo "$output"; return 1; }
     while IFS= read -r line; do
@@ -268,7 +268,7 @@ RC
     # shellcheck disable=SC2016 # Assert literal shell configuration.
     ! grep -Fxq 'eval "$(mole completion zsh)"' "$HOME/.zshrc" || return 1
     # shellcheck disable=SC2016 # Assert literal shell configuration.
-    grep -Fxq 'if output="$(fettle completion zsh 2>/dev/null)"; then eval "$output"; fi' "$HOME/.zshrc" || return 1
+    grep -Fxq 'if output="$(glimwell completion zsh 2>/dev/null)"; then eval "$output"; fi' "$HOME/.zshrc" || return 1
 }
 
 @test "completion confirmation cancels on closed input (#1837)" {
@@ -282,7 +282,7 @@ RC
 	run /bin/bash -c "SHELL=/bin/fish \"$PROJECT_ROOT/bin/completion.sh\" </dev/null"
 	[ "$status" -ne 0 ]
 	[[ "$output" == *"Cancelled"* ]] || return 1
-	[ ! -f "$HOME/.config/fish/completions/fettle.fish" ] || return 1
-	[ ! -f "$HOME/.config/fish/completions/ft.fish" ]
+	[ ! -f "$HOME/.config/fish/completions/glimwell.fish" ] || return 1
+	[ ! -f "$HOME/.config/fish/completions/gw.fish" ]
 }
 

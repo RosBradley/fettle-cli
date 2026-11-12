@@ -1,14 +1,14 @@
 {
-  "name": "fettle",
+  "name": "glimwell",
   "interface": {
-    "displayName": "Fettle"
+    "displayName": "Glimwell"
   },
   "plugins": [
     {
-      "name": "fettle",
+      "name": "glimwell",
       "source": {
         "source": "local",
-        "path": "./plugins/fettle"
+        "path": "./plugins/glimwell"
       },
       "policy": {
         "installation": "AVAILABLE",

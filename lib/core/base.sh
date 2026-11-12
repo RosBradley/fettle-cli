@@ -53,7 +53,7 @@ if [[ "$mole_color" == "0" ]]; then
 else
     readonly ESC=$'\033'
     readonly GREEN="${ESC}[0;32m"
-    # Fettle: the Patina colors. The accent (PURPLE, PURPLE_BOLD, CYAN) is
+    # Glimwell: the Patina colors. The accent (PURPLE, PURPLE_BOLD, CYAN) is
     # verdigris, xterm-256 color 30; the second color (BLUE) is copper, 166.
     # Both read on light and dark windows; green, yellow and red stay the
     # terminal's own.
@@ -397,19 +397,19 @@ mole_report_unreadable_whitelist() {
     case "$reason" in
         directory)
             printf 'Cannot access your %s directory: %s\n' "$label" "${file//[[:cntrl:]]/?}" >&2
-            printf '  Fettle stops so nothing you protected is cleaned by mistake. Run: chmod u+rx %q\n' "$file" >&2
+            printf '  Glimwell stops so nothing you protected is cleaned by mistake. Run: chmod u+rx %q\n' "$file" >&2
             ;;
         invalid)
             printf 'Cannot read your %s: invalid path or broken link: %s\n' "$label" "${file//[[:cntrl:]]/?}" >&2
-            printf '  Fettle stops so nothing you protected is cleaned by mistake. Restore this path or its link target before retrying.\n' >&2
+            printf '  Glimwell stops so nothing you protected is cleaned by mistake. Restore this path or its link target before retrying.\n' >&2
             ;;
         unknown)
             printf 'Cannot inspect your %s path: %s\n' "$label" "${file//[[:cntrl:]]/?}" >&2
-            printf '  Fettle stops because absence could not be verified. Check access to this path before retrying.\n' >&2
+            printf '  Glimwell stops because absence could not be verified. Check access to this path before retrying.\n' >&2
             ;;
         *)
             printf 'Cannot read your %s: %s\n' "$label" "${file//[[:cntrl:]]/?}" >&2
-            printf '  Fettle stops so nothing you protected is cleaned by mistake. Run: chmod u+r %q\n' "$file" >&2
+            printf '  Glimwell stops so nothing you protected is cleaned by mistake. Run: chmod u+r %q\n' "$file" >&2
             ;;
     esac
 }
@@ -423,7 +423,7 @@ mole_whitelist_file_state() {
     local file="$1" label="${2:-whitelist}" problem="" probe_rc=0
     if [[ ! -x /usr/bin/perl ]]; then
         printf 'Cannot inspect your %s: the system Perl runtime is unavailable.\n' "$label" >&2
-        printf '  Fettle stops so nothing you protected is cleaned by mistake. Restore /usr/bin/perl before retrying.\n' >&2
+        printf '  Glimwell stops so nothing you protected is cleaned by mistake. Restore /usr/bin/perl before retrying.\n' >&2
         return 2
     fi
     problem=$(/usr/bin/perl -e '
@@ -589,8 +589,8 @@ export PATH
 # or a mixed command may carry unrelated user settings and must remain intact.
 # Include the previous eval/source forms when normalizing or removing them.
 # shellcheck disable=SC2016 # Match literal shell substitutions in rc files.
-# fettle: completion lines may also name the fettle command.
-MOLE_COMPLETION_LINE_PATTERN='^[[:space:]]*(# Mole shell completion|if output="\$\((mole|mo|fettle|moremole) completion (bash|zsh) 2>/dev/null\)"; then eval "\$output"; fi|eval "\$\((mole|mo|fettle|moremole) completion (bash|zsh)\)"|source <\((mole|mo|fettle|moremole) completion (bash|zsh)\)|set -l output \((mole|mo|fettle|moremole) completion fish 2>/dev/null\); and echo "\$output" \| source|(mole|mo|fettle|moremole) completion fish \| source)[[:space:]]*$'
+# glimwell: completion lines may also name the glimwell command.
+MOLE_COMPLETION_LINE_PATTERN='^[[:space:]]*(# Mole shell completion|if output="\$\((mole|mo|glimwell|moremole) completion (bash|zsh) 2>/dev/null\)"; then eval "\$output"; fi|eval "\$\((mole|mo|glimwell|moremole) completion (bash|zsh)\)"|source <\((mole|mo|glimwell|moremole) completion (bash|zsh)\)|set -l output \((mole|mo|glimwell|moremole) completion fish 2>/dev/null\); and echo "\$output" \| source|(mole|mo|glimwell|moremole) completion fish \| source)[[:space:]]*$'
 
 # Print the final file a symlink chain points at. Renaming a rewritten rc file
 # over this target keeps every link in a dotfile chain; renaming over the first

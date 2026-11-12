@@ -10,8 +10,8 @@ setup() {
 	HOME="$(mktemp -d "${BATS_TEST_DIRNAME}/tmp-update-home.XXXXXX")"
 	TEST_ROOT="$(mktemp -d "${BATS_TEST_DIRNAME}/tmp-update-case.XXXXXX")"
 	export HOME TEST_ROOT
-	# Fettle: these tests drive Mole's own updater, which Fettle otherwise never runs.
-	export FETTLE_TEST_MOLE_UPDATER=1
+	# Glimwell: these tests drive Mole's own updater, which Glimwell otherwise never runs.
+	export GLIMWELL_TEST_MOLE_UPDATER=1
 }
 
 teardown() {

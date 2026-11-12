@@ -1,5 +1,5 @@
 {
-  "name": "fettle",
+  "name": "glimwell",
   "version": "1.0.0",
-  "description": "Drive the Fettle CLI (fettle) safely on macOS: find what uses disk space, preview cleanup, uninstall apps, check for updates and read system health."
+  "description": "Drive the Glimwell CLI (glimwell) safely on macOS: find what uses disk space, preview cleanup, uninstall apps, check for updates and read system health."
 }

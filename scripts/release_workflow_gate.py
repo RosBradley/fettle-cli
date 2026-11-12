@@ -75,7 +75,7 @@ READS = {
         r"|^\.claude/skills/[^/]+$"
         r"|^\.claude/skills/[^/]+/SKILL\.md$"
         r"|^\.claude/skills/release-notes/"
-        r"|^skills/fettle/SKILL\.md$"
+        r"|^skills/glimwell/SKILL\.md$"
     ),
     "CodeQL": None,
     "Nix": None,

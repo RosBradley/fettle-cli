@@ -8,7 +8,7 @@ set -euo pipefail
 # User state and installed tools must never run with inherited root privileges.
 # Individual maintenance operations request administrator access themselves.
 if [[ "$EUID" -eq 0 ]]; then
-    printf '%s\n' 'Run Fettle without sudo; it requests administrator access when needed.' >&2
+    printf '%s\n' 'Run Glimwell without sudo; it requests administrator access when needed.' >&2
     exit 1
 fi
 
@@ -108,7 +108,7 @@ enable_touchid() {
         read -rp "Continue anyway? [y/N] " confirm
         if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
             echo -e "${YELLOW}Cancelled${NC}"
-            fettle_note_cancel
+            glimwell_note_cancel
             return 1
         fi
         echo ""
@@ -313,7 +313,7 @@ show_menu() {
 
         case "$key" in
             $'\e' | q | Q) # ESC or Q
-                fettle_note_cancel
+                glimwell_note_cancel
                 return 0
                 ;;
             "" | $'\n' | $'\r')   # Enter
@@ -335,7 +335,7 @@ show_menu() {
 
         case "$key" in
             $'\e' | q | Q) # ESC or Q
-                fettle_note_cancel
+                glimwell_note_cancel
                 return 0
                 ;;
             "" | $'\n' | $'\r')   # Enter

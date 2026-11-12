@@ -8,7 +8,7 @@ set -euo pipefail
 # User state and installed tools must never run with inherited root privileges.
 # Individual maintenance operations request administrator access themselves.
 if [[ "$EUID" -eq 0 ]]; then
-    printf '%s\n' 'Run Fettle without sudo; it requests administrator access when needed.' >&2
+    printf '%s\n' 'Run Glimwell without sudo; it requests administrator access when needed.' >&2
     exit 1
 fi
 
@@ -559,7 +559,7 @@ prompt_for_system_clean() {
         # starts typing their password) proceeds to authentication.
         if [[ "$choice" == "QUIT" ]]; then
             echo -e " ${GRAY}Canceled${NC}"
-            fettle_note_cancel
+            glimwell_note_cancel
             exit 0
         fi
 
@@ -1552,9 +1552,9 @@ refuse_cleanup_without_write_access() {
     done
     [[ -n "$refused_target" ]] || return 0
 
-    printf 'fettle clean cannot remove files from this shell: writing to %s was refused (%s).\n' "${refused_target/#$HOME/~}" "$refused_reason" >&2
+    printf 'glimwell clean cannot remove files from this shell: writing to %s was refused (%s).\n' "${refused_target/#$HOME/~}" "$refused_reason" >&2
     printf 'Nothing was removed.' >&2
-    [[ "$refused_reason" == "Read-only file system" ]] || printf ' If this shell runs in a sandbox, run fettle clean in your own terminal.' >&2
+    [[ "$refused_reason" == "Read-only file system" ]] || printf ' If this shell runs in a sandbox, run glimwell clean in your own terminal.' >&2
     printf '\n' >&2
     return 1
 }
@@ -1590,7 +1590,7 @@ start_cleanup() {
         write_clean_preview_header
     fi
     if [[ -n "$EXTERNAL_VOLUME_TARGET" ]]; then
-        echo -e "${FETTLE_BADGE}${PURPLE_BOLD}Clean External Volume${NC}" # fettle: badge
+        echo -e "${GLIMWELL_BADGE}${PURPLE_BOLD}Clean External Volume${NC}" # glimwell: badge
         echo -e "${GRAY}${EXTERNAL_VOLUME_TARGET}${NC}"
         echo ""
 
@@ -1602,7 +1602,7 @@ start_cleanup() {
         return 0
     fi
 
-    echo -e "${FETTLE_BADGE}${PURPLE_BOLD}Clean Your Mac${NC}" # fettle: badge
+    echo -e "${GLIMWELL_BADGE}${PURPLE_BOLD}Clean Your Mac${NC}" # glimwell: badge
     echo ""
 
     if [[ "$DRY_RUN" != "true" && -t 0 ]]; then
@@ -1620,7 +1620,7 @@ start_cleanup() {
             echo ""
         else
             SYSTEM_CLEAN=false
-            echo -e "${GRAY}${ICON_WARNING} System caches need sudo, run ${NC}sudo -v && fettle clean --dry-run${GRAY} for full preview${NC}"
+            echo -e "${GRAY}${ICON_WARNING} System caches need sudo, run ${NC}sudo -v && glimwell clean --dry-run${GRAY} for full preview${NC}"
             echo ""
         fi
         return
@@ -2237,18 +2237,18 @@ main() {
                 exit 0
                 ;;
             "--select" | "--categories" | "--exclude")
-                echo "fettle clean $1 was removed in this release." >&2
-                echo "Use 'fettle clean --dry-run' to preview cleanup and 'fettle clean --whitelist' to protect paths." >&2
+                echo "glimwell clean $1 was removed in this release." >&2
+                echo "Use 'glimwell clean --dry-run' to preview cleanup and 'glimwell clean --whitelist' to protect paths." >&2
                 exit 1
                 ;;
             -*)
-                echo "Unknown option for fettle clean: $1" >&2
-                echo "Run 'fettle clean --help' for usage." >&2
+                echo "Unknown option for glimwell clean: $1" >&2
+                echo "Run 'glimwell clean --help' for usage." >&2
                 exit 1
                 ;;
             *)
-                echo "Unexpected argument for fettle clean: $1" >&2
-                echo "Run 'fettle clean --help' for usage." >&2
+                echo "Unexpected argument for glimwell clean: $1" >&2
+                echo "Run 'glimwell clean --help' for usage." >&2
                 exit 1
                 ;;
         esac

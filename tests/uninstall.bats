@@ -4,8 +4,8 @@ load helpers/common
 
 setup_file() {
     mole_test_setup_home uninstall-home
-    # Fettle: these tests drive Mole's own remover, which Fettle otherwise never runs.
-    export FETTLE_TEST_MOLE_REMOVER=1
+    # Glimwell: these tests drive Mole's own remover, which Glimwell otherwise never runs.
+    export GLIMWELL_TEST_MOLE_REMOVER=1
 }
 
 teardown_file() {
@@ -954,7 +954,7 @@ EOF
     }
     [[ "$(grep -c "^DELETE:$fixture_home/Applications/RootOwned.app:false$" "$trace" 2> /dev/null || true)" -eq 1 ]] || return 1
     [[ "$output" != *"UNEXPECTED_SUDO"* ]] || return 1
-    [[ "$output" != *"cannot be removed safely by Fettle"* ]]
+    [[ "$output" != *"cannot be removed safely by Glimwell"* ]]
 }
 
 @test "batch uninstall continues when best-effort teardown steps time out" {
@@ -1408,7 +1408,7 @@ EOF
     [[ -s "$fixture_home/inventory.trace" ]] || { echo "$output"; return 1; }
 
     [ "$status" -eq 0 ] || return 1
-    [[ "$output" == *"cannot be removed safely by Fettle from this location"* ]] || return 1
+    [[ "$output" == *"cannot be removed safely by Glimwell from this location"* ]] || return 1
     [[ "$output" == *"Move it to Trash in Finder"* ]] || return 1
     [[ "$output" == *"protected containers and app data untouched"* ]] || return 1
     [[ "$output" != *"UNEXPECTED_"* ]]
@@ -1456,7 +1456,7 @@ EOF
         echo "$output"
         return 1
     }
-    [[ "$output" == *"cannot be removed safely by Fettle from this location"* ]] || return 1
+    [[ "$output" == *"cannot be removed safely by Glimwell from this location"* ]] || return 1
     [[ "$output" != *"UNEXPECTED_"* ]]
 }
 
@@ -2733,7 +2733,7 @@ grep -q "Review only: ~/system/com.example.review.helper" "$HOME/output.log"
 # The summary states the count, not the paths: they were already listed above
 # the confirmation prompt, so the path must appear exactly once in the run.
 [[ "$(grep -cF "~/system/com.example.review.helper" "$HOME/output.log")" -eq 1 ]] || exit 1
-grep -q "Kept 1 system-level path, which Fettle never removes" "$HOME/output.log"
+grep -q "Kept 1 system-level path, which Glimwell never removes" "$HOME/output.log"
 # Keeping system paths is the designed outcome, so the run is not "incomplete".
 ! grep -q "Uninstall incomplete" "$HOME/output.log" || exit 1
 grep -q "Uninstall complete" "$HOME/output.log"

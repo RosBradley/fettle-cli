@@ -16,7 +16,7 @@ func resetFlags(t *testing.T) {
 	t.Helper()
 	saved := *jsonMode
 	t.Cleanup(func() {
-		flag.CommandLine.Init("fettle analyze", flag.ExitOnError)
+		flag.CommandLine.Init("glimwell analyze", flag.ExitOnError)
 		*jsonMode = saved
 	})
 }
@@ -38,8 +38,8 @@ func TestParseArgsHelpGoesToStdout(t *testing.T) {
 			if stderr.Len() != 0 {
 				t.Errorf("stderr = %q, want empty: help is data, not an error", stderr.String())
 			}
-			if !strings.HasPrefix(stdout.String(), "Usage: fettle analyze") {
-				t.Errorf("stdout = %q, want it to start with the fettle analyze usage line", stdout.String())
+			if !strings.HasPrefix(stdout.String(), "Usage: glimwell analyze") {
+				t.Errorf("stdout = %q, want it to start with the glimwell analyze usage line", stdout.String())
 			}
 		})
 	}
@@ -81,8 +81,8 @@ func TestParseArgsUnknownFlagExitsOne(t *testing.T) {
 	if !strings.Contains(stderr.String(), "not defined") {
 		t.Errorf("stderr = %q, want it to name the offending flag", stderr.String())
 	}
-	if !strings.Contains(stderr.String(), "fettle analyze --help") {
-		t.Errorf("stderr = %q, want it to point at fettle analyze --help", stderr.String())
+	if !strings.Contains(stderr.String(), "glimwell analyze --help") {
+		t.Errorf("stderr = %q, want it to point at glimwell analyze --help", stderr.String())
 	}
 }
 

@@ -2,7 +2,7 @@
 # User state and installed tools must never run with inherited root privileges.
 # Individual maintenance operations request administrator access themselves.
 if [[ "$EUID" -eq 0 ]]; then
-    printf '%s\n' 'Run Fettle without sudo; it requests administrator access when needed.' >&2
+    printf '%s\n' 'Run Glimwell without sudo; it requests administrator access when needed.' >&2
     exit 1
 fi
 
@@ -64,7 +64,7 @@ emit_fish_completions() {
 # leaves the config untouched and says what to fix.
 _completion_rc_target() {
     mole_resolve_link_chain "$1" && return 0
-    log_error "Could not follow the shell config link $1, so it was left unchanged. Fix or remove that link, then rerun fettle completion"
+    log_error "Could not follow the shell config link $1, so it was left unchanged. Fix or remove that link, then rerun glimwell completion"
     return 1
 }
 
@@ -120,8 +120,8 @@ if [[ $# -eq 0 ]]; then
     fi
 
     completion_name=""
-    if command -v fettle > /dev/null 2>&1; then
-        completion_name="fettle" # fettle
+    if command -v glimwell > /dev/null 2>&1; then
+        completion_name="glimwell" # glimwell
     elif command -v mole > /dev/null 2>&1; then
         completion_name="mole"
     elif command -v mo > /dev/null 2>&1; then
@@ -129,14 +129,14 @@ if [[ $# -eq 0 ]]; then
     fi
 
     # Fish uses a separate install path: write to ~/.config/fish/completions/ so
-    # both `fettle` and `ft` load completions independently on terminal startup.
-    # fettle: Fish loads a command's completions from the file named after it,
-    # so the files are fettle.fish and ft.fish (Mole's mole.fish and mo.fish are
+    # both `glimwell` and `gw` load completions independently on terminal startup.
+    # glimwell: Fish loads a command's completions from the file named after it,
+    # so the files are glimwell.fish and gw.fish (Mole's mole.fish and mo.fish are
     # left alone).
     if [[ "$current_shell" == "fish" ]]; then
         fish_dir="${HOME}/.config/fish/completions"
-        mole_file="${fish_dir}/fettle.fish"
-        mo_file="${fish_dir}/ft.fish"
+        mole_file="${fish_dir}/glimwell.fish"
+        mo_file="${fish_dir}/gw.fish"
         config_fish="${HOME}/.config/fish/config.fish"
 
         if [[ -z "$completion_name" ]]; then
@@ -144,7 +144,7 @@ if [[ $# -eq 0 ]]; then
             if [[ "${MOLE_DRY_RUN:-0}" != "1" ]]; then
                 remove_stale_completion_entries "$config_fish" "Removed stale completion entries from config.fish" || true
             fi
-            log_error "fettle not found in PATH, install Fettle before enabling completion"
+            log_error "glimwell not found in PATH, install Glimwell before enabling completion"
             exit 1
         fi
 
@@ -181,7 +181,7 @@ if [[ $# -eq 0 ]]; then
             case "$key" in
                 $'\e' | [Qq] | [Nn])
                     echo -e "${YELLOW}Cancelled${NC}"
-                    fettle_note_cancel
+                    glimwell_note_cancel
                     exit 0
                     ;;
                 "" | $'\n' | $'\r' | [Yy]) ;;
@@ -194,8 +194,8 @@ if [[ $# -eq 0 ]]; then
 
         mkdir -p "$fish_dir"
         "$completion_name" completion fish > "$mole_file"
-        # ft.fish sources fettle.fish so Fish loads ft completions on `ft<Tab>`
-        printf '# Fettle completions for ft (short name) -- auto-generated, do not edit\n' > "$mo_file"
+        # gw.fish sources glimwell.fish so Fish loads gw completions on `gw<Tab>`
+        printf '# Glimwell completions for gw (short name) -- auto-generated, do not edit\n' > "$mo_file"
         printf 'source %s\n' "$mole_file" >> "$mo_file"
 
         if [[ -f "$mole_file" ]]; then
@@ -219,7 +219,7 @@ if [[ $# -eq 0 ]]; then
             ;;
         *)
             log_error "Unsupported shell: $current_shell"
-            echo "  fettle completion <bash|zsh|fish>"
+            echo "  glimwell completion <bash|zsh|fish>"
             exit 1
             ;;
     esac
@@ -243,7 +243,7 @@ if [[ $# -eq 0 ]]; then
                 echo ""
             fi
         fi
-        log_error "fettle not found in PATH, install Fettle before enabling completion"
+        log_error "glimwell not found in PATH, install Glimwell before enabling completion"
         exit 1
     fi
 
@@ -297,7 +297,7 @@ if [[ $# -eq 0 ]]; then
     case "$key" in
         $'\e' | [Qq] | [Nn])
             echo -e "${YELLOW}Cancelled${NC}"
-            fettle_note_cancel
+            glimwell_note_cancel
             exit 0
             ;;
         "" | $'\n' | $'\r' | [Yy]) ;;
@@ -388,11 +388,11 @@ _mole_completions()
     fi
 }
 
-complete -F _mole_completions fettle ft
+complete -F _mole_completions glimwell gw
 EOF
         ;;
     zsh)
-        printf '#compdef fettle ft\n\n'
+        printf '#compdef glimwell gw\n\n'
         printf '_mole() {\n'
         printf '    local -a subcommands\n'
         printf '    subcommands=(\n'
@@ -442,14 +442,14 @@ EOF
         printf '            ;;\n'
         printf '    esac\n'
         printf '}\n\n'
-        printf 'compdef _mole fettle ft\n'
+        printf 'compdef _mole glimwell gw\n'
         ;;
     fish)
-        # fettle: complete the fettle and ft commands, as bash and zsh do.
-        printf '# Completions for fettle\n'
-        emit_fish_completions fettle
-        printf '\n# Completions for ft (short name)\n'
-        emit_fish_completions ft
+        # glimwell: complete the glimwell and gw commands, as bash and zsh do.
+        printf '# Completions for glimwell\n'
+        emit_fish_completions glimwell
+        printf '\n# Completions for gw (short name)\n'
+        emit_fish_completions gw
         printf '\nfunction __fish_mole_no_subcommand\n'
         printf '    for i in (commandline -opc)\n'
         # shellcheck disable=SC2016
@@ -465,31 +465,31 @@ EOF
         ;;
     *)
         cat << 'EOF'
-Usage: fettle completion [bash|zsh|fish]
+Usage: glimwell completion [bash|zsh|fish]
 
-Set up Tab completion for the fettle and ft commands.
+Set up Tab completion for the glimwell and gw commands.
 
 Auto-install:
-  fettle completion              # Auto-detect shell and install
-  fettle completion --dry-run    # Preview config changes without writing files
+  glimwell completion              # Auto-detect shell and install
+  glimwell completion --dry-run    # Preview config changes without writing files
 
 Manual install:
-  fettle completion bash         # Generate bash completion script
-  fettle completion zsh          # Generate zsh completion script
-  fettle completion fish         # Generate fish completion script
+  glimwell completion bash         # Generate bash completion script
+  glimwell completion zsh          # Generate zsh completion script
+  glimwell completion fish         # Generate fish completion script
 
 Examples:
   # Auto-install (recommended)
-  fettle completion
+  glimwell completion
 
   # Manual install - Bash
-  eval "$(fettle completion bash)"
+  eval "$(glimwell completion bash)"
 
   # Manual install - Zsh
-  eval "$(fettle completion zsh)"
+  eval "$(glimwell completion zsh)"
 
   # Manual install - Fish
-  fettle completion fish | source
+  glimwell completion fish | source
 EOF
         [[ "$1" == "--help" || "$1" == "-h" ]] && exit 0
         exit 1

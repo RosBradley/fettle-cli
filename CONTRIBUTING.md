@@ -1,4 +1,4 @@
-# Contributing to Fettle
+# Contributing to Glimwell
 
 ## Setup
 
@@ -114,7 +114,7 @@ stop_inline_spinner "Complete"
 Enable debug output with `--debug`:
 
 ```bash
-fettle --debug clean
+glimwell --debug clean
 ./bin/clean.sh --debug
 ```
 
@@ -133,11 +133,11 @@ Format: `[MODULE_NAME] message` output to stderr.
 - macOS 12 or newer, works on Intel and Apple Silicon
 - Default macOS Bash 3.2+; administrator privileges are required for system-level cleanup tasks
 - Command Line Tools (`xcode-select --install`) for curl, tar, and standard utilities
-- Go 1.26+ is required to build the `fettle status` and `fettle analyze` TUI binaries locally.
+- Go 1.26+ is required to build the `glimwell status` and `glimwell analyze` TUI binaries locally.
 
 ## Go Components
 
-`fettle status` and `fettle analyze` use Go with Bubble Tea for interactive dashboards.
+`glimwell status` and `glimwell analyze` use Go with Bubble Tea for interactive dashboards.
 
 **Code organization:**
 
@@ -175,14 +175,14 @@ For releases, GitHub Actions builds architecture-specific binaries automatically
 
 ## Pull Requests
 
-1. Fork and create a branch from `fettle`
+1. Fork and create a branch from `glimwell`
 2. Make changes
 3. Run checks: `./scripts/check.sh`
 4. Commit and push
-5. Open a PR targeting `fettle`
+5. Open a PR targeting `glimwell`
 
 CI will verify formatting, linting, and tests.
 
 ## Licensing
 
-Fettle is GPL-3.0, like Mole, the project by tw93 it is built on, and that is the licence your contribution carries. There is no CLA, and you keep your copyright.
+Glimwell is GPL-3.0, like Mole, the project by tw93 it is built on, and that is the licence your contribution carries. There is no CLA, and you keep your copyright.

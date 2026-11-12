@@ -47,10 +47,10 @@ save_whitelist_patterns() {
 
     if [[ "$mode" == "optimize" ]]; then
         config_file="$WHITELIST_CONFIG_OPTIMIZE"
-        header_text="# Fettle Optimization Whitelist - These checks will be skipped during optimization"
+        header_text="# Glimwell Optimization Whitelist - These checks will be skipped during optimization"
     else
         config_file="$WHITELIST_CONFIG_CLEAN"
-        header_text="# Fettle Whitelist - Protected paths won't be deleted\n# Saved selections replace optional defaults; built-in safety protections still apply.\n# Add one pattern per line to keep items safe."
+        header_text="# Glimwell Whitelist - Protected paths won't be deleted\n# Saved selections replace optional defaults; built-in safety protections still apply.\n# Add one pattern per line to keep items safe."
     fi
 
     ensure_user_file "$config_file"
@@ -472,7 +472,7 @@ ${GRAY}Edit: ${display_config}, any path added there is protected too${NC}"
 
     if [[ $exit_code -ne 0 ]]; then
         echo -e "${GRAY}Cancelled, no changes saved${NC}"
-        fettle_note_cancel
+        glimwell_note_cancel
         return 0
     fi
 

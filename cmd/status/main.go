@@ -64,7 +64,7 @@ type model struct {
 	catHidden     bool // true = hidden, false = visible
 	cpuCores      int  // how many CPU cores to list; 0 = all
 
-	refresh time.Duration // fettle: time between refreshes; 0 = default
+	refresh time.Duration // glimwell: time between refreshes; 0 = default
 }
 
 // padViewToHeight ensures the rendered frame always overwrites the full
@@ -85,9 +85,9 @@ func padViewToHeight(view string, height int) string {
 func newModel() model {
 	return model{
 		collector: NewCollector(processWatchOptionsFromFlags()),
-		catHidden: true, // Fettle: Mole's mascot never shows; Fettle's own mark comes later
+		catHidden: true, // Glimwell: Mole's mascot never shows; Glimwell's own mark comes later
 		cpuCores:  loadCPUCores(),
-		refresh:   loadRefreshInterval(), // fettle
+		refresh:   loadRefreshInterval(), // glimwell
 	}
 }
 
@@ -125,7 +125,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			saveCPUCores(m.cpuCores)
 			return m, nil
 		case "r":
-			// fettle: cycle the time between refreshes and persist it.
+			// glimwell: cycle the time between refreshes and persist it.
 			m.refresh = nextRefreshInterval(m.refreshEvery())
 			saveRefreshInterval(m.refresh)
 			return m, nil
@@ -139,7 +139,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.collecting = true
-		return m, m.collectCmd(m.refreshMode(m.schedule.nextMode(time.Now()))) // fettle
+		return m, m.collectCmd(m.refreshMode(m.schedule.nextMode(time.Now()))) // glimwell
 	case collectionResult:
 		if msg.err != nil {
 			m.errMessage = msg.err.Error()
@@ -154,7 +154,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.fullCollected = true
 		}
 		m.collecting = false
-		delay := m.schedule.recordCompletion(msg, m.refreshEvery()) // fettle
+		delay := m.schedule.recordCompletion(msg, m.refreshEvery()) // glimwell
 		return m, tickAfter(delay)
 	case animTickMsg:
 		m.animFrame++
@@ -182,7 +182,7 @@ func (m model) View() string {
 	)
 
 	renderFrame := func(cpuCores int) string {
-		// fettle: the card width only holds while this frame draws, so a
+		// glimwell: the card width only holds while this frame draws, so a
 		// later bar drawn outside a frame keeps the classic width.
 		defer func() { statusCardWidth = 0 }()
 		var cardContent string
@@ -191,7 +191,7 @@ func (m model) View() string {
 			if cardWidth > 2 {
 				cardWidth -= 2
 			}
-			statusCardWidth = cardWidth // fettle: bars fill the card
+			statusCardWidth = cardWidth // glimwell: bars fill the card
 			cards := buildCards(m.metrics, cardWidth, cpuCores, m.fullCollected)
 
 			var rendered []string
@@ -204,7 +204,7 @@ func (m model) View() string {
 			cardContent = lipgloss.JoinVertical(lipgloss.Left, rendered...)
 		} else {
 			cardWidth := max(24, termWidth/2-4)
-			statusCardWidth = cardWidth // fettle: bars fill the card
+			statusCardWidth = cardWidth // glimwell: bars fill the card
 			cards := buildCards(m.metrics, cardWidth, cpuCores, m.fullCollected)
 			cardContent = renderTwoColumns(cards, termWidth)
 		}
@@ -218,7 +218,7 @@ func (m model) View() string {
 			parts = append(parts, mole)
 		}
 		parts = append(parts, cardContent)
-		parts = append(parts, "", renderStatusFooter(m.refreshEvery(), termWidth)) // fettle
+		parts = append(parts, "", renderStatusFooter(m.refreshEvery(), termWidth)) // glimwell
 		return lipgloss.JoinVertical(lipgloss.Left, parts...)
 	}
 
@@ -234,9 +234,9 @@ func (m model) View() string {
 	}
 	if m.height > 0 && lipgloss.Height(output) > m.height {
 		output = renderTerminalTooSmall(termWidth, m.height)
-		return padViewToHeight(output, m.height) // fettle
+		return padViewToHeight(output, m.height) // glimwell
 	}
-	return pinFooterToBottom(output, m.height) // fettle: the keys on the window's last row
+	return pinFooterToBottom(output, m.height) // glimwell: the keys on the window's last row
 }
 
 func (m model) collectCmd(mode collectionMode) tea.Cmd {
@@ -333,7 +333,7 @@ func parseWatchInterval(raw string) (time.Duration, error) {
 // usageText is the help every other Mole subcommand prints by hand. The Go flag
 // package would otherwise render "Usage of /usr/local/bin/status-go:", naming a
 // bundled binary the user never typed, so the text is written out here instead.
-const usageText = `Usage: fettle status [OPTIONS]
+const usageText = `Usage: glimwell status [OPTIONS]
 
 Monitor system health. Without options it opens the interactive dashboard, and
 switches to a single JSON snapshot when stdout is not a terminal.
@@ -348,9 +348,9 @@ Options:
   -h, --help                      Show this help message
 
 Examples:
-  fettle status                       Interactive dashboard
-  fettle status --json                One machine-readable snapshot
-  fettle status --watch --interval 2s Continuous NDJSON stream
+  glimwell status                       Interactive dashboard
+  glimwell status --json                One machine-readable snapshot
+  glimwell status --watch --interval 2s Continuous NDJSON stream
 `
 
 // parseArgs applies Mole's CLI conventions to the flag package: help goes to
@@ -358,7 +358,7 @@ Examples:
 // every bash subcommand does, rather than the flag package's stderr-and-2.
 // It returns the exit code and whether main should keep running.
 func parseArgs(args []string, stdout, stderr io.Writer) (int, bool) {
-	flag.CommandLine.Init("fettle status", flag.ContinueOnError)
+	flag.CommandLine.Init("glimwell status", flag.ContinueOnError)
 	// Parse must not print: this function decides which stream each message
 	// belongs on, and the default handler writes usage to stderr for both.
 	flag.CommandLine.SetOutput(io.Discard)
@@ -371,13 +371,13 @@ func parseArgs(args []string, stdout, stderr io.Writer) (int, bool) {
 		return 0, false
 	case err != nil:
 		_, _ = fmt.Fprintln(stderr, err)
-		_, _ = fmt.Fprintln(stderr, "Use 'fettle status --help' for usage information")
+		_, _ = fmt.Fprintln(stderr, "Use 'glimwell status --help' for usage information")
 		return 1, false
 	}
 
 	if err := validateFlags(); err != nil {
 		_, _ = fmt.Fprintln(stderr, err)
-		_, _ = fmt.Fprintln(stderr, "Use 'fettle status --help' for usage information")
+		_, _ = fmt.Fprintln(stderr, "Use 'glimwell status --help' for usage information")
 		return 1, false
 	}
 	return 0, true
@@ -392,7 +392,7 @@ func main() {
 		interval, err := parseWatchInterval(*watchInterval)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err)
-			fmt.Fprintln(os.Stderr, "Use 'fettle status --help' for usage information")
+			fmt.Fprintln(os.Stderr, "Use 'glimwell status --help' for usage information")
 			os.Exit(1)
 		}
 		runWatchMode(interval)

@@ -1,18 +1,18 @@
-# Fettle
+# Glimwell
 
 > Free, open-source maintenance CLI for macOS: find what uses disk space, clean caches and app leftovers, uninstall apps, update apps and Ollama models, and check system health. Every removing command has a `--dry-run` preview.
 
-Source: https://github.com/RosBradley/fettle-cli (the `fettle` branch)
+Source: https://github.com/RosBradley/glimwell-cli (the `glimwell` branch)
 
 ## Install for the user
 
-If you are an agent asked to install Fettle, do both steps below, telling the user what each command does before you run it. Do not run any cleanup while installing.
+If you are an agent asked to install Glimwell, do both steps below, telling the user what each command does before you run it. Do not run any cleanup while installing.
 
 1. The CLI: show the user this line and let them paste it into Terminal; do not pipe a download into a shell yourself:
-   `curl -fsSL https://raw.githubusercontent.com/RosBradley/fettle-cli/fettle/fettle-get.sh | bash`
-2. The agent skill, which teaches you to use Fettle safely:
-   - Claude Code, Codex, Cursor and other agents: `npx skills add RosBradley/fettle-cli -a claude-code codex cursor -g -y`
-   - Or the Claude Code plugin: `/plugin marketplace add RosBradley/fettle-cli`, then `/plugin install fettle@fettle`
-   - Or the Codex plugin: `codex plugin marketplace add RosBradley/fettle-cli`, then `codex plugin add fettle@fettle`
+   `curl -fsSL https://raw.githubusercontent.com/RosBradley/glimwell-cli/glimwell/glimwell-get.sh | bash`
+2. The agent skill, which teaches you to use Glimwell safely:
+   - Claude Code, Codex, Cursor and other agents: `npx skills add RosBradley/glimwell-cli -a claude-code codex cursor -g -y`
+   - Or the Claude Code plugin: `/plugin marketplace add RosBradley/glimwell-cli`, then `/plugin install glimwell@glimwell`
+   - Or the Codex plugin: `codex plugin marketplace add RosBradley/glimwell-cli`, then `codex plugin add glimwell@glimwell`
 
-Then run `fettle --version` to confirm, and tell the user they can ask things like "what is using my disk?". If the skill does not show up yet, a new session loads it.
+Then run `glimwell --version` to confirm, and tell the user they can ask things like "what is using my disk?". If the skill does not show up yet, a new session loads it.

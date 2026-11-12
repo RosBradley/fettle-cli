@@ -1,0 +1,101 @@
+name: Glimwell release
+
+# Glimwell: publishes a release when a glimwell-YYYY.MM.DD tag is pushed,
+# which scripts/glimwell-release.sh does. Mole's own release.yml answers only
+# to V tags. Update Glimwell and glimwell-get.sh install the newest release.
+
+on:
+  push:
+    tags:
+      - 'glimwell-*'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: glimwell-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Build, test and publish
+    if: github.repository == 'RosBradley/glimwell-cli'
+    runs-on: macos-latest
+    timeout-minutes: 45
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    steps:
+      - name: Check out the tagged commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Check the tag
+        id: tag
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          VERSION="${TAG#glimwell-}"
+          if [[ ! "$VERSION" =~ ^[0-9]{4}\.[0-9]{2}\.[0-9]{2}(\.[0-9]+)?$ ]]; then
+            echo "Tag $TAG is not glimwell-YYYY.MM.DD or glimwell-YYYY.MM.DD.N" >&2
+            exit 1
+          fi
+          git fetch --quiet origin glimwell
+          if ! git merge-base --is-ancestor HEAD origin/glimwell; then
+            echo "Tag $TAG points at a commit that is not on the glimwell branch" >&2
+            exit 1
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+
+      - name: Test
+        env:
+          MOLE_TEST_NO_AUTH: '1'
+          TERM: xterm-256color
+        run: |
+          brew install bats-core
+          go test ./...
+          bats tests/glimwell_*.bats
+
+      - name: Build the release files
+        env:
+          VERSION: ${{ steps.tag.outputs.version }}
+        run: bash scripts/glimwell-release-build.sh "$VERSION" dist
+
+      - name: Check the oldest macOS the Go parts run on
+        run: |
+          mkdir -p dist-check/arm64 dist-check/amd64
+          tar -xzf dist/glimwell-go-darwin-arm64.tar.gz -C dist-check/arm64
+          tar -xzf dist/glimwell-go-darwin-amd64.tar.gz -C dist-check/amd64
+          ./scripts/check_release_minos.sh dist-check/*/bin/*-go
+
+      - name: Record that GitHub built these files
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: |
+            dist/glimwell.tar.gz
+            dist/glimwell-go-darwin-arm64.tar.gz
+            dist/glimwell-go-darwin-amd64.tar.gz
+            dist/SHA256SUMS
+
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+          VERSION: ${{ steps.tag.outputs.version }}
+        run: |
+          gh release create "$TAG" \
+            dist/glimwell.tar.gz \
+            dist/glimwell-go-darwin-arm64.tar.gz \
+            dist/glimwell-go-darwin-amd64.tar.gz \
+            dist/SHA256SUMS \
+            --title "Glimwell $VERSION" \
+            --notes-file dist/notes.md \
+            --verify-tag \
+            --latest

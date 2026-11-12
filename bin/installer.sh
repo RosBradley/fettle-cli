@@ -7,7 +7,7 @@ set -euo pipefail
 # User state and installed tools must never run with inherited root privileges.
 # Individual maintenance operations request administrator access themselves.
 if [[ "$EUID" -eq 0 ]]; then
-    printf '%s\n' 'Run Fettle without sudo; it requests administrator access when needed.' >&2
+    printf '%s\n' 'Run Glimwell without sudo; it requests administrator access when needed.' >&2
     exit 1
 fi
 
@@ -23,8 +23,8 @@ export MOLE_CURRENT_COMMAND="${MOLE_CURRENT_COMMAND:-installer}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/../lib/core/common.sh"
 source "$SCRIPT_DIR/../lib/ui/menu_paginated.sh"
-# Fettle: the shared list for installer files (search, A-Z, size, date).
-source "$SCRIPT_DIR/../lib/fettle/lists.sh"
+# Glimwell: the shared list for installer files (search, A-Z, size, date).
+source "$SCRIPT_DIR/../lib/glimwell/lists.sh"
 
 cleanup() {
     if [[ "${IN_ALT_SCREEN:-0}" == "1" ]]; then
@@ -664,7 +664,7 @@ show_installer_menu() {
     echo ""
 
     MOLE_SELECTION_RESULT=""
-    if ! fettle_select_installers; then
+    if ! glimwell_select_installers; then
         return 1
     fi
 
@@ -906,7 +906,7 @@ perform_installers() {
             if [[ -n "$INSTALLER_SCAN_FAILURE_PATH" ]]; then
                 printf ' (%s)' "$(installer_display_text "$INSTALLER_SCAN_FAILURE_PATH")" >&2
             fi
-            printf '\nCheck that the scan locations are readable and responsive, then retry fettle installer.\n' >&2
+            printf '\nCheck that the scan locations are readable and responsive, then retry glimwell installer.\n' >&2
             return "$collect_status"
         fi
         echo -e "${GREEN}${ICON_SUCCESS}${NC} No installer files to clean"
@@ -1040,7 +1040,7 @@ main() {
             return 1
             ;;
         1)
-            fettle_note_cancel
+            glimwell_note_cancel
             printf '\n'
             ;;
         2)
@@ -1053,7 +1053,7 @@ main() {
             if [[ $total_delete_failed -gt 0 ]]; then
                 show_summary
                 if mole_rc_timeout "$exit_code"; then
-                    echo -e "${YELLOW}${ICON_WARNING}${NC} A file check timed out, so later selections were left in place. Retry fettle installer."
+                    echo -e "${YELLOW}${ICON_WARNING}${NC} A file check timed out, so later selections were left in place. Retry glimwell installer."
                 fi
             fi
             return "$exit_code"

@@ -8,7 +8,7 @@ set -euo pipefail
 # User state and installed tools must never run with inherited root privileges.
 # Individual maintenance operations request administrator access themselves.
 if [[ "$EUID" -eq 0 ]]; then
-    printf '%s\n' 'Run Fettle without sudo; it requests administrator access when needed.' >&2
+    printf '%s\n' 'Run Glimwell without sudo; it requests administrator access when needed.' >&2
     exit 1
 fi
 
@@ -31,7 +31,7 @@ source "$SCRIPT_DIR/lib/manage/whitelist.sh"
 
 print_header() {
     printf '\n'
-    echo -e "${FETTLE_BADGE}${PURPLE_BOLD}Optimize${NC}" # fettle: badge
+    echo -e "${GLIMWELL_BADGE}${PURPLE_BOLD}Optimize${NC}" # glimwell: badge
 }
 
 # Extract a simple numeric value from JSON by key without a jq dependency.
@@ -69,7 +69,7 @@ show_optimization_summary() {
     attention=$(optimize_outcome_count "$MOLE_OPTIMIZE_OUTCOME_ATTENTION")
     failed=$(optimize_outcome_count "$MOLE_OPTIMIZE_OUTCOME_FAILED")
 
-    # Fettle: name the optimizations applied, or that a preview would apply.
+    # Glimwell: name the optimizations applied, or that a preview would apply.
     local applied_names="" applied_action
     while IFS= read -r applied_action; do
         [[ -n "$applied_action" ]] || continue
@@ -95,7 +95,7 @@ show_optimization_summary() {
     if [[ "${MOLE_DRY_RUN:-0}" == "1" ]]; then
         summary_title="Dry Run Complete, No Changes Made"
         summary_details+=("Would apply ${YELLOW}${applied}${NC} optimizations")
-        [[ -z "$applied_names" ]] || summary_details+=("  $applied_names") # Fettle
+        [[ -z "$applied_names" ]] || summary_details+=("  $applied_names") # Glimwell
         [[ -n "$outcome_line" ]] && summary_details+=("$outcome_line")
         summary_details+=("Run without ${YELLOW}--dry-run${NC} to apply these changes")
     else
@@ -122,7 +122,7 @@ show_optimization_summary() {
             summary_details+=("Applied ${GREEN}${applied}${NC} optimizations")
         fi
 
-        [[ -z "$applied_names" ]] || summary_details+=("  $applied_names") # Fettle
+        [[ -z "$applied_names" ]] || summary_details+=("  $applied_names") # Glimwell
         [[ -n "$outcome_line" ]] && summary_details+=("$outcome_line")
         if [[ $attention -gt 0 || $failed -gt 0 ]]; then
             summary_details+=("Review the warnings above")
@@ -237,7 +237,7 @@ main() {
                 ;;
             *)
                 echo "Unknown optimize option: $arg" >&2
-                echo "Use 'fettle optimize --help' for supported options." >&2
+                echo "Use 'glimwell optimize --help' for supported options." >&2
                 exit 1
                 ;;
         esac
