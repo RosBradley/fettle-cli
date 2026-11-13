@@ -28,6 +28,7 @@ source "$_MOLE_CORE_DIR/pkg_receipts.sh"
 # Glimwell: cancel signal for the menu.
 source "$_MOLE_CORE_DIR/../glimwell/cancel.sh"
 source "$_MOLE_CORE_DIR/../glimwell/badge.sh" # glimwell: the Glimwell badge
+source "$_MOLE_CORE_DIR/../glimwell/clean_json.sh" # glimwell: clean --json and --only for the app
 
 # Load sudo management if available
 if [[ -f "$_MOLE_CORE_DIR/sudo.sh" ]]; then

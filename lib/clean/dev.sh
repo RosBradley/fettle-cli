@@ -58,6 +58,10 @@ clean_tool_cache() {
         return "$pending_clean_cancel"
     fi
 
+    # glimwell: under `clean --only` the tool runs only when its row was selected.
+    glimwell_clean_step_selected "$description" "$cache_path" || return 0
+    local _MOLE_SELECTED_STEP=1
+
     if [[ -n "$cache_path" ]] && is_path_whitelisted "$cache_path"; then
         if [[ "$DRY_RUN" == "true" ]]; then
             echo -e "  ${YELLOW}${ICON_DRY_RUN}${NC} $description · would skip (whitelist)"
@@ -154,6 +158,7 @@ clean_tool_cache() {
     else
         echo -e "  ${YELLOW}${ICON_DRY_RUN}${NC} $description · would clean"
         note_activity
+        [[ "${1:-}" == ":" ]] || glimwell_clean_step_preview "$description" "$cache_path" # glimwell
     fi
     return 0
 }
@@ -267,6 +272,9 @@ clean_github_cli_cache() {
 
     local cache_path="$cache_root/gh"
     [[ -e "$cache_path" || -L "$cache_path" ]] || return 0
+    # glimwell: under `clean --only` this step runs only when selected.
+    glimwell_clean_step_selected "GitHub CLI cache" "$cache_path" || return 0
+    local _MOLE_SELECTED_STEP=1
     if [[ ! -d "$cache_path" || -L "$cache_path" ]]; then
         debug_log "Skipping GitHub CLI cache because its cache leaf is not a real directory: $cache_path"
         return 0
@@ -336,6 +344,7 @@ clean_github_cli_cache() {
     fi
 
     if [[ "$DRY_RUN" == "true" ]]; then
+        glimwell_clean_step_preview "GitHub CLI cache" "$cache_path" # glimwell
         echo -e "  ${YELLOW}${ICON_DRY_RUN}${NC} GitHub CLI cache · would clean"
         note_activity
         return 0
@@ -1076,6 +1085,9 @@ clean_go_cache_root() {
     local clean_flag="$3"
     local display_name="$4"
     [[ -e "$cache_root" || -L "$cache_root" ]] || return 0
+    # glimwell: under `clean --only` this step runs only when selected.
+    glimwell_clean_step_selected "$display_name" "$cache_root" || return 0
+    local _MOLE_SELECTED_STEP=1
 
     # `go clean -modcache` removes the module root itself, not just its
     # contents, so handing it the resolved physical path of a symlinked
@@ -1172,6 +1184,7 @@ clean_go_cache_root() {
     if [[ $command_status -eq 0 ]]; then
         if [[ "$DRY_RUN" == "true" ]]; then
             echo -e "  ${YELLOW}${ICON_DRY_RUN}${NC} $display_name · would clean"
+            glimwell_clean_step_preview "$display_name" "$cache_root" # glimwell
         elif ((freed_kb > 0)); then
             echo -e "  ${GREEN}${ICON_SUCCESS}${NC} $display_name · $(colorize_human_size "$(bytes_to_human_kb "$freed_kb")")"
             mole_add_cleaned_row 0 "$freed_kb"
@@ -1282,6 +1295,7 @@ clean_dev_mise() {
         else
             echo -e "  ${YELLOW}${ICON_DRY_RUN}${NC} mise cache · would clean"
             note_activity
+            glimwell_clean_step_preview "mise cache" "$mise_cache_path" # glimwell
         fi
         # The owner command is authoritative, including failure and timeout.
         # Do not bypass its result with direct deletion of the same root.
@@ -1564,6 +1578,11 @@ clean_docker_unused_data() {
     command -v docker > /dev/null 2>&1 || return 0
     local description="Docker build cache and dangling images"
     local whitelist_path="$HOME/Library/Containers/com.docker.docker/Data"
+    # glimwell: under `clean --only` this step runs only when at least one of
+    # its two prunes was selected; the loop below runs only the selected ones.
+    glimwell_clean_step_selected "Docker build cache" ||
+        glimwell_clean_step_selected "Docker dangling images" || return 0
+    local _MOLE_SELECTED_STEP=1
 
     local probe_rc=0
     mole_docker_endpoint_is_local || probe_rc=$?
@@ -1623,8 +1642,24 @@ clean_docker_unused_data() {
             echo -e "  ${YELLOW}${ICON_DRY_RUN}${NC} $description · would prune, build cache unused for 7 days"
         fi
         note_activity
+        # glimwell: one item per prune, so the app's tick means exactly one.
+        [[ "$steps" != *builder* ]] || glimwell_clean_step_preview "Docker build cache"
+        glimwell_clean_step_preview "Docker dangling images"
         return 0
     fi
+
+    # glimwell: under `clean --only`, run only the prunes that were selected.
+    local selected_steps="" docker_step=""
+    for docker_step in $steps; do
+        if [[ "$docker_step" == "builder" ]]; then
+            glimwell_clean_step_selected "Docker build cache" || continue
+        else
+            glimwell_clean_step_selected "Docker dangling images" || continue
+        fi
+        selected_steps+="${selected_steps:+ }$docker_step"
+    done
+    steps="$selected_steps"
+    [[ -n "$steps" ]] || return 0
 
     [[ -t 1 ]] && start_section_spinner "Pruning Docker build cache..."
     local total_bytes=0 step output rc bytes
@@ -3120,6 +3155,7 @@ clean_dev_mobile() {
 
                 if [[ "$DRY_RUN" == "true" ]]; then
                     if ((unavailable_before > 0)); then
+                        local _MOLE_DRY_RUN_ROW_LABEL="Xcode unavailable simulators" # glimwell: --json row name
                         for unavailable_udid in "${unavailable_udids[@]}"; do
                             local unavailable_path="$HOME/Library/Developer/CoreSimulator/Devices/$unavailable_udid"
                             [[ -d "$unavailable_path" ]] || continue
@@ -3143,16 +3179,65 @@ clean_dev_mobile() {
                         debug_log "Xcode unavailable simulators already clean"
                     fi
                 else
+                    # glimwell: `simctl delete unavailable` removes every
+                    # unavailable device at once, so under `clean --only` it
+                    # runs only when the user selected each one of them.
+                    local glimwell_all_devices_selected=true
+                    if [[ -n "${MOLE_CLEAN_ONLY_FILE:-}" && "${MOLE_CURRENT_COMMAND:-}" == "clean" ]]; then
+                        # Every counted device must have parsed to a UDID the check can see.
+                        if [[ ${#unavailable_udids[@]} -eq 0 || ${#unavailable_udids[@]} -ne $unavailable_before ]] ||
+                            ! declare -F glimwell_clean_selection_refuses_path > /dev/null 2>&1; then
+                            glimwell_all_devices_selected=false
+                        else
+                            for unavailable_udid in "${unavailable_udids[@]}"; do
+                                if glimwell_clean_selection_refuses_path "$HOME/Library/Developer/CoreSimulator/Devices/$unavailable_udid"; then
+                                    glimwell_all_devices_selected=false
+                                    break
+                                fi
+                            done
+                        fi
+                    fi
                     # Skip if no unavailable simulators
                     if ((unavailable_before == 0)); then
                         debug_log "Xcode unavailable simulators already clean"
+                    elif [[ "$glimwell_all_devices_selected" != "true" ]]; then
+                        debug_log "Xcode unavailable simulators kept: not every device was selected"
                     else
                         start_section_spinner "Checking unavailable simulators..."
+
+                        # glimwell: under `clean --only`, list again right before the
+                        # delete, so a device that became unavailable after the check
+                        # is never removed unticked.
+                        local glimwell_relist_ok=true
+                        if [[ -n "${MOLE_CLEAN_ONLY_FILE:-}" && "${MOLE_CURRENT_COMMAND:-}" == "clean" ]]; then
+                            local glimwell_relist="" glimwell_relist_count="" glimwell_relist_udid=""
+                            glimwell_relist=$(_run_simctl "$MOLE_TIMEOUT_PKG_LIST_SEC" list devices unavailable 2> /dev/null) || glimwell_relist_ok=false
+                            if [[ "$glimwell_relist_ok" == "true" ]]; then
+                                glimwell_relist_count=$(printf '%s\n' "$glimwell_relist" | command awk '/\(unavailable/ { count++ } END { print count+0 }')
+                                if [[ "$glimwell_relist_count" != "$unavailable_before" ]]; then
+                                    glimwell_relist_ok=false
+                                fi
+                                while IFS= read -r glimwell_relist_udid; do
+                                    [[ -n "$glimwell_relist_udid" ]] || continue
+                                    if glimwell_clean_selection_refuses_path "$HOME/Library/Developer/CoreSimulator/Devices/$glimwell_relist_udid"; then
+                                        glimwell_relist_ok=false
+                                    fi
+                                done < <(
+                                    printf '%s\n' "$glimwell_relist" |
+                                        command sed -nE 's/.*\(([0-9A-Fa-f-]{36})\).*\(unavailable.*/\1/p' || true
+                                )
+                            fi
+                        fi
 
                         # Capture error output for diagnostics
                         local delete_output
                         local delete_exit_code=0
-                        delete_output=$(_run_simctl "$MOLE_TIMEOUT_PKG_CLEANUP_SEC" delete unavailable 2>&1) || delete_exit_code=$?
+                        if [[ "$glimwell_relist_ok" != "true" ]]; then
+                            delete_exit_code=1
+                            delete_output="kept: the unavailable simulators changed since they were selected"
+                        else
+                            delete_output=$(_run_simctl "$MOLE_TIMEOUT_PKG_CLEANUP_SEC" delete unavailable 2>&1) || delete_exit_code=$?
+                        fi
 
                         if [[ $delete_exit_code -eq 0 ]]; then
                             local recount_exit_code=0
@@ -4305,9 +4390,11 @@ clean_dev_automation_browsers() {
         done
     fi
 
-    if [[ ${#leaked_processes[@]} -gt 0 ]]; then
+    # glimwell: under `clean --only` the processes are stopped only when selected.
+    if [[ ${#leaked_processes[@]} -gt 0 ]] && glimwell_clean_step_selected "Leaked automation browsers"; then
         if [[ "$DRY_RUN" == "true" ]]; then
             echo -e "  ${YELLOW}${ICON_DRY_RUN}${NC} Leaked automation browsers · would stop ${#leaked_processes[@]} processes ${YELLOW}dry${NC}"
+            glimwell_clean_step_preview "Leaked automation browsers" # glimwell
         else
             local stopped=0
             local -a term_processes=()

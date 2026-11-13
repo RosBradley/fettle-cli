@@ -1171,11 +1171,18 @@ clean_time_machine_failed_backups() {
                 size_human=$(bytes_to_human "$((size_kb * 1024))")
                 if [[ "$DRY_RUN" == "true" ]]; then
                     if declare -f record_dry_run_cleanup_target > /dev/null 2>&1; then
+                        local _MOLE_DRY_RUN_ROW_LABEL="Incomplete Time Machine backup" # glimwell: --json row name
                         record_dry_run_cleanup_target "$inprogress_file" "$size_kb" 1 true || continue
                     fi
                     echo -e "  ${YELLOW}${ICON_DRY_RUN}${NC} Incomplete backup: $backup_name${NC} · $(colorize_human_size "$size_human") ${YELLOW}dry${NC}"
                     tm_cleaned=$((tm_cleaned + 1))
                     note_activity
+                    continue
+                fi
+                # glimwell: under `clean --only` only a selected backup is deleted.
+                if [[ -n "${MOLE_CLEAN_ONLY_FILE:-}" && "${MOLE_CURRENT_COMMAND:-}" == "clean" ]] &&
+                    { ! declare -F glimwell_clean_selection_refuses_path > /dev/null 2>&1 ||
+                        glimwell_clean_selection_refuses_path "$inprogress_file"; }; then
                     continue
                 fi
                 if ! command -v tmutil > /dev/null 2>&1; then
@@ -1325,11 +1332,18 @@ clean_time_machine_failed_backups() {
                     size_human=$(bytes_to_human "$((size_kb * 1024))")
                     if [[ "$DRY_RUN" == "true" ]]; then
                         if declare -f record_dry_run_cleanup_target > /dev/null 2>&1; then
+                            local _MOLE_DRY_RUN_ROW_LABEL="Incomplete Time Machine backup" # glimwell: --json row name
                             record_dry_run_cleanup_target "$inprogress_file" "$size_kb" 1 true || continue
                         fi
                         echo -e "  ${YELLOW}${ICON_DRY_RUN}${NC} Incomplete APFS backup in $bundle_name: $backup_name${NC} · $(colorize_human_size "$size_human") ${YELLOW}dry${NC}"
                         tm_cleaned=$((tm_cleaned + 1))
                         note_activity
+                        continue
+                    fi
+                    # glimwell: under `clean --only` only a selected backup is deleted.
+                    if [[ -n "${MOLE_CLEAN_ONLY_FILE:-}" && "${MOLE_CURRENT_COMMAND:-}" == "clean" ]] &&
+                        { ! declare -F glimwell_clean_selection_refuses_path > /dev/null 2>&1 ||
+                            glimwell_clean_selection_refuses_path "$inprogress_file"; }; then
                         continue
                     fi
                     if ! command -v tmutil > /dev/null 2>&1; then

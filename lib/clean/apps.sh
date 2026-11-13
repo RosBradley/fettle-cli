@@ -2570,6 +2570,13 @@ clean_orphaned_container_stubs() {
                 debug_log "Skipping whitelisted stub container: $container_dir"
                 continue
             fi
+            # glimwell: this removal bypasses the deletion funnel, so it checks
+            # the `clean --only` selection itself.
+            if [[ -n "${MOLE_CLEAN_ONLY_FILE:-}" && "${MOLE_CURRENT_COMMAND:-}" == "clean" ]] &&
+                { ! declare -F glimwell_clean_selection_refuses_path > /dev/null 2>&1 ||
+                    glimwell_clean_selection_refuses_path "$container_dir"; }; then
+                continue
+            fi
 
             if [[ "$DRY_RUN" != "true" ]]; then
                 # These directories have already passed the narrow stub-only

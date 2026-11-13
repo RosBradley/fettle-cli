@@ -66,6 +66,7 @@ clean_trash() {
 
     if [[ "$DRY_RUN" == "true" ]]; then
         if [[ $trash_count -gt 0 ]]; then
+            local _MOLE_DRY_RUN_ROW_LABEL="Trash" # glimwell: --json row name
             local preview_count=0
             local trash_item
             # Each item is measured; one large folder takes over a second.
@@ -136,6 +137,12 @@ clean_trash() {
     local skipped_count=0
     local processed_count=0
     while IFS= read -r -d '' item; do
+        # glimwell: under `clean --only` an unselected Trash item is left as it is.
+        if [[ -n "${MOLE_CLEAN_ONLY_FILE:-}" && "${MOLE_CURRENT_COMMAND:-}" == "clean" ]] &&
+            { ! declare -F glimwell_clean_selection_refuses_path > /dev/null 2>&1 ||
+                glimwell_clean_selection_refuses_path "$item"; }; then
+            continue
+        fi
         if safe_remove "$item" true; then
             cleaned_count=$((cleaned_count + 1))
         else
@@ -2488,6 +2495,9 @@ clean_tart_caches() {
     local cache_root="$HOME/.tart/cache"
     [[ -d "$cache_root" ]] || return 0
     command -v tart > /dev/null 2>&1 || return 0
+    # glimwell: under `clean --only` tart prune runs only when selected.
+    glimwell_clean_step_selected "Tart caches" "$cache_root" || return 0
+    local _MOLE_SELECTED_STEP=1
 
     local cache_size_kb=0
     local size_rc=0
@@ -2525,6 +2535,7 @@ clean_tart_caches() {
         echo -e "  ${YELLOW}${ICON_DRY_RUN}${NC} Tart caches · would prune items older than ${MOLE_ORPHAN_AGE_DAYS} days (${cache_size_human})"
         echo -e "    ${GRAY}tart prune --entries caches --older-than ${MOLE_ORPHAN_AGE_DAYS}${NC}"
         note_activity
+        glimwell_clean_step_preview "Tart caches" "$cache_root" # glimwell
         return 0
     fi
 

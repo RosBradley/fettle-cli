@@ -1251,6 +1251,10 @@ format_path_link() {
 mole_review_row() {
     local label="$1" path="${2:-}" value="${3:-}" fact="${4:-}"
     local shown="$label" tail=""
+    # glimwell: `clean --json` also reports the row as a review event.
+    if [[ "${GLIMWELL_CLEAN_JSON:-0}" == "1" ]] && declare -F glimwell_clean_json_review > /dev/null 2>&1; then
+        glimwell_clean_json_review "$label" "$path" "$value" "$fact"
+    fi
     if [[ -n "$path" ]]; then
         # Settle the check here: inside $(...) stdout is a pipe.
         if is_ansi_supported 2> /dev/null; then

@@ -294,6 +294,9 @@ restore_homebrew_active_links() {
 
 clean_homebrew() {
     command -v brew > /dev/null 2>&1 || return 0
+    # glimwell: under `clean --only` brew cleanup runs only when selected.
+    glimwell_clean_step_selected "Homebrew cleanup" || return 0
+    local _MOLE_SELECTED_STEP=1
     local cleanup_timeout="${MOLE_TIMEOUT_PKG_CLEANUP_SEC:-20}"
     local autoremove_preview_timeout="${MOLE_TIMEOUT_PKG_LIST_SEC:-10}"
     local brew_cache_file="${HOME}/.cache/mole/brew_last_cleanup"
@@ -304,6 +307,7 @@ clean_homebrew() {
             note_activity
         else
             if ! brew_cleanup_ran_recently "$brew_cache_file"; then
+                glimwell_clean_step_preview "Homebrew cleanup" # glimwell
                 local dry_run_cleanup_file
                 dry_run_cleanup_file=$(create_temp_file)
                 local dry_run_cleanup_exit=0

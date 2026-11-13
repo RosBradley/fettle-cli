@@ -35,6 +35,13 @@ if [[ "${MOLE_DRY_RUN:-0}" == "1" ]]; then
 fi
 PROTECT_FINDER_METADATA=false
 EXTERNAL_VOLUME_TARGET=""
+# glimwell: --json and --only, the Glimwell app's interface (lib/glimwell/clean_json.sh).
+# A selection left in the environment never narrows a run that did not ask for one.
+CLEAN_JSON=false
+CLEAN_ONLY_FILE=""
+CLEAN_PREVIEW_LABEL_FILE=""
+_GLIMWELL_SUMMARY_SENT=false
+unset MOLE_CLEAN_ONLY_FILE
 IS_M_SERIES=$([[ "$(uname -m)" == "arm64" ]] && echo "true" || echo "false")
 
 # Whitelist and preview belong to the invoking user even when the whole
@@ -96,6 +103,14 @@ prepare_clean_preview_file() {
     CLEAN_PREVIEW_LEDGER_FILE=$(create_temp_file) || return 1
     [[ -f "$CLEAN_PREVIEW_LEDGER_FILE" && ! -L "$CLEAN_PREVIEW_LEDGER_FILE" ]] || return 1
     : > "$CLEAN_PREVIEW_LEDGER_FILE"
+
+    # glimwell: row names for the JSON preview, keyed like the ledger.
+    CLEAN_PREVIEW_LABEL_FILE=""
+    if [[ "$CLEAN_JSON" == "true" ]]; then
+        CLEAN_PREVIEW_LABEL_FILE=$(create_temp_file) || return 1
+        [[ -f "$CLEAN_PREVIEW_LABEL_FILE" && ! -L "$CLEAN_PREVIEW_LABEL_FILE" ]] || return 1
+        : > "$CLEAN_PREVIEW_LABEL_FILE"
+    fi
 }
 
 run_clean_preview_as_invoking_user() {
@@ -218,6 +233,11 @@ append_dry_run_cleanup_target() {
         printf '%s\0%s\0%s\0%s\0%s\0%s\0' \
             "$identity" "$size_kb" "$item_count" "$size_known" "${CURRENT_SECTION:-Uncategorized}" "$path" \
             >> "$CLEAN_PREVIEW_LEDGER_FILE"
+        # glimwell: the row name the caller is recording under, for --json.
+        if [[ -n "${_MOLE_DRY_RUN_ROW_LABEL:-}" && -n "${CLEAN_PREVIEW_LABEL_FILE:-}" &&
+            -f "$CLEAN_PREVIEW_LABEL_FILE" && ! -L "$CLEAN_PREVIEW_LABEL_FILE" ]]; then
+            printf '%s\0%s\0' "$identity" "$_MOLE_DRY_RUN_ROW_LABEL" >> "$CLEAN_PREVIEW_LABEL_FILE"
+        fi
         return 0
     fi
 
@@ -463,6 +483,16 @@ render_clean_preview_from_ledger() {
     local unknown_size_count=0
     local -a seen_sections=()
 
+    # glimwell: --json turns the same deduplicated records into item events.
+    local json_ledger=""
+    if glimwell_clean_json_active && [[ -n "${CLEAN_PREVIEW_LEDGER_FILE:-}" && -f "$CLEAN_PREVIEW_LEDGER_FILE" ]]; then
+        json_ledger=$(create_temp_file) || json_ledger=""
+        if [[ -n "$json_ledger" ]] && ! emit_deduplicated_dry_run_ledger > "$json_ledger"; then
+            json_ledger=""
+        fi
+        [[ -n "$json_ledger" ]] || glimwell_clean_json_error "The preview list could not be prepared."
+    fi
+
     if [[ -n "${CLEAN_PREVIEW_LEDGER_FILE:-}" && -f "$CLEAN_PREVIEW_LEDGER_FILE" ]]; then
         while IFS= read -r -d '' identity &&
             IFS= read -r -d '' size_kb &&
@@ -501,8 +531,9 @@ render_clean_preview_from_ledger() {
 
             known_size_kb=$((known_size_kb + size_kb))
             rendered_items=$((rendered_items + count))
-        done < <(emit_deduplicated_dry_run_ledger)
+        done < <(if [[ -n "$json_ledger" ]]; then cat "$json_ledger"; else emit_deduplicated_dry_run_ledger; fi)
     fi
+    [[ -z "$json_ledger" ]] || glimwell_clean_json_items_from_ledger "$json_ledger" "$CLEAN_PREVIEW_LABEL_FILE"
 
     total_size_cleaned=$known_size_kb
     files_cleaned=$rendered_items
@@ -624,6 +655,15 @@ cleanup() {
     fi
     CLEANUP_DONE=true
 
+    # glimwell: a --json run always ends with a summary event, even when it
+    # is cancelled or stops early.
+    if glimwell_clean_json_active && [[ "$_GLIMWELL_SUMMARY_SENT" != "true" ]]; then
+        _GLIMWELL_SUMMARY_SENT=true
+        local json_status="failed"
+        [[ "$signal" == "EXIT" ]] || json_status="cancelled"
+        glimwell_clean_json_summary "$json_status" "$exit_code" "${total_size_cleaned:-0}" "${files_cleaned:-0}" true
+    fi
+
     stop_inline_spinner 2> /dev/null || true
 
     # Background jobs ignore SIGINT.
@@ -666,6 +706,7 @@ start_section() {
     TRACK_SECTION=1
     SECTION_ACTIVITY=0
     CURRENT_SECTION="$1"
+    glimwell_clean_json_section "$1" # glimwell: progress for --json
     if [[ "${IDLE_SECTION_PENDING:-0}" == "1" ]]; then
         # Overwrite the previous idle section's header line in place (the
         # pending flag is only ever set on an interactive ANSI terminal).
@@ -877,6 +918,8 @@ _safe_clean_impl() {
         description="${*: -1}"
         targets=("${@:1:$#-1}")
     fi
+    # glimwell: preview items recorded below carry this row's name in --json.
+    local _MOLE_DRY_RUN_ROW_LABEL="$description"
 
     local -a valid_targets=()
     for target in "${targets[@]}"; do
@@ -885,6 +928,14 @@ _safe_clean_impl() {
         # every target that still exists is fully checked again at the sink.
         # Preserve broken symlinks so the deletion policy can classify them.
         if [[ ! -e "$target" && ! -L "$target" ]]; then
+            continue
+        fi
+        # glimwell: under `clean --only`, a target the user did not select is
+        # passed over before any probe or sizing; the deletion funnel refuses
+        # it again if some other route reaches it.
+        if [[ -n "${MOLE_CLEAN_ONLY_FILE:-}" && "${MOLE_CURRENT_COMMAND:-}" == "clean" ]] &&
+            { ! declare -F glimwell_clean_selection_refuses_path > /dev/null 2>&1 ||
+                glimwell_clean_selection_refuses_path "$target"; }; then
             continue
         fi
         valid_targets+=("$target")
@@ -1605,6 +1656,13 @@ start_cleanup() {
     echo -e "${GLIMWELL_BADGE}${PURPLE_BOLD}Clean Your Mac${NC}" # glimwell: badge
     echo ""
 
+    # glimwell: the app runs no admin steps yet, so --json never adopts a
+    # sudo session a terminal left cached, and never prompts.
+    if [[ "$CLEAN_JSON" == "true" ]]; then
+        SYSTEM_CLEAN=false
+        return 0
+    fi
+
     if [[ "$DRY_RUN" != "true" && -t 0 ]]; then
         echo -e "${GRAY}${ICON_WARNING} Use --dry-run to preview, --whitelist to manage protected paths${NC}"
     fi
@@ -1717,13 +1775,17 @@ perform_cleanup() {
         summary_details+=("Test mode - no actual cleanup performed")
         print_summary_block "$summary_heading" "${summary_details[@]}"
         printf '\n'
+        _GLIMWELL_SUMMARY_SENT=true                         # glimwell: --json
+        glimwell_clean_json_summary complete 0 0 0 false # glimwell: --json
         return 0
     fi
 
     # Pre-check TCC permissions to avoid mid-run prompts.
     if [[ -z "$EXTERNAL_VOLUME_TARGET" ]]; then
         check_tcc_permissions
-        start_legacy_analyzer_cache_sweep
+        # glimwell: a --only run removes nothing the user did not select, Mole's
+        # own analyzer cache included.
+        [[ -n "${MOLE_CLEAN_ONLY_FILE:-}" && "${MOLE_CURRENT_COMMAND:-}" == "clean" ]] || start_legacy_analyzer_cache_sweep
     fi
 
     if [[ ${#WHITELIST_PATTERNS[@]} -gt 0 ]]; then
@@ -2159,6 +2221,28 @@ perform_cleanup() {
         debug_log "${MOLE_CLEAN_REMOVAL_TIMEOUTS} ${removal_timeout_note}."
     fi
 
+    # glimwell: the last events of a --json run.
+    if glimwell_clean_json_active; then
+        local held_family=""
+        if [[ ${#DEFERRED_CLEANUP_FAMILIES[@]} -gt 0 ]]; then
+            for held_family in "${DEFERRED_CLEANUP_FAMILIES[@]}"; do
+                glimwell_clean_json_held "$held_family"
+            done
+        fi
+        local json_status="complete" json_partial=false
+        if [[ $cleanup_cancel_rc -ge 128 ]] || mole_rc_timeout "$cleanup_cancel_rc"; then
+            json_status="cancelled"
+        elif [[ $cleanup_cancel_rc -ne 0 ]]; then
+            json_status="incomplete"
+        fi
+        if [[ "${DRY_RUN_TOTAL_PARTIAL:-false}" == "true" || ${MOLE_CLEAN_SIZING_TIMEOUTS:-0} -gt 0 ]]; then
+            json_partial=true
+        fi
+        _GLIMWELL_SUMMARY_SENT=true
+        glimwell_clean_json_summary "$json_status" "$cleanup_cancel_rc" \
+            "${total_size_cleaned:-0}" "${files_cleaned:-0}" "$json_partial"
+    fi
+
     if [[ $had_errexit -eq 1 ]]; then
         set -e
     fi
@@ -2236,6 +2320,19 @@ main() {
                 manage_whitelist "clean"
                 exit 0
                 ;;
+            "--json")
+                # glimwell: the Glimwell app's interface; not in --help.
+                CLEAN_JSON=true
+                ;;
+            "--only")
+                # glimwell: the Glimwell app's interface; not in --help.
+                shift
+                if [[ $# -eq 0 ]]; then
+                    echo "Missing selection file for --only" >&2
+                    exit 1
+                fi
+                CLEAN_ONLY_FILE="$1"
+                ;;
             "--select" | "--categories" | "--exclude")
                 echo "glimwell clean $1 was removed in this release." >&2
                 echo "Use 'glimwell clean --dry-run' to preview cleanup and 'glimwell clean --whitelist' to protect paths." >&2
@@ -2255,7 +2352,58 @@ main() {
         shift
     done
 
-    refuse_cleanup_without_write_access || exit 1
+    # glimwell: --json and --only, for the Glimwell app (lib/glimwell/clean_json.sh).
+    if [[ -n "$CLEAN_ONLY_FILE" ]]; then
+        if [[ "$CLEAN_JSON" != "true" ]]; then
+            echo "glimwell clean --only works only together with --json." >&2
+            exit 1
+        fi
+        if [[ "$DRY_RUN" == "true" ]]; then
+            echo "glimwell clean --only removes the listed items, so it cannot run as a dry run. Preview with: glimwell clean --dry-run --json" >&2
+            exit 1
+        fi
+        glimwell_clean_selection_check_file "$CLEAN_ONLY_FILE" || exit 1
+        local only_dir=""
+        only_dir=$(cd "$(dirname "$CLEAN_ONLY_FILE")" 2> /dev/null && pwd -P) || {
+            echo "glimwell clean --only: the selection file's folder could not be opened." >&2
+            exit 1
+        }
+        export MOLE_CLEAN_ONLY_FILE="$only_dir/${CLEAN_ONLY_FILE##*/}"
+        if ! _glimwell_selection_load; then
+            echo "glimwell clean --only: the selection file could not be read." >&2
+            exit 1
+        fi
+    fi
+    if [[ "$CLEAN_JSON" == "true" ]]; then
+        if [[ -n "$EXTERNAL_VOLUME_TARGET" ]]; then
+            echo "glimwell clean --json does not support --external." >&2
+            exit 1
+        fi
+        # A real run from the app always names what to remove, so a call that
+        # lost its list never turns into a full cleanup.
+        if [[ "$DRY_RUN" != "true" && -z "$CLEAN_ONLY_FILE" ]]; then
+            echo "glimwell clean --json removes only listed items: add --only FILE, or preview with: glimwell clean --dry-run --json" >&2
+            exit 1
+        fi
+        # Events go to the original stdout through fd 8; the terminal text is
+        # dropped, or sent to stderr under --debug.
+        exec 8>&1
+        if [[ "${MO_DEBUG:-}" == "1" ]]; then
+            exec 1>&2
+        else
+            exec 1> /dev/null
+        fi
+        GLIMWELL_CLEAN_JSON=1
+        glimwell_clean_json_start
+        local write_refusal=""
+        if ! write_refusal=$(refuse_cleanup_without_write_access 2>&1); then
+            printf '%s\n' "$write_refusal" >&2
+            glimwell_clean_json_error "$write_refusal"
+            exit 1
+        fi
+    fi
+
+    [[ "$CLEAN_JSON" == "true" ]] || refuse_cleanup_without_write_access || exit 1
     start_cleanup
     hide_cursor
     local cleanup_rc=0

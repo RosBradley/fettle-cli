@@ -1198,6 +1198,19 @@ validate_path_for_deletion() {
         return 1
     fi
 
+    # glimwell: `clean --only` removes only what the user selected
+    # (lib/glimwell/clean_json.sh). This is the funnel every safe_* sink and
+    # mole_delete pass through, so a caller that skipped the whitelist check
+    # still cannot remove an unselected path.
+    if [[ -n "${MOLE_CLEAN_ONLY_FILE:-}" && "${MOLE_CURRENT_COMMAND:-}" == "clean" ]]; then
+        if ! declare -F glimwell_clean_selection_refuses_path > /dev/null 2>&1 ||
+            glimwell_clean_selection_refuses_path "$path"; then
+            _MOLE_VALIDATION_REASON="not selected"
+            debug_log "Path validation: not selected for this run: $path"
+            return 1
+        fi
+    fi
+
     # Check symlink target if path is a symbolic link
     if [[ -L "$path" ]]; then
         local link_target
@@ -3526,6 +3539,13 @@ safe_find_delete() {
             continue
         fi
         if declare -f is_path_whitelisted > /dev/null && is_path_whitelisted "$match"; then
+            continue
+        fi
+        # glimwell: an unselected match under `clean --only` is passed over
+        # like a whitelisted one, so the rest of this scan still runs.
+        if [[ -n "${MOLE_CLEAN_ONLY_FILE:-}" && "${MOLE_CURRENT_COMMAND:-}" == "clean" ]] &&
+            { ! declare -F glimwell_clean_selection_refuses_path > /dev/null 2>&1 ||
+                glimwell_clean_selection_refuses_path "$match"; }; then
             continue
         fi
         if [[ "${MOLE_DRY_RUN:-0}" == "1" ]] && declare -f record_dry_run_cleanup_target > /dev/null 2>&1; then

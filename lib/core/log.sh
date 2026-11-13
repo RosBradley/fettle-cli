@@ -286,6 +286,15 @@ operation_log_command() {
 # Example: log_operation "clean" "SKIPPED" "/path/to/file" "whitelist"
 # Example: log_operation "uninstall" "REMOVED" "/Applications/App.app" "150MB"
 log_operation() {
+    # glimwell: `clean --json` reports each removal and refusal as an event,
+    # whether or not the operations log is on.
+    if [[ "${GLIMWELL_CLEAN_JSON:-0}" == "1" ]] && declare -F glimwell_clean_json_operation > /dev/null 2>&1; then
+        glimwell_clean_json_operation "${2:-}" "${3:-}" "${4:-}"
+    fi
+    # glimwell: under `clean --only`, an item the user left unticked was never
+    # part of the run, so it gets no SKIPPED row.
+    [[ -n "${MOLE_CLEAN_ONLY_FILE:-}" && "${MOLE_CURRENT_COMMAND:-}" == "clean" && "${4:-}" == "not selected" ]] && return 0
+
     # Allow disabling via environment variable
     oplog_enabled || return 0
 
