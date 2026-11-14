@@ -294,6 +294,14 @@ log_operation() {
     # glimwell: under `clean --only`, an item the user left unticked was never
     # part of the run, so it gets no SKIPPED row.
     [[ -n "${MOLE_CLEAN_ONLY_FILE:-}" && "${MOLE_CURRENT_COMMAND:-}" == "clean" && "${4:-}" == "not selected" ]] && return 0
+    # glimwell: `uninstall --json` reports removals and refusals as events, and
+    # an unlisted path likewise gets no SKIPPED row.
+    if [[ "${GLIMWELL_UNINSTALL_JSON:-0}" == "1" ]]; then
+        if declare -F glimwell_uninstall_json_operation > /dev/null 2>&1; then
+            glimwell_uninstall_json_operation "${2:-}" "${3:-}" "${4:-}"
+        fi
+        [[ "${4:-}" != "not selected" ]] || return 0
+    fi
 
     # Allow disabling via environment variable
     oplog_enabled || return 0

@@ -108,6 +108,12 @@ glimwell_clean_selection_check_file() {
         printf 'glimwell clean --only: the selection must be a readable regular file, not a link or folder: %s\n' "$file" >&2
         return 1
     fi
+    # glimwell: bash drops NUL bytes while reading, so the line it saw would
+    # differ from the bytes on disk (helper in uninstall_json.sh).
+    if declare -F glimwell_selection_file_has_nul > /dev/null 2>&1 && glimwell_selection_file_has_nul "$file"; then
+        printf 'glimwell clean --only: the selection file holds a NUL byte.\n' >&2
+        return 1
+    fi
     local line="" number=0 count=0
     while IFS= read -r line || [[ -n "$line" ]]; do
         number=$((number + 1))

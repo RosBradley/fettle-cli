@@ -428,6 +428,8 @@ can_unload_launch_plist() {
         "$HOME"/Library/LaunchAgents/*.plist | /Library/LaunchAgents/*.plist | /Library/LaunchDaemons/*.plist) ;;
         *) return 1 ;;
     esac
+    # glimwell: a probe, not a removal; the uninstall --json allowlist does not apply.
+    local _GLIMWELL_UJ_UNLOAD_PROBE=1
     validate_path_for_deletion "$plist" > /dev/null 2>&1
 }
 
@@ -2735,6 +2737,12 @@ _batch_execute_removals() {
             fi
         fi
 
+        # glimwell: `uninstall --json` keeps an app that is open now, or one
+        # that needs a password, before any teardown touches it.
+        if [[ -z "$reason" && "${GLIMWELL_UNINSTALL_JSON:-0}" == "1" ]]; then
+            glimwell_uninstall_json_guard_app "$app_name" "$app_path" "$needs_sudo"
+        fi
+
         # Launch service unloads, LaunchServices unregistration, login item
         # removal, and helper bootout are best-effort teardown: a timeout
         # skips that step for this app, and only a signal stops the batch.
@@ -2780,7 +2788,11 @@ _batch_execute_removals() {
         # can belong to the surviving install (Xcode-beta.app ships the
         # executable "Xcode"), so the kill ladder could SIGKILL the
         # survivor's running process instead.
-        if [[ -z "$reason" && "${sibling_guard:-none}" == "none" ]]; then
+        # glimwell: `uninstall --json` never quits an app; it checks again
+        # right before the move and keeps an app that was opened meanwhile.
+        if [[ -z "$reason" && "${GLIMWELL_UNINSTALL_JSON:-0}" == "1" ]]; then
+            glimwell_uninstall_json_guard_app "$app_name" "$app_path" "$needs_sudo"
+        elif [[ -z "$reason" && "${sibling_guard:-none}" == "none" ]]; then
             local kill_rc=0
             force_kill_app "$app_name" "$app_path" || kill_rc=$?
             [[ $kill_rc -ge 128 ]] && return "$kill_rc"
@@ -3200,6 +3212,7 @@ _batch_execute_removals() {
 
             failed_count=$((failed_count + 1))
             failed_items+=("$app_name:$reason:${suggestion:-}")
+            _GLIMWELL_UJ_LAST_REASON="$reason" # glimwell: the reason uninstall --json reports
         fi
     done
 }

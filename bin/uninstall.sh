@@ -1754,6 +1754,8 @@ uninstall_abort() {
 cleanup() {
     local exit_code="${1:-$?}"
     trap - EXIT INT TERM
+    # glimwell: `uninstall --json` always ends with a summary line.
+    glimwell_uninstall_json_on_exit "$exit_code"
     stop_uninstall_interactive_screen
     if [[ -n "${sudo_keepalive_pid:-}" ]]; then
         kill "$sudo_keepalive_pid" 2> /dev/null || true
@@ -2099,6 +2101,32 @@ main() {
     # Only the --with-data flag preselects personal data, never the environment.
     MOLE_UNINSTALL_WITH_DATA=0
 
+    # glimwell: --json and --only FILE are the Glimwell app's interface
+    # (lib/glimwell/uninstall_json.sh). Take them out before the usual parse.
+    local _gw_json=0 _gw_only="" _gw_only_set=0 _gw_permanent=0 _gw_with_data=0
+    local -a _gw_args=()
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --json) _gw_json=1 ;;
+            --only)
+                if [[ $# -lt 2 ]]; then
+                    echo "glimwell uninstall: --only needs a file" >&2
+                    exit 1
+                fi
+                _gw_only="$2"
+                _gw_only_set=1
+                shift
+                ;;
+            *)
+                [[ "$1" != "--permanent" ]] || _gw_permanent=1
+                [[ "$1" != "--with-data" ]] || _gw_with_data=1
+                _gw_args+=("$1")
+                ;;
+        esac
+        shift
+    done
+    set -- "${_gw_args[@]+"${_gw_args[@]}"}"
+
     # Parse flags and collect app name arguments
     local -a app_name_args=()
     local list_mode=0
@@ -2139,6 +2167,13 @@ main() {
                 ;;
         esac
     done
+
+    # glimwell: the app's calls never reach the terminal flow below.
+    if [[ $_gw_json -eq 1 || $_gw_only_set -eq 1 ]]; then
+        glimwell_uninstall_json_main "$list_mode" "$_gw_json" "$_gw_only_set" "$_gw_only" \
+            "$_gw_permanent" "$_gw_with_data" "${app_name_args[@]+"${app_name_args[@]}"}"
+        return $?
+    fi
 
     # --list short-circuits before any destructive code. Read-only path:
     # scan, resolve uninstall names, print table or JSON, exit 0.

@@ -29,6 +29,7 @@ source "$_MOLE_CORE_DIR/pkg_receipts.sh"
 source "$_MOLE_CORE_DIR/../glimwell/cancel.sh"
 source "$_MOLE_CORE_DIR/../glimwell/badge.sh" # glimwell: the Glimwell badge
 source "$_MOLE_CORE_DIR/../glimwell/clean_json.sh" # glimwell: clean --json and --only for the app
+source "$_MOLE_CORE_DIR/../glimwell/uninstall_json.sh" # glimwell: uninstall --json for the app
 
 # Load sudo management if available
 if [[ -f "$_MOLE_CORE_DIR/sudo.sh" ]]; then

@@ -564,7 +564,24 @@ brew_uninstall_cask() {
     fi
 
     # Run with timeout to prevent hangs from problematic cask scripts.
-    if [[ -n "${SUDO_USER:-}" ]]; then
+    if [[ "${GLIMWELL_UNINSTALL_JSON:-0}" == "1" ]]; then
+        # glimwell: brew cannot ask for a password in an `uninstall --json`
+        # run: no terminal, an askpass helper that refuses, and SUDO_USER is
+        # never honored. Its output is kept so the run can report a cask that
+        # needs a password; it never sees the event stream (fd 8).
+        local _gw_brew_log=""
+        _gw_brew_log=$(mktemp "${TMPDIR:-/tmp}/glimwell-brew.XXXXXX") || _gw_brew_log="/dev/null"
+        if SUDO_ASKPASS=/usr/bin/false HOMEBREW_NO_ENV_HINTS=1 HOMEBREW_NO_AUTO_UPDATE=1 NONINTERACTIVE=1 \
+            run_with_timeout "$timeout" brew "${uninstall_args[@]}" "$cask_name" > "$_gw_brew_log" 2>&1 < /dev/null 8>&-; then
+            uninstall_ok=true
+        else
+            brew_exit=$?
+        fi
+        if [[ "$_gw_brew_log" != "/dev/null" ]]; then
+            glimwell_uninstall_json_note_brew_output "$_gw_brew_log"
+            rm -f -- "$_gw_brew_log" # SAFE: private mktemp file created above
+        fi
+    elif [[ -n "${SUDO_USER:-}" ]]; then
         if run_with_timeout "$timeout" sudo -u "$SUDO_USER" env \
             HOMEBREW_NO_ENV_HINTS=1 HOMEBREW_NO_AUTO_UPDATE=1 NONINTERACTIVE=1 \
             brew "${uninstall_args[@]}" "$cask_name" 2>&1; then

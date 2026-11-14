@@ -744,6 +744,12 @@ _mole_complete_lsof_mode() {
         _MOLE_COMPLETE_LSOF_MODE="unknown"
         return 2
     fi
+    # glimwell: the app's JSON runs never use sudo, so a session a terminal
+    # left cached is not adopted either.
+    if [[ "${GLIMWELL_UNINSTALL_JSON:-0}" == "1" || "${GLIMWELL_CLEAN_JSON:-0}" == "1" ]]; then
+        _MOLE_COMPLETE_LSOF_MODE="unknown"
+        return 2
+    fi
 
     if ! probe_timeout=$(_mole_timeout_with_deadline "$MOLE_TIMEOUT_QUICK_DETECT_SEC" \
         "$probe_deadline"); then
@@ -1149,6 +1155,10 @@ _mole_is_user_trash_top_level_item() {
 # The batch uninstall caller owns these arrays. Record evidence at the gate,
 # not by probing again after removal or reading a previous operation's log.
 _mole_record_uninstall_refusal() {
+    # glimwell: `uninstall --json` reports each refusal as a kept event.
+    if [[ "${GLIMWELL_UNINSTALL_JSON:-0}" == "1" ]] && declare -F glimwell_uninstall_json_refusal > /dev/null 2>&1; then
+        glimwell_uninstall_json_refusal "${1:-}" "${2:-}"
+    fi
     [[ "${_MOLE_UNINSTALL_REFUSALS_ACTIVE:-0}" == "1" ]] || return 0
     _MOLE_UNINSTALL_REFUSAL_PATHS+=("$1")
     _MOLE_UNINSTALL_REFUSAL_REASONS+=("$2")
@@ -1207,6 +1217,19 @@ validate_path_for_deletion() {
             glimwell_clean_selection_refuses_path "$path"; then
             _MOLE_VALIDATION_REASON="not selected"
             debug_log "Path validation: not selected for this run: $path"
+            return 1
+        fi
+    fi
+    # glimwell: a real `uninstall --json` run removes only the app in hand and
+    # the leftovers the user listed that its fresh scan found again
+    # (lib/glimwell/uninstall_json.sh). A launch-plist probe that only asks
+    # whether a plist may be unloaded is not a removal.
+    if [[ "${GLIMWELL_UNINSTALL_JSON:-0}" == "1" && "${MOLE_CURRENT_COMMAND:-}" == "uninstall" &&
+        "${MOLE_DRY_RUN:-0}" != "1" && "${_GLIMWELL_UJ_UNLOAD_PROBE:-0}" != "1" ]]; then
+        if ! declare -F glimwell_uninstall_refuses_path > /dev/null 2>&1 ||
+            glimwell_uninstall_refuses_path "$path"; then
+            _MOLE_VALIDATION_REASON="not selected"
+            debug_log "Path validation: not selected for this uninstall: $path"
             return 1
         fi
     fi
@@ -2881,6 +2904,17 @@ _mole_move_to_trash() {
     # Blocked in test mode so uninstall tests never hit Finder/AppleScript.
     if [[ "${MOLE_TEST_NO_AUTH:-0}" == "1" ]]; then
         return 1
+    fi
+
+    # glimwell: `uninstall --json` moves straight into the user's Trash. The
+    # Finder fallback can show Finder's own password dialog, and the app's runs
+    # never ask for one; nor does a JSON run move anything with sudo.
+    if [[ "${GLIMWELL_UNINSTALL_JSON:-0}" == "1" ]]; then
+        [[ "$needs_sudo" != "true" ]] || return 1
+        _mole_move_path_to_user_trash "$path" false \
+            "$expected_parent" "$expected_parent_id" "$expected_target_id" \
+            "$expected_file_sha256" "$expected_absent_path"
+        return $?
     fi
 
     if [[ "$needs_sudo" == "true" ]]; then
